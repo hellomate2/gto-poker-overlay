@@ -9,6 +9,7 @@ import { getGTOAdvice } from './ranges/gto-advisor';
 import { OpponentTracker } from './exploit/tracker';
 import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
+import { solvePostflop } from './solver/postflop-cfr';
 
 // ============================================================
 // GTO Decision Engine
@@ -259,7 +260,99 @@ export class DecisionEngine {
   // Postflop GTO Decision
   // ============================================================
 
+  /**
+   * Postflop decision. Tries the genuine depth-limited CFR subgame solver first
+   * (see src/core/solver/postflop-cfr.ts); if it returns a usable strategy
+   * within its hard time/iteration budget, we build the BotDecision from the
+   * solved distribution. On ANY error, timeout, or unsupported spot we fall
+   * back to the existing heuristic logic so decide() always stays responsive.
+   */
   private decidePostflop(state: GameState, heroCards: [number, number], equity: number): BotDecision {
+    const solved = this.decidePostflopFromSolver(state, heroCards);
+    if (solved) return solved;
+    return this.decidePostflopHeuristic(state, heroCards, equity);
+  }
+
+  /**
+   * Run the depth-limited postflop CFR solver for the current spot and convert
+   * its solved root distribution into a BotDecision. Returns null when the spot
+   * is unsupported or the solve fails/times out so the caller can fall back.
+   *
+   * The solved `mixedStrategy` is attached verbatim so the executor samples the
+   * equilibrium mix; `action`/`amount` are set to the argmax for display.
+   */
+  private decidePostflopFromSolver(state: GameState, heroCards: [number, number]): BotDecision | null {
+    try {
+      const board = state.communityCards.map(c => cardToId(c));
+      if (board.length < 3 || board.length > 5) return null;
+
+      const hero = state.players[state.heroIndex];
+      const heroBet = hero?.currentBet || 0;
+      const toCall = Math.max(0, state.currentBet - heroBet);
+      // Effective stack = smaller of hero's and the active villain's remaining
+      // stacks (heads-up subgame abstraction).
+      const heroStack = hero?.stack ?? 100;
+      const villainStacks = state.players
+        .filter((p, i) => i !== state.heroIndex && !p.isSittingOut)
+        .map(p => p.stack);
+      const villStack = villainStacks.length > 0 ? Math.min(...villainStacks) : heroStack;
+      const effectiveStack = Math.max(1, Math.min(heroStack, villStack));
+
+      const result = solvePostflop({
+        board,
+        heroCards,
+        pot: state.pot,
+        effectiveStack,
+        toCall,
+        heroInPosition: this.isInPosition(state),
+        // Hard live budget: bounded iterations and wall-clock.
+        maxIterations: this.settings.cfrIterations > 0 ? Math.min(400, this.settings.cfrIterations) : 300,
+        timeBudgetMs: Math.max(50, Math.min(250, this.settings.cfrTimeLimit || 200)),
+        seed: (state.handNumber * 2654435761 + state.communityCards.length) >>> 0,
+      });
+
+      return this.botDecisionFromStrategy(result.strategy, state, toCall, result);
+    } catch (err) {
+      console.warn('[GTO Bot] Postflop CFR solve failed, falling back to heuristic:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Build a BotDecision from a solved StrategyDistribution. Picks the argmax
+   * action/amount for display while keeping the full mix for the executor.
+   */
+  private botDecisionFromStrategy(
+    strat: StrategyDistribution,
+    state: GameState,
+    toCall: number,
+    result: { iterations: number; timeMs: number; ev: number },
+  ): BotDecision {
+    const action = this.pickBestAction(strat);
+    // Map the abstract 'raise' argmax to bet vs raise based on whether hero is
+    // facing a bet, matching how the executor/labels expect it.
+    let displayAction: ActionType = action;
+    let amount: number | undefined;
+    if (action === 'raise') {
+      displayAction = toCall > 0 ? 'raise' : 'bet';
+      amount = this.pickBetAmount(strat, state);
+    }
+    const confidence = displayAction === 'fold' ? strat.fold
+      : displayAction === 'check' ? strat.check
+      : displayAction === 'call' ? strat.call
+      : strat.bets.reduce((s, b) => s + b.probability, 0);
+
+    const reasoning = `CFR solve (${result.iterations} iters, ${result.timeMs}ms, EV ${result.ev.toFixed(1)})`;
+    return {
+      action: displayAction,
+      amount,
+      confidence,
+      reasoning,
+      mixedStrategy: strat,
+    };
+  }
+
+  private decidePostflopHeuristic(state: GameState, heroCards: [number, number], equity: number): BotDecision {
     const hero = state.players[state.heroIndex];
     const heroBet = hero?.currentBet || 0;
     const toCall = state.currentBet - heroBet;
