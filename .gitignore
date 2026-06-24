@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Source maps (regenerated on build)
+*.js.map
+
+# OS / editor cruft
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+.claude/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local scratch / analysis scripts (not part of the extension)
+analyze_*.py
+*.docx

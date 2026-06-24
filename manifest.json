@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "PokerNow GTO Bot",
+  "version": "1.0.0",
+  "description": "GTO poker bot with opponent tracking for PokerNow",
+  "permissions": ["storage", "activeTab", "tabs"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.pokernow.club/*",
+        "https://pokernow.club/*",
+        "https://www.pokernow.com/*",
+        "https://pokernow.com/*"
+      ],
+      "js": ["content-script.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PokerNow GTO Bot"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["cfr-worker.js"],
+      "matches": [
+        "https://www.pokernow.club/*",
+        "https://pokernow.club/*",
+        "https://www.pokernow.com/*",
+        "https://pokernow.com/*"
+      ]
+    }
+  ]
+}

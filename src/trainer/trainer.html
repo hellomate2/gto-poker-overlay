@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GTO Trainer</title>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="logo">GTO<span>Trainer</span></div>
+      <div class="tagline">Learn the solver. Study tool — no auto-play, no live assistance.</div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-mode="pre-rfi">Preflop · RFI</button>
+      <button class="tab" data-mode="pre-3bet">Preflop · 3-Bet</button>
+      <button class="tab" data-mode="postflop">Postflop · Solver</button>
+    </nav>
+
+    <main>
+      <section id="play" class="play"></section>
+
+      <aside class="sidebar">
+        <h3>Session</h3>
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-num" id="stat-hands">0</div><div class="stat-label">Hands</div></div>
+          <div class="stat"><div class="stat-num" id="stat-score">—</div><div class="stat-label">GTO Score</div></div>
+          <div class="stat"><div class="stat-num" id="stat-streak">0</div><div class="stat-label">Streak</div></div>
+          <div class="stat"><div class="stat-num" id="stat-best">0</div><div class="stat-label">Best</div></div>
+        </div>
+        <h3>Recent leaks</h3>
+        <div id="mistakes" class="mistakes"></div>
+      </aside>
+    </main>
+
+    <footer>
+      Preflop graded against GTO charts · Postflop powered by
+      <a href="https://github.com/bupticybee/TexasSolver" target="_blank" rel="noopener">TexasSolver</a>.
+    </footer>
+  </div>
+</body>
+</html>

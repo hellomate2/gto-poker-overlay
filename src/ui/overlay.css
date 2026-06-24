@@ -1,0 +1,254 @@
+/* GTO Bot HUD Overlay Styles */
+
+/* ---- Reset & base ---- */
+#gto-bot-overlay {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ---- Player stat boxes ---- */
+.gto-player-stats {
+  transition: all 0.25s ease;
+  animation: gto-fade-in 0.3s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: default;
+}
+
+.gto-player-stats:hover {
+  transform: scale(1.08);
+  z-index: 100001 !important;
+}
+
+.gto-player-stats .stat-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  line-height: 1.4;
+}
+
+.gto-player-stats .stat-label {
+  color: #888;
+  font-size: 10px;
+  min-width: 26px;
+}
+
+.gto-player-stats .stat-val {
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.gto-player-stats .type-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* ---- Decision panel ---- */
+#gto-bot-decision {
+  transition: all 0.3s ease;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+#gto-bot-decision:hover {
+  opacity: 0.9;
+}
+
+#gto-bot-decision .action-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+#gto-bot-decision .action-name {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+#gto-bot-decision .action-amount {
+  font-size: 16px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+#gto-bot-decision .reasoning {
+  color: #aab;
+  font-size: 11px;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+/* Equity & odds bar */
+#gto-bot-decision .eq-bar-container {
+  margin-bottom: 10px;
+}
+
+#gto-bot-decision .eq-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #888;
+  margin-bottom: 3px;
+}
+
+#gto-bot-decision .eq-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  position: relative;
+}
+
+#gto-bot-decision .eq-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease, background 0.3s ease;
+}
+
+#gto-bot-decision .eq-marker {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 10px;
+  background: #fff;
+  border-radius: 1px;
+  transition: left 0.5s ease;
+}
+
+/* Strategy distribution */
+#gto-bot-decision .strat-row {
+  display: flex;
+  gap: 2px;
+  height: 16px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+#gto-bot-decision .strat-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.7);
+  transition: flex-basis 0.5s ease;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#gto-bot-decision .strat-legend {
+  display: flex;
+  gap: 10px;
+  font-size: 10px;
+  color: #999;
+}
+
+#gto-bot-decision .strat-legend span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+#gto-bot-decision .leg-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Session stats strip */
+#gto-bot-decision .session-strip {
+  display: flex;
+  gap: 12px;
+  padding-top: 8px;
+  margin-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  color: #777;
+}
+
+#gto-bot-decision .session-strip .ss-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#gto-bot-decision .session-strip .ss-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ccc;
+}
+
+#gto-bot-decision .session-strip .ss-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Waiting state */
+#gto-bot-decision .waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #555;
+  font-size: 12px;
+}
+
+#gto-bot-decision .waiting .pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #333;
+  animation: gto-pulse 2s ease-in-out infinite;
+}
+
+/* Toggle button */
+#gto-bot-toggle {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 100001;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+#gto-bot-toggle:hover {
+  background: rgba(74, 144, 217, 0.6);
+  transform: scale(1.1);
+}
+
+/* ---- Animations ---- */
+@keyframes gto-fade-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gto-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.3); }
+}
+
+@keyframes gto-slide-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}

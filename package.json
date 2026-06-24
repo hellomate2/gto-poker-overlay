@@ -1,0 +1,24 @@
+{
+  "name": "pokernow-gto-bot",
+  "version": "1.0.0",
+  "description": "GTO poker bot for PokerNow with opponent tracking and exploit adjustments",
+  "scripts": {
+    "build": "webpack --mode production",
+    "dev": "webpack --mode development --watch",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.37",
+    "copy-webpack-plugin": "^12.0.2",
+    "css-loader": "^7.1.2",
+    "html-webpack-plugin": "^5.6.3",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.6.3",
+    "webpack": "^5.96.1",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "poker-odds-calculator": "^0.4.0"
+  }
+}

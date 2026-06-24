@@ -1,0 +1,16 @@
+{
+  "id": "btn_vs_bb_QJ2",
+  "title": "BTN c-bet decision — single-raised pot vs BB",
+  "street": "flop",
+  "board": ["Qs", "Jh", "2h"],
+  "pot": 5.5,
+  "effectiveStack": 97.5,
+  "toAct": "ip",
+  "rangeOop": "22+,A2s+,K5s+,Q7s+,J7s+,T7s+,97s+,87s,76s,65s,54s,A8o+,KTo+,QTo+,JTo",
+  "rangeIp": "22+,A2s+,K2s+,Q4s+,J6s+,T6s+,96s+,86s+,75s+,64s+,53s+,A2o+,K7o+,Q8o+,J8o+,T8o+,98o",
+  "betSizes": { "bet": [33, 75], "raise": [60] },
+  "allinThreshold": 0.67,
+  "accuracy": 0.5,
+  "maxIteration": 150,
+  "threads": 8
+}
