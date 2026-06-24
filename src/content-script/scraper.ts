@@ -309,20 +309,24 @@ export class PokerNowScraper {
   }
 
   private detectBigBlind(maxStack: number = Infinity): number {
-    // The stakes header ("NLH ~ 10 / 20") is the most reliable source. Take the
-    // big blind from a "small / big" pair that is plausible given the stacks
-    // (big >= small, and not larger than the biggest stack on the table).
+    // Most reliable: the dedicated blind element holds exactly the SB and BB
+    // chips (e.g. ".blind-value .chips-value" -> [10, 20]). The big blind is the
+    // larger of them. Scoping to this element avoids picking up stray "x / y"
+    // text elsewhere on the page (which previously read the BB as far too large
+    // and made the bot think it was short-stacked).
+    const blindChips = Array.from(document.querySelectorAll(SEL.blindValues))
+      .map(e => parseChipValue(e.textContent || '0'))
+      .filter(v => v > 0);
+    if (blindChips.length >= 2) {
+      const bb = Math.max(blindChips[0], blindChips[1]);
+      if (bb > 0 && bb <= maxStack) return bb;
+    }
+    // Fallback: the stakes header "small / big", sanity-checked vs the stacks.
     const body = document.body.textContent || '';
     for (const m of body.matchAll(/(\d[\d,]*)\s*\/\s*(\d[\d,]*)/g)) {
       const small = parseChipValue(m[1]);
       const big = parseChipValue(m[2]);
       if (big > 0 && big >= small && big <= maxStack) return big;
-    }
-    // Fall back to the blind chip elements, also sanity-checked.
-    const blindEls = document.querySelectorAll(SEL.blindValues);
-    if (blindEls.length >= 2) {
-      const v = parseChipValue(blindEls[1].textContent || '0');
-      if (v > 0 && v <= maxStack) return v;
     }
     return 20;
   }
