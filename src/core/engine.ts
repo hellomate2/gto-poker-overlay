@@ -100,7 +100,52 @@ export class DecisionEngine {
     // Sanity checks
     decision = this.sanityCheck(decision, state, equity);
 
+    // Legalize sizing: never bet/raise more than you actually have.
+    decision = this.legalizeDecision(decision, state);
+
     console.log(`[GTO Bot] => ${decision.action}${decision.amount ? ' $' + decision.amount : ''} | ${decision.reasoning}`);
+    return decision;
+  }
+
+  /**
+   * Clamp every bet/raise amount to what the hero can actually put in. A raise
+   * "to" amount can never exceed hero stack + chips already in front; if it
+   * would, the action becomes an all-in for exactly that maximum. Also clamps
+   * the amounts inside mixedStrategy (the executor samples those). No-ops when
+   * the stack can't be read, so a bad read can't freeze the bot at zero.
+   */
+  private legalizeDecision(decision: BotDecision, state: GameState): BotDecision {
+    const hero = state.players[state.heroIndex];
+    const heroStack = hero?.stack || 0;
+    if (heroStack <= 0) return decision; // unknown stack — don't clamp to zero
+
+    const heroBet = hero.currentBet || 0;
+    const maxTo = heroStack + heroBet; // total chips committed if all-in
+
+    // Bets at or above the all-in amount become Infinity so the executor clicks
+    // the dedicated All-In button instead of typing a full-stack number.
+    const clampBet = (amt: number): number =>
+      (amt === Infinity || amt >= maxTo) ? Infinity : Math.round(amt);
+
+    if ((decision.action === 'raise' || decision.action === 'bet') && decision.amount) {
+      if (decision.amount >= maxTo) {
+        decision.action = 'allin';
+        decision.amount = maxTo;
+        decision.reasoning += ' (all-in: capped to stack)';
+      } else {
+        decision.amount = Math.round(decision.amount);
+      }
+    } else if (decision.action === 'allin') {
+      decision.amount = maxTo;
+    }
+
+    if (decision.mixedStrategy?.bets) {
+      decision.mixedStrategy.bets = decision.mixedStrategy.bets.map(b => ({
+        probability: b.probability,
+        amount: clampBet(b.amount),
+      }));
+    }
+
     return decision;
   }
 
