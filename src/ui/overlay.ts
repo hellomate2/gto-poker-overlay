@@ -5,6 +5,8 @@ import { GTOAdvice } from '../core/ranges/gto-advisor';
 const OVERLAY_ID = 'gto-bot-overlay';
 const PANEL_ID = 'gto-bot-panel';
 const TOGGLE_ID = 'gto-bot-toggle';
+// Bump on every release so the running build is identifiable on the table.
+const VERSION = 'v0.1.9';
 
 interface SessionStats {
   hands: number;
@@ -180,8 +182,9 @@ export class HUDOverlay {
       ? this.renderActionSection(this.lastDecision, this.lastEquity)
       : `<div class="waiting" style="padding:10px 14px;"><div class="pulse"></div>Waiting for your turn...</div>`;
     const sessionHtml = this.renderSessionStrip();
+    const versionHtml = `<div style="font-size:9px; color:#556; text-align:right; padding:3px 8px 4px; letter-spacing:0.5px;">GTO Overlay ${VERSION}</div>`;
 
-    this.panel.innerHTML = `${gtoHtml}${actionHtml}${sessionHtml}`;
+    this.panel.innerHTML = `${gtoHtml}${actionHtml}${sessionHtml}${versionHtml}`;
   }
 
   private renderGTOSection(advice: GTOAdvice): string {
