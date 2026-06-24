@@ -192,8 +192,10 @@ export interface BotSettings {
 }
 
 export const DEFAULT_SETTINGS: BotSettings = {
-  autoPlay: true,
-  advisoryMode: false,
+  // Advisory by default: the overlay shows GTO recommendations but never acts
+  // on its own. Auto-play is strictly opt-in.
+  autoPlay: false,
+  advisoryMode: true,
   actionDelayMin: 500,
   actionDelayMax: 2000,
   exploitWeight: 0.5,

@@ -1,4 +1,5 @@
 import { ActionType, BotDecision, BotSettings, DEFAULT_SETTINGS } from '../types/poker';
+import { log } from '../core/logger';
 
 // ============================================================
 // Action Executor — Reliable PokerNow button clicking

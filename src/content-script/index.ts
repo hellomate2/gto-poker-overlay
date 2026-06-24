@@ -6,6 +6,7 @@ import { HUDOverlay } from '../ui/overlay';
 import { quickEquity } from '../core/equity/monte-carlo';
 import { cardToId } from '../core/cfr/card-utils';
 import { getGTOAdvice } from '../core/ranges/gto-advisor';
+import { log } from '../core/logger';
 
 // ============================================================
 // Content Script Entry Point
@@ -198,19 +199,12 @@ class PokerBot {
     return new Promise((resolve) => {
       try {
         chrome.storage.local.get('botSettings', (result: any) => {
-          // Always force autoPlay ON and fast delays
+          // Honor the user's stored preferences; fall back to advisory defaults.
           this.settings = {
             ...DEFAULT_SETTINGS,
             ...(result?.botSettings || {}),
-            autoPlay: true,
-            advisoryMode: false,
-            actionDelayMin: 300,
-            actionDelayMax: 1200,
-            confirmAllIn: false,
           };
-          // Persist the corrected settings
-          chrome.storage.local.set({ botSettings: this.settings });
-          console.log('[GTO Bot] Settings: autoPlay=' + this.settings.autoPlay);
+          log.info('Settings loaded, autoPlay=' + this.settings.autoPlay);
           resolve();
         });
       } catch {
