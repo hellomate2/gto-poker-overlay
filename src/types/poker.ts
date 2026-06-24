@@ -192,16 +192,17 @@ export interface BotSettings {
 }
 
 export const DEFAULT_SETTINGS: BotSettings = {
-  // Advisory by default: the overlay shows GTO recommendations but never acts
-  // on its own. Auto-play is strictly opt-in.
-  autoPlay: false,
-  advisoryMode: true,
-  actionDelayMin: 500,
-  actionDelayMax: 2000,
+  // Auto-play on: the bot decides and clicks for the seat it is in, pausing
+  // ~2s before each action so it plays at a human pace. Turn it off in the
+  // popup for advisory-only (recommendations without clicking).
+  autoPlay: true,
+  advisoryMode: false,
+  actionDelayMin: 1500,
+  actionDelayMax: 2500,
   exploitWeight: 0.5,
   showHud: true,
   showEquity: true,
-  confirmAllIn: true,
+  confirmAllIn: false,
   cfrIterations: 10000,
   cfrTimeLimit: 1500,
 };

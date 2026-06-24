@@ -24,14 +24,15 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.cfrTimeLimit).toBeGreaterThan(0);
   });
 
-  it('defaults to advisory mode (auto-play off) so it never acts on its own', () => {
-    expect(DEFAULT_SETTINGS.autoPlay).toBe(false);
-    expect(DEFAULT_SETTINGS.advisoryMode).toBe(true);
+  it('defaults to auto-play with a ~2s human-paced action delay', () => {
+    expect(DEFAULT_SETTINGS.autoPlay).toBe(true);
+    expect(DEFAULT_SETTINGS.actionDelayMin).toBeGreaterThanOrEqual(1000);
+    expect(DEFAULT_SETTINGS.actionDelayMax).toBeLessThanOrEqual(4000);
   });
 
   it('can be spread into an override without mutation', () => {
-    const custom: BotSettings = { ...DEFAULT_SETTINGS, autoPlay: true };
-    expect(custom.autoPlay).toBe(true);
-    expect(DEFAULT_SETTINGS.autoPlay).toBe(false); // original untouched
+    const custom: BotSettings = { ...DEFAULT_SETTINGS, autoPlay: false };
+    expect(custom.autoPlay).toBe(false);
+    expect(DEFAULT_SETTINGS.autoPlay).toBe(true); // original untouched
   });
 });
