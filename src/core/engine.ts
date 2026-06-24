@@ -5,6 +5,7 @@ import {
 import { cardToId, handGroupName, rankIndex } from './cfr/card-utils';
 import { quickEquity } from './equity/monte-carlo';
 import { RFI_RANGES, THREE_BET_RANGES, getHandFrequency } from './ranges/preflop';
+import { getGTOAdvice } from './ranges/gto-advisor';
 import { OpponentTracker } from './exploit/tracker';
 import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
@@ -71,13 +72,18 @@ export class DecisionEngine {
     let decision: BotDecision;
 
     if (state.street === 'preflop') {
-      decision = this.decidePreflop(state, heroCardIds, equity);
+      // Prefer the solved GTO ranges (6-max, heads-up, push/fold Nash): sample a
+      // single action weighted by the equilibrium frequencies so the bot mixes
+      // exactly like a solver. Fall back to the heuristic when no chart covers
+      // the spot.
+      decision = this.decidePreflopFromGTO(state) ?? this.decidePreflop(state, heroCardIds, equity);
     } else {
       decision = this.decidePostflop(state, heroCardIds, equity);
     }
 
-    // Apply exploit adjustments
-    const villain = this.identifyVillain(state);
+    // Apply exploit adjustments postflop only; preflop stays pure GTO so the
+    // sampled equilibrium action isn't overridden.
+    const villain = state.street !== 'preflop' ? this.identifyVillain(state) : null;
     if (villain) {
       const villainProfile = this.profiler.profile(villain);
       if (villainProfile.confidence > 0.1) {
@@ -403,6 +409,60 @@ export class DecisionEngine {
   // ============================================================
   // Preflop Decision (fixed SB bug)
   // ============================================================
+
+  /**
+   * Build a preflop decision from the solved GTO ranges, sampling one action in
+   * proportion to its equilibrium frequency (true mixed-strategy play). Returns
+   * null when no chart covers the spot, so the caller can fall back to the
+   * heuristic. The returned mixedStrategy is one-hot on the sampled action so
+   * the executor clicks exactly what we sampled; the full distribution is shown
+   * separately by the GTO overlay panel.
+   */
+  private decidePreflopFromGTO(state: GameState): BotDecision | null {
+    const advice = getGTOAdvice(state);
+    if (!advice || advice.actions.length === 0) return null;
+    const total = advice.actions.reduce((s, a) => s + a.frequency, 0);
+    if (total <= 0) return null;
+
+    // Weighted sample over the equilibrium frequencies.
+    let r = Math.random() * total;
+    let chosen = advice.actions[0];
+    for (const a of advice.actions) {
+      r -= a.frequency;
+      if (r <= 0) { chosen = a; break; }
+    }
+
+    const hero = state.players[state.heroIndex];
+    const bb = state.bigBlind || 20;
+    const facingRaise = state.currentBet > bb;
+    const facing3bet = this.isFacing3Bet(state);
+    const label = chosen.action;
+    const freq = chosen.frequency / 100;
+    const reasoning = `${advice.scenario}: ${advice.hand} ${label} (${Math.round(chosen.frequency)}% GTO)`;
+
+    if (/fold/i.test(label)) {
+      return { action: 'fold', confidence: freq, reasoning,
+        mixedStrategy: { fold: 1, check: 0, call: 0, bets: [] } };
+    }
+    if (/call/i.test(label)) {
+      return { action: 'call', confidence: freq, reasoning,
+        mixedStrategy: { fold: 0, check: 0, call: 1, bets: [] } };
+    }
+    if (/all[- ]?in/i.test(label)) {
+      return { action: 'allin', amount: hero.stack, confidence: freq, reasoning,
+        mixedStrategy: { fold: 0, check: 0, call: 0, bets: [{ amount: Infinity, probability: 1 }] } };
+    }
+
+    // Raise / 3-bet / 4-bet: size by tier, capped to the hero's stack.
+    let size: number;
+    if (facing3bet) size = Math.round(state.currentBet * 2.3);
+    else if (facingRaise) size = Math.round(state.currentBet * 3);
+    else size = Math.round(bb * 2.5);
+    size = Math.min(size, hero.stack + (hero.currentBet || 0));
+
+    return { action: 'raise', amount: size, confidence: freq, reasoning,
+      mixedStrategy: { fold: 0, check: 0, call: 0, bets: [{ amount: size, probability: 1 }] } };
+  }
 
   private decidePreflop(state: GameState, heroCards: [number, number], equity: number): BotDecision {
     const hero = state.players[state.heroIndex];
