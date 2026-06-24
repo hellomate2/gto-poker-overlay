@@ -247,7 +247,8 @@ export class PokerNowScraper {
       if (potMain) pot += parseChipValue(potMain.textContent || '0');
       if (pot === 0) pot = players.reduce((sum, p) => sum + p.currentBet, 0);
 
-      const bigBlind = this.detectBigBlind();
+      const maxStack = Math.max(0, ...players.map(p => p.stack));
+      const bigBlind = this.detectBigBlind(maxStack || Infinity);
       const currentBet = Math.max(0, ...players.map(p => p.currentBet));
       const isOurTurn = this.isMyTurn();
       const street = detectStreet(communityCards);
@@ -306,13 +307,22 @@ export class PokerNowScraper {
     return this.handCounter;
   }
 
-  private detectBigBlind(): number {
-    const blindEls = document.querySelectorAll(SEL.blindValues);
-    if (blindEls.length >= 2) return parseChipValue(blindEls[1].textContent || '0');
-    // Parse from header text like "NLH ~ 10 / 20"
+  private detectBigBlind(maxStack: number = Infinity): number {
+    // The stakes header ("NLH ~ 10 / 20") is the most reliable source. Take the
+    // big blind from a "small / big" pair that is plausible given the stacks
+    // (big >= small, and not larger than the biggest stack on the table).
     const body = document.body.textContent || '';
-    const match = body.match(/(\d+)\s*\/\s*(\d+)/);
-    if (match) return parseInt(match[2]);
+    for (const m of body.matchAll(/(\d[\d,]*)\s*\/\s*(\d[\d,]*)/g)) {
+      const small = parseChipValue(m[1]);
+      const big = parseChipValue(m[2]);
+      if (big > 0 && big >= small && big <= maxStack) return big;
+    }
+    // Fall back to the blind chip elements, also sanity-checked.
+    const blindEls = document.querySelectorAll(SEL.blindValues);
+    if (blindEls.length >= 2) {
+      const v = parseChipValue(blindEls[1].textContent || '0');
+      if (v > 0 && v <= maxStack) return v;
+    }
     return 20;
   }
 
