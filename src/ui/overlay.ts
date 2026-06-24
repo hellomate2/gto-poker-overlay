@@ -27,6 +27,14 @@ export class HUDOverlay {
   private lastAdvice: GTOAdvice | null = null;
 
   initialize(): void {
+    // Idempotency guard: remove any overlay elements from a previous init or a
+    // double-injected content script (and legacy IDs from older builds) so we
+    // can never end up with two overlays on the page.
+    const STALE_IDS = [OVERLAY_ID, PANEL_ID, TOGGLE_ID, 'gto-bot-decision', 'gto-bot-gto-panel'];
+    for (const id of STALE_IDS) {
+      document.querySelectorAll(`#${id}`).forEach(el => el.remove());
+    }
+
     this.container = document.createElement('div');
     this.container.id = OVERLAY_ID;
     this.container.style.cssText = `
