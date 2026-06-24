@@ -883,6 +883,14 @@ export class DecisionEngine {
     else size = Math.round(bb * 2.5);
     size = Math.min(size, hero.stack + (hero.currentBet || 0));
 
+    // Safety: a first-in OPEN at a deep stack must never become an all-in. If the
+    // computed size approaches the stack (e.g. from a misread blind), clamp it to
+    // a small fraction so a bad read can't turn a 2.5bb open into a shove.
+    const effBB = hero.stack / Math.max(bb, 1);
+    if (!facingRaise && effBB > 20) {
+      size = Math.min(size, Math.round(hero.stack * 0.1));
+    }
+
     return { action: 'raise', amount: size, confidence: freq, reasoning,
       mixedStrategy: { fold: 0, check: 0, call: 0, bets: [{ amount: size, probability: 1 }] } };
   }
