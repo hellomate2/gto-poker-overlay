@@ -184,6 +184,19 @@ export class PokerNowScraper {
         const card = parseCardElement(el);
         if (card) communityCards.push(card);
       });
+      // Run-it-twice renders two boards (>5 cards). De-dupe and cap at 5 so
+      // street detection and equity stay sane; we're all-in by then anyway.
+      if (communityCards.length > 5) {
+        const seen = new Set<string>();
+        const single: Card[] = [];
+        for (const c of communityCards) {
+          const k = `${c.rank}${c.suit}`;
+          if (!seen.has(k)) { seen.add(k); single.push(c); }
+          if (single.length === 5) break;
+        }
+        communityCards.length = 0;
+        communityCards.push(...single);
+      }
 
       // Players
       const playerEls = document.querySelectorAll(SEL.allPlayers);

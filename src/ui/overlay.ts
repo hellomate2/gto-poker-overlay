@@ -3,8 +3,7 @@ import { PlayerProfiler } from '../core/exploit/profiler';
 import { GTOAdvice } from '../core/ranges/gto-advisor';
 
 const OVERLAY_ID = 'gto-bot-overlay';
-const DECISION_ID = 'gto-bot-decision';
-const GTO_PANEL_ID = 'gto-bot-gto-panel';
+const PANEL_ID = 'gto-bot-panel';
 const TOGGLE_ID = 'gto-bot-toggle';
 
 interface SessionStats {
@@ -17,13 +16,15 @@ interface SessionStats {
 
 export class HUDOverlay {
   private container: HTMLElement | null = null;
-  private decisionPanel: HTMLElement | null = null;
-  private gtoPanel: HTMLElement | null = null;
+  // Single consolidated panel (GTO ranges + bot action + session), anchored
+  // bottom-left so it never sits over PokerNow's action buttons (bottom-right).
+  private panel: HTMLElement | null = null;
   private toggleBtn: HTMLElement | null = null;
   private visible: boolean = true;
   private sessionStats: SessionStats = { hands: 0, profit: 0, vpip: 0, vpipOpp: 0, startTime: Date.now() };
   private lastDecision: BotDecision | null = null;
   private lastEquity: number = 0;
+  private lastAdvice: GTOAdvice | null = null;
 
   initialize(): void {
     this.container = document.createElement('div');
@@ -35,38 +36,22 @@ export class HUDOverlay {
     `;
     document.body.appendChild(this.container);
 
-    this.decisionPanel = document.createElement('div');
-    this.decisionPanel.id = DECISION_ID;
-    this.decisionPanel.style.cssText = `
-      position: fixed; bottom: 16px; right: 16px;
-      background: rgba(12, 12, 20, 0.92);
-      color: #e0e0e0; padding: 14px 16px;
-      border-radius: 10px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 13px; min-width: 260px; max-width: 300px;
-      pointer-events: auto; z-index: 100000;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-      animation: gto-slide-in 0.3s ease;
-    `;
-    document.body.appendChild(this.decisionPanel);
-
-    this.gtoPanel = document.createElement('div');
-    this.gtoPanel.id = GTO_PANEL_ID;
-    this.gtoPanel.style.cssText = `
-      position: fixed; top: 16px; right: 16px;
+    this.panel = document.createElement('div');
+    this.panel.id = PANEL_ID;
+    this.panel.style.cssText = `
+      position: fixed; bottom: 16px; left: 16px;
       background: rgba(12, 12, 20, 0.94);
       color: #e0e0e0; padding: 0;
       border-radius: 12px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 13px; min-width: 240px; max-width: 280px;
+      font-size: 13px; width: 270px;
       pointer-events: auto; z-index: 100001;
       border: 1px solid rgba(255, 255, 255, 0.1);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
       overflow: hidden;
-      display: none;
+      animation: gto-slide-in 0.3s ease;
     `;
-    document.body.appendChild(this.gtoPanel);
+    document.body.appendChild(this.panel);
 
     this.toggleBtn = document.createElement('button');
     this.toggleBtn.id = TOGGLE_ID;
@@ -85,9 +70,7 @@ export class HUDOverlay {
 
   updateSessionStats(stats: Partial<SessionStats>): void {
     Object.assign(this.sessionStats, stats);
-    if (this.lastDecision) {
-      this.showDecision(this.lastDecision, this.lastEquity);
-    }
+    this.render();
   }
 
   updatePlayerStats(
@@ -155,84 +138,71 @@ export class HUDOverlay {
   }
 
   showDecision(decision: BotDecision, equity: number): void {
-    if (!this.decisionPanel || !this.visible) return;
     this.lastDecision = decision;
     this.lastEquity = equity;
-
-    const strat = decision.mixedStrategy;
-    const actionColor = this.getActionColor(decision.action);
-    const eqPct = (equity * 100).toFixed(1);
-
-    const heroBet = decision.amount;
-    const amountStr = heroBet ? ` $${heroBet}` : '';
-
-    // Pot odds marker (only meaningful when facing a bet)
-    const potOddsHtml = this.renderEquityBar(equity, decision);
-    const stratHtml = this.renderStrategyBar(strat);
-    const sessionHtml = this.renderSessionStrip();
-
-    this.decisionPanel.innerHTML = `
-      <div class="action-header">
-        <span class="action-name" style="color:${actionColor}">${decision.action}</span>
-        ${amountStr ? `<span class="action-amount" style="color:${actionColor}">${amountStr}</span>` : ''}
-        <span style="margin-left:auto; font-size:11px; color:#666;">
-          ${(decision.confidence * 100).toFixed(0)}% conf
-        </span>
-      </div>
-      <div class="reasoning">${decision.reasoning}</div>
-      ${potOddsHtml}
-      ${stratHtml}
-      ${sessionHtml}
-    `;
+    this.render();
   }
 
   clearDecision(): void {
-    if (!this.decisionPanel) return;
-
-    const sessionHtml = this.renderSessionStrip();
-    this.decisionPanel.innerHTML = `
-      <div class="waiting">
-        <div class="pulse"></div>
-        Waiting for action...
-      </div>
-      ${sessionHtml}
-    `;
     this.lastDecision = null;
+    this.render();
   }
 
   showGTOAdvice(advice: GTOAdvice): void {
-    if (!this.gtoPanel || !this.visible) return;
+    this.lastAdvice = advice;
+    this.render();
+  }
 
+  clearGTOAdvice(): void {
+    this.lastAdvice = null;
+    this.render();
+  }
+
+  /**
+   * Render the single consolidated panel: GTO ranges on top, the bot's chosen
+   * action + equity below, then the session strip. One panel, one source of
+   * truth, so the displayed mix and the action never contradict each other.
+   */
+  private render(): void {
+    if (!this.panel || !this.visible) return;
+
+    const gtoHtml = this.lastAdvice ? this.renderGTOSection(this.lastAdvice) : '';
+    const actionHtml = this.lastDecision
+      ? this.renderActionSection(this.lastDecision, this.lastEquity)
+      : `<div class="waiting" style="padding:10px 14px;"><div class="pulse"></div>Waiting for your turn...</div>`;
+    const sessionHtml = this.renderSessionStrip();
+
+    this.panel.innerHTML = `${gtoHtml}${actionHtml}${sessionHtml}`;
+  }
+
+  private renderGTOSection(advice: GTOAdvice): string {
     const GTO_COLORS: Record<string, string> = {
       'Raise': '#2ecc71', '3-Bet': '#2ecc71', '4-Bet': '#2ecc71',
       'Call': '#3498db', 'Fold': '#e74c3c', 'All-In': '#f39c12',
     };
-
-    const primaryAction = advice.actions[0];
-    const headerColor = primaryAction ? (GTO_COLORS[primaryAction.action] || '#2ecc71') : '#95a5a6';
+    const primary = advice.actions[0];
+    const headerColor = primary ? (GTO_COLORS[primary.action] || '#2ecc71') : '#95a5a6';
 
     const barsHtml = advice.actions.map(a => {
       const color = GTO_COLORS[a.action] || '#95a5a6';
       return `
         <div style="display:flex; align-items:center; gap:8px; margin:4px 0;">
-          <div style="width:52px; font-size:12px; font-weight:600; color:${color}; text-align:right;">${a.action}</div>
-          <div style="flex:1; height:22px; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden; position:relative;">
+          <div style="width:48px; font-size:12px; font-weight:600; color:${color}; text-align:right;">${a.action}</div>
+          <div style="flex:1; height:20px; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden;">
             <div style="height:100%; width:${a.frequency}%; background:${color}; border-radius:4px; transition:width 0.4s ease;"></div>
           </div>
           <div style="width:38px; font-size:13px; font-weight:700; color:${color}; text-align:right;">${Math.round(a.frequency)}%</div>
-        </div>
-      `;
+        </div>`;
     }).join('');
 
     const rangeTag = advice.inRange
       ? `<span style="background:${headerColor}22; color:${headerColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600;">IN RANGE</span>`
       : `<span style="background:#e74c3c22; color:#e74c3c; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600;">OUT OF RANGE</span>`;
 
-    this.gtoPanel.style.display = 'block';
-    this.gtoPanel.innerHTML = `
+    return `
       <div style="background:linear-gradient(135deg, ${headerColor}20, transparent); padding:10px 14px 8px; border-bottom:1px solid rgba(255,255,255,0.06);">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-          <span style="font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#888; font-weight:600;">GTO SOLVER</span>
+          <span style="font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#888; font-weight:600;">GTO Ranges</span>
           ${rangeTag}
         </div>
         <div style="display:flex; align-items:baseline; gap:8px;">
@@ -240,21 +210,34 @@ export class HUDOverlay {
           <span style="font-size:11px; color:#aaa;">${advice.scenario}</span>
         </div>
       </div>
-      <div style="padding:8px 14px 12px;">
+      <div style="padding:8px 14px ${this.lastDecision ? '10px' : '12px'};">
         ${barsHtml || '<div style="color:#666; font-size:12px; text-align:center; padding:8px 0;">No GTO data for this spot</div>'}
-      </div>
-    `;
+      </div>`;
   }
 
-  clearGTOAdvice(): void {
-    if (this.gtoPanel) this.gtoPanel.style.display = 'none';
+  private renderActionSection(decision: BotDecision, equity: number): string {
+    const actionColor = this.getActionColor(decision.action);
+    const amountStr = decision.amount ? ` $${decision.amount}` : '';
+    const label = decision.action.toUpperCase();
+    return `
+      <div style="padding:10px 14px; border-top:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02);">
+        <div style="display:flex; align-items:baseline; gap:6px;">
+          <span style="font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#888; font-weight:600;">Bot plays</span>
+          <span style="margin-left:auto; font-size:11px; color:#666;">${(decision.confidence * 100).toFixed(0)}% conf</span>
+        </div>
+        <div style="display:flex; align-items:baseline; gap:4px; margin:2px 0 4px;">
+          <span style="font-size:18px; font-weight:800; color:${actionColor}">${label}</span>
+          <span style="font-size:18px; font-weight:800; color:${actionColor}">${amountStr}</span>
+        </div>
+        <div style="font-size:11px; color:#999; margin-bottom:6px;">${decision.reasoning}</div>
+        ${this.renderEquityBar(equity, decision)}
+      </div>`;
   }
 
   toggle(): void {
     this.visible = !this.visible;
     if (this.container) this.container.style.display = this.visible ? 'block' : 'none';
-    if (this.decisionPanel) this.decisionPanel.style.display = this.visible ? 'block' : 'none';
-    if (this.gtoPanel) this.gtoPanel.style.display = this.visible ? 'none' : this.gtoPanel.style.display;
+    if (this.panel) this.panel.style.display = this.visible ? 'block' : 'none';
     if (this.toggleBtn) {
       this.toggleBtn.style.opacity = this.visible ? '1' : '0.4';
     }
@@ -262,12 +245,10 @@ export class HUDOverlay {
 
   destroy(): void {
     this.container?.remove();
-    this.decisionPanel?.remove();
-    this.gtoPanel?.remove();
+    this.panel?.remove();
     this.toggleBtn?.remove();
     this.container = null;
-    this.decisionPanel = null;
-    this.gtoPanel = null;
+    this.panel = null;
     this.toggleBtn = null;
   }
 
