@@ -1,176 +1,92 @@
-<div align="center">
+# GTO Poker Overlay
 
-# ♠️ GTO Vision
+An open-source poker game-theory toolkit. It has two halves:
 
-### A real-time Game-Theory-Optimal poker overlay for [PokerNow](https://www.pokernow.club)
+1. A **study core**: a CFR solver (vanilla, CFR+, Linear, Discounted) that solves toy poker games to Nash equilibrium and measures its own exploitability, a perfect-hash hand evaluator, a Monte-Carlo equity engine, and GTO preflop ranges (6-max, heads-up, and short-stack push/fold Nash).
+2. A **Chrome extension** for [PokerNow](https://www.pokernow.club) that reads the table and shows GTO preflop advice, live opponent stats, and your equity as an overlay while you play.
 
-Triton-broadcast-style strategy HUD, an in-browser MCCFR solver, 88 pro-grade preflop charts, live opponent profiling, and an interactive GTO trainer — all in a single Chrome extension.
+It is meant as a way to study game theory and as a training aid, not as a cheating tool. See [Honest status](#honest-status) and [Disclaimer](#disclaimer).
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![Webpack](https://img.shields.io/badge/Webpack-5-8DD6F9?logo=webpack&logoColor=black)](https://webpack.js.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+## Install
 
-</div>
+### Option A: download the built extension (fastest)
 
----
+1. Go to the [Releases page](https://github.com/hellomate2/gto-poker-overlay/releases) and download `gto-poker-overlay.zip` from the latest release.
+2. Unzip it. You'll get a folder with `manifest.json` inside.
+3. Open Chrome and go to `chrome://extensions`.
+4. Turn on **Developer mode** (top-right toggle).
+5. Click **Load unpacked** and select the unzipped folder.
+6. Open a table on `pokernow.club`. The overlay appears automatically.
 
-## 📺 What it looks like
-
-Like watching a Triton Poker broadcast — except the solver read-out is for *your* hand, live, while you play.
-
-```
-┌─────────────────────────────────┐        ┌──────────────────────────────┐
-│  GTO SOLVER          IN RANGE    │        │  TAG  142h                   │
-│  A♠K♦   BTN vs SB 3-Bet          │        │  VP 23  PF 19  3B 7  AF 2.4  │
-│  ─────────────────────────────  │        └──────────────────────────────┘
-│  3-Bet  ████████████████   67%  │              ↑ live HUD on every seat
-│   Call  ████████           23%  │
-│   Fold  ███                10%  │        ┌──────────────────────────────┐
-│                                 │        │  RAISE  $4.50      82% conf   │
-└─────────────────────────────────┘        │  Geometric c-bet, dry board   │
-   ↑ GTO action frequencies                 │  Equity ▓▓▓▓▓▓▓░░░  64.2%     │
-                                            │  Hands 38 · +$22.50 · +$15/hr │
-                                            └──────────────────────────────┘
-                                                ↑ engine decision + session P/L
-```
-
-Toggle the entire HUD with **`Alt+G`**.
-
----
-
-## ✨ Features
-
-- **🎯 Triton-style GTO overlay** — for every preflop spot it renders the solver's exact action mix (Raise / Call / Fold / All-in) as animated frequency bars, with an *in-range / out-of-range* verdict on your hand.
-- **🧠 88 professional preflop charts** — RFI, vs-open, vs-3bet, vs-4bet, and iso ranges for all six positions, merged from two independent pro chart packs (Greenline + Pekarstas / GG) with mixed-strategy frequencies.
-- **♻️ In-browser MCCFR solver** — a from-scratch [Monte-Carlo Counterfactual Regret Minimization](https://en.wikipedia.org/wiki/Counterfactual_regret_minimization) engine running off-thread in a Web Worker, plus a postflop heuristics engine with board-texture analysis, geometric bet-sizing, and SPR awareness.
-- **🃏 Fast equity engine** — a bitwise 7-card hand evaluator feeding a Monte-Carlo equity calculator for live win-percentage estimates.
-- **🕵️ Live opponent profiling** — tracks VPIP / PFR / 3-bet / AF / WTSD per player, persists it in IndexedDB across sessions, and classifies each villain as **NIT · TAG · LAG · Calling Station · Maniac**.
-- **⚔️ Exploit adjustments** — nudges baseline GTO toward maximally-exploitative lines based on each opponent's tendencies, with a tunable GTO↔exploit slider.
-- **📈 Session tracking** — live hands played, profit/loss, and $/hr right on the overlay.
-- **🎓 GTO Trainer** — a standalone study mode that drills preflop and postflop spots against the same solver ranges.
-
----
-
-## 🏗️ Architecture
-
-```mermaid
-flowchart LR
-    PN[PokerNow DOM] -->|500ms poll| SC[Scraper]
-    SC -->|GameState| ENG[Decision Engine]
-
-    subgraph Core
-        ENG --> PRE[Preflop Charts<br/>88 scenarios]
-        ENG --> CFR[MCCFR Solver<br/>Web Worker]
-        ENG --> EQ[Equity Engine<br/>Monte Carlo]
-        ENG --> EXP[Exploit Adjuster]
-        EXP --> TRK[Opponent Tracker]
-        TRK --> DB[(IndexedDB)]
-    end
-
-    ENG -->|BotDecision| HUD[HUD Overlay]
-    PRE -->|GTO Advice| HUD
-    ENG -.optional auto-play.-> EXEC[Action Executor]
-    EXEC -->|React-synthetic clicks| PN
-```
-
-The decision pipeline for a single spot:
-
-```mermaid
-sequenceDiagram
-    participant Board as PokerNow
-    participant Bot
-    participant Solver
-    participant HUD
-
-    Board->>Bot: DOM mutation (new state)
-    Bot->>Bot: Scrape cards, pot, positions, action history
-    Bot->>Solver: Detect scenario → lookup GTO chart
-    Solver-->>HUD: Action frequencies (Raise 67% / Call 23% / Fold 10%)
-    Bot->>Solver: Equity + board texture + exploit read
-    Solver-->>Bot: BotDecision (action, size, confidence)
-    Bot->>HUD: Render decision + session P/L
-```
-
----
-
-## 🧰 Tech stack
-
-| Layer | Tech |
-|---|---|
-| Language | TypeScript 5.6 (strict) |
-| Platform | Chrome Extension — Manifest V3 |
-| Build | Webpack 5 + ts-loader |
-| Concurrency | Web Workers (off-thread CFR) |
-| Persistence | IndexedDB |
-| Solver basis | MCCFR + open-source GTO chart packs |
-
----
-
-## 🚀 Getting started
-
-**Prerequisites:** Node 18+ and npm.
+### Option B: build from source
 
 ```bash
-# 1. Install dependencies
+git clone https://github.com/hellomate2/gto-poker-overlay.git
+cd gto-poker-overlay
 npm install
-
-# 2. Build the extension
-npm run build      # production build → dist/
-# or
-npm run dev        # watch mode for development
-
-# 3. Load it in Chrome
-#    chrome://extensions  →  enable "Developer mode"
-#    →  "Load unpacked"  →  select the  dist/  folder
-
-# 4. Open a table at pokernow.club and press Alt+G
+npm run build      # outputs the extension into dist/
 ```
 
----
+Then load the `dist/` folder with **Load unpacked** as in steps 3 to 6 above. Use `npm run dev` for a watch build while developing.
 
-## 📁 Project structure
+## Use it
+
+- Sit at any `pokernow.club` table. Preflop, the overlay shows the GTO action mix for your hand and spot (for example `3-Bet 67% / Call 23% / Fold 10%`), whether your hand is in range, and the scenario (such as `BTN vs SB 3-Bet`). Heads-up and short-stack spots use the right ranges automatically: at 20 big blinds or fewer it switches to unexploitable jam-or-fold Nash.
+- A small HUD over each opponent tracks VPIP, PFR, 3-bet, and aggression once it has a few hands on them, and labels their type (nit, TAG, LAG, calling station, maniac).
+- Press **Alt+G** to toggle the whole overlay.
+- It is **advisory by default**: it shows recommendations and never acts for you. Auto-play exists but is off unless you turn it on in the popup.
+
+## Study core
+
+The solver and tooling are usable on their own, without the extension:
+
+```bash
+npm test            # 114 tests, including correctness proofs (below)
+npm run solve:bench # CFR convergence on Kuhn and Leduc (exploitability vs iterations)
+npm run eval:bench  # hand-evaluator throughput
+```
+
+Two results worth calling out, because they are verifiable rather than claimed:
+
+- The hand evaluator is checked by enumerating **all 2,598,960 five-card hands** and asserting the category counts match the textbook distribution exactly (1,302,540 high card, 1,098,240 pairs, ... 40 straight flushes), and that there are exactly 7,462 distinct hand-strength classes.
+- The CFR solver reaches the known Kuhn-poker game value of **-1/18** and drives exploitability toward zero on both Kuhn and Leduc.
+
+## Honest status
+
+I'd rather be straight about what this is than oversell it:
+
+- **Preflop** uses solved range charts (6-max from public chart packs, plus heads-up and push/fold Nash). This is the strongest part.
+- **Postflop in the live overlay is heuristic** (board texture, SPR, geometric sizing), not a full solve. A real heads-up postflop solver is wired in via an adapter to [b-inary/postflop-solver](https://github.com/b-inary/postflop-solver) (AGPL, so you build the WASM yourself, see [docs/HEADS_UP_SOLVER.md](docs/HEADS_UP_SOLVER.md)); it is not bundled.
+- **CFR+ and DCFR converge correctly on Kuhn but not yet faster than vanilla on Leduc.** That is a known bug I'm fixing against reference implementations; it's marked with a TODO in the code and the tests assert only what's currently true.
+- Tested on play-money PokerNow tables. DOM selectors can break if PokerNow changes their markup.
+
+## Tech
+
+TypeScript (strict), Chrome Manifest V3, Webpack 5, Vitest. The hand evaluator is a TypeScript port of the [phevaluator](https://github.com/HenryRLee/PokerHandEvaluator) perfect-hash algorithm (Apache-2.0).
+
+## Project layout
 
 ```
 src/
-├── content-script/      # DOM scraper + action executor for PokerNow
-│   ├── scraper.ts        # reads cards, pot, players, action log
-│   ├── executor.ts       # React-compatible click/raise automation
-│   └── index.ts          # orchestrator + session tracking
-├── core/
-│   ├── engine.ts         # main decision engine (texture, sizing, SPR)
-│   ├── cfr/              # MCCFR solver, game tree, card utils
-│   ├── equity/           # 7-card evaluator + Monte-Carlo equity
-│   ├── ranges/           # 88 GTO preflop charts + advisor
-│   └── exploit/          # opponent tracker, profiler, adjuster
-├── ui/                   # HUD overlay + popup settings panel
-├── trainer/             # standalone GTO trainer
-├── workers/             # off-thread CFR worker
-└── storage/             # IndexedDB persistence
+  solver/            CFR / CFR+ / Linear / DCFR + MCCFR, Kuhn & Leduc, exploitability
+  core/
+    equity/          perfect-hash 7-card evaluator + Monte-Carlo equity
+    ranges/          preflop charts: 6-max, heads-up, push/fold Nash + advisor
+    exploit/         opponent tracker, profiler, exploit adjuster
+    solver/          heads-up postflop solver adapter (postflop-solver WASM)
+  content-script/    PokerNow DOM scraper + advisory/auto executor
+  ui/                overlay HUD + popup settings
+  trainer/           standalone GTO trainer
+tests/               114 tests (evaluator distribution proof, CFR convergence, ranges, ...)
 ```
 
----
+## Disclaimer
 
-## 🗺️ Roadmap
+This is for studying game theory and for training against. Running a bot against
+real opponents for money violates the terms of service of every poker site, can
+get accounts banned, and may be illegal where you live. Use it on play money, in
+study, or in games where everyone knows it's there.
 
-- [ ] Compile [b-inary/postflop-solver](https://github.com/b-inary/postflop-solver) to WASM for full real-time postflop solving
-- [ ] Range-vs-range equity visualization on the overlay
-- [ ] Hand-history import + post-session leak report
-- [ ] Configurable chart packs (GTO Wizard / PioSOLVER exports)
+## License
 
----
-
-## ⚠️ Disclaimer
-
-This project is built **for educational and research purposes** — to study game theory, regret-minimization algorithms, and real-time decision systems. Using automated assistance or bots may violate the terms of service of online poker platforms and, in some jurisdictions, the law. **Use it only in play-money, study, or otherwise authorized settings.** The author assumes no liability for misuse.
-
----
-
-## 🙏 Credits
-
-- Preflop ranges adapted from the open-source [poker-charts](https://github.com/AHTOOOXA/poker-charts) project (Greenline & Pekarstas packs).
-- Solver design informed by [b-inary/postflop-solver](https://github.com/b-inary/postflop-solver) and the broader CFR literature.
-
-## 📄 License
-
-[MIT](LICENSE) © 2026 Dev Lakhani
+[MIT](LICENSE) (c) 2026 Dev Lakhani

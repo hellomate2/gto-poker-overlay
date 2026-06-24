@@ -134,6 +134,7 @@ export class PokerNowScraper {
   private callbacks: GameStateCallback[] = [];
   private lastStateHash: string = '';
   private handCounter: number = 0;
+  private lastHandMarker: string = '';
 
   start(): void {
     console.log('[GTO Bot] Scraper starting...');
@@ -241,7 +242,7 @@ export class PokerNowScraper {
 
       return {
         tableId: window.location.pathname.split('/').pop() || 'unknown',
-        handNumber: this.handCounter, street, pot, sidePots: [],
+        handNumber: this.detectHandNumber(), street, pot, sidePots: [],
         heroCards: heroCards.length === 2 ? [heroCards[0], heroCards[1]] : null,
         communityCards, players, heroIndex, dealerIndex,
         activePlayerIndex: isOurTurn ? heroIndex : -1,
@@ -258,13 +259,38 @@ export class PokerNowScraper {
     const state = this.scrape();
     if (!state) return;
 
-    const hash = `${state.isOurTurn}-${state.street}-${state.pot}-${JSON.stringify(state.heroCards)}-${state.communityCards.length}`;
+    const hash = `${state.handNumber}-${state.isOurTurn}-${state.street}-${state.pot}-${state.currentBet}-${JSON.stringify(state.heroCards)}-${state.communityCards.length}`;
     if (hash !== this.lastStateHash) {
       this.lastStateHash = hash;
       for (const cb of this.callbacks) {
         try { cb(state); } catch (e) { console.error('[GTO Bot] Callback error:', e); }
       }
     }
+  }
+
+  /**
+   * Read the current hand number from PokerNow's game log. The log prints a
+   * line like "-- starting hand #123 --" at the top of each hand. We parse that
+   * number directly so hand-transition detection and session P/L stay accurate.
+   * Falls back to a local counter that ticks once per newly-seen "starting hand"
+   * line if the room is configured to hide hand numbers.
+   */
+  private detectHandNumber(): number {
+    const logEntries = document.querySelectorAll(SEL.logMessages);
+    for (const entry of Array.from(logEntries)) {
+      const match = (entry.textContent || '').match(/hand #(\d+)/i);
+      if (match) return parseInt(match[1], 10);
+    }
+    // No explicit number in the log — derive one from "starting hand" markers.
+    const startMarker = Array.from(logEntries).find(e =>
+      (e.textContent || '').toLowerCase().includes('starting hand'),
+    );
+    const marker = startMarker?.textContent || '';
+    if (marker && marker !== this.lastHandMarker) {
+      this.lastHandMarker = marker;
+      this.handCounter++;
+    }
+    return this.handCounter;
   }
 
   private detectBigBlind(): number {
