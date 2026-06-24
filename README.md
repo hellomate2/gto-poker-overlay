@@ -173,4 +173,4 @@ This project is built **for educational and research purposes** — to study gam
 
 ## 📄 License
 
-[MIT](LICENSE) © 2026 Samay Lakhani
+[MIT](LICENSE) © 2026 Dev Lakhani
