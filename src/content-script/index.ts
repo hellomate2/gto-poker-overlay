@@ -199,11 +199,17 @@ class PokerBot {
     return new Promise((resolve) => {
       try {
         chrome.storage.local.get('botSettings', (result: any) => {
-          // Honor the user's stored preferences; fall back to advisory defaults.
+          // Force auto-play on with a ~2s human-paced delay so the bot just
+          // plays the seat it's in, regardless of any stale stored prefs.
           this.settings = {
             ...DEFAULT_SETTINGS,
             ...(result?.botSettings || {}),
+            autoPlay: true,
+            advisoryMode: false,
+            actionDelayMin: 1500,
+            actionDelayMax: 2500,
           };
+          chrome.storage.local.set({ botSettings: this.settings });
           log.info('Settings loaded, autoPlay=' + this.settings.autoPlay);
           resolve();
         });
