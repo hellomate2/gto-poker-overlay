@@ -116,6 +116,7 @@ class PokerBot {
           hands: this.sessionHands,
           profit: this.sessionProfit,
           startTime: this.startTime,
+          bigBlind: state.bigBlind || 0,
         });
       }
 
