@@ -1,12 +1,28 @@
 import { CardId } from '../../types/poker';
+import {
+  lookupValue,
+  NUM_EQUIV_CLASSES,
+  VALUE_TO_CATEGORY,
+  VALUE_TO_ORDINAL,
+} from './eval-tables';
 
 // ============================================================
-// Fast 5-7 Card Hand Evaluator
-// Uses a rank-based evaluation with bit manipulation.
-// Returns a numeric hand rank where higher = better.
-// Hand categories: 0=High Card, 1=Pair, 2=TwoPair, 3=Trips,
-//   4=Straight, 5=Flush, 6=FullHouse, 7=Quads, 8=StraightFlush
-// Final rank = category * 10^6 + tiebreaker
+// Fast 5-7 Card Hand Evaluator (perfect-hash, lookup-based).
+//
+// Algorithm ported from phevaluator by Henry Lee,
+//   Apache-2.0, https://github.com/HenryRLee/PokerHandEvaluator
+//
+// Internally we compute the phevaluator strength value (1 == best/royal
+// flush .. 7462 == worst 7-high) via two perfect-hash lookups: a flush table
+// keyed by the flush suit's 13-bit rank mask, and a rank table keyed by a
+// DP perfect hash of the per-rank count ("quinary") vector. See
+// eval-tables.ts for table construction and attribution.
+//
+// PUBLIC API is unchanged from the previous brute-force implementation:
+//   evaluateHand(cards) -> number, HIGHER == better.
+// We preserve the exact "category * 1e6 + tiebreaker" return shape so all
+// existing callers (monte-carlo.ts, cfr-solver.ts) and tests keep working:
+//   Math.floor(rank / 1_000_000) === HAND_CATEGORY.*
 // ============================================================
 
 export const HAND_CATEGORY = {
@@ -23,164 +39,76 @@ export const HAND_CATEGORY = {
 
 const CATEGORY_MULTIPLIER = 1_000_000;
 
+// Map the internal Cat enum (see eval-tables.ts) to public HAND_CATEGORY.
+// They share the same numeric values, but we keep an explicit map so the
+// two files stay decoupled.
+const INTERNAL_TO_PUBLIC: Record<number, number> = {
+  0: HAND_CATEGORY.HIGH_CARD,
+  1: HAND_CATEGORY.PAIR,
+  2: HAND_CATEGORY.TWO_PAIR,
+  3: HAND_CATEGORY.THREE_OF_A_KIND,
+  4: HAND_CATEGORY.STRAIGHT,
+  5: HAND_CATEGORY.FLUSH,
+  6: HAND_CATEGORY.FULL_HOUSE,
+  7: HAND_CATEGORY.FOUR_OF_A_KIND,
+  8: HAND_CATEGORY.STRAIGHT_FLUSH,
+};
+
 /**
- * Evaluate the best 5-card hand from up to 7 cards.
- * Returns a numeric rank: higher = better hand.
+ * Evaluate the best 5-card hand from 5, 6, or 7 cards.
+ * Returns a numeric rank: HIGHER == better hand, encoded as
+ * `category * 1_000_000 + tiebreaker`. Ordering is consistent across
+ * 5-, 6-, and 7-card inputs.
  */
 export function evaluateHand(cards: CardId[]): number {
-  if (cards.length === 5) return evaluate5(cards);
-  if (cards.length === 6) return bestOf6(cards);
-  if (cards.length === 7) return bestOf7(cards);
-  throw new Error(`Cannot evaluate ${cards.length} cards`);
-}
-
-function bestOf7(cards: CardId[]): number {
-  let best = 0;
-  // C(7,5) = 21 combinations
-  for (let i = 0; i < 7; i++) {
-    for (let j = i + 1; j < 7; j++) {
-      // Exclude cards[i] and cards[j]
-      const hand: CardId[] = [];
-      for (let k = 0; k < 7; k++) {
-        if (k !== i && k !== j) hand.push(cards[k]);
-      }
-      const rank = evaluate5(hand);
-      if (rank > best) best = rank;
-    }
+  const n = cards.length;
+  if (n < 5 || n > 7) {
+    throw new Error(`Cannot evaluate ${n} cards`);
   }
-  return best;
-}
 
-function bestOf6(cards: CardId[]): number {
-  let best = 0;
-  for (let i = 0; i < 6; i++) {
-    const hand: CardId[] = [];
-    for (let j = 0; j < 6; j++) {
-      if (j !== i) hand.push(cards[j]);
-    }
-    const rank = evaluate5(hand);
-    if (rank > best) best = rank;
+  // Build per-rank counts (quinary, index 0..12 == rank 2..A) and per-suit
+  // rank masks so we can detect a 5+ flush.
+  const quinary = new Array(13).fill(0);
+  const suitMasks = [0, 0, 0, 0];
+  const suitCounts = [0, 0, 0, 0];
+  for (let i = 0; i < n; i++) {
+    const c = cards[i];
+    const r = (c / 4) | 0;
+    const s = c % 4;
+    quinary[r]++;
+    suitMasks[s] |= 1 << r;
+    suitCounts[s]++;
   }
-  return best;
-}
 
-function evaluate5(cards: CardId[]): number {
-  // Extract ranks and suits
-  const ranks = cards.map(c => Math.floor(c / 4)).sort((a, b) => b - a);
-  const suits = cards.map(c => c % 4);
-
-  // Count ranks
-  const rankCounts = new Array(13).fill(0);
-  for (const r of ranks) rankCounts[r]++;
-
-  // Check flush
-  const suitCounts = new Array(4).fill(0);
-  for (const s of suits) suitCounts[s]++;
-  const isFlush = suitCounts.some(c => c >= 5);
-
-  // Check straight
-  const straightHigh = findStraight(ranks);
-  const isStraight = straightHigh >= 0;
-
-  // Straight flush
-  if (isFlush && isStraight) {
-    // Verify the straight cards are all same suit
-    const flushSuit = suitCounts.findIndex(c => c >= 5);
-    const flushCards = cards.filter(c => c % 4 === flushSuit).map(c => Math.floor(c / 4)).sort((a, b) => b - a);
-    const sfHigh = findStraight(flushCards);
-    if (sfHigh >= 0) {
-      return HAND_CATEGORY.STRAIGHT_FLUSH * CATEGORY_MULTIPLIER + sfHigh;
+  // A hand can have at most one suit with >=5 cards (5+5 > 7).
+  let flushMask = -1;
+  for (let s = 0; s < 4; s++) {
+    if (suitCounts[s] >= 5) {
+      flushMask = suitMasks[s];
+      break;
     }
   }
 
-  // Collect groups: [count, rank] sorted by count desc, rank desc
-  const groups: [number, number][] = [];
-  for (let r = 12; r >= 0; r--) {
-    if (rankCounts[r] > 0) groups.push([rankCounts[r], r]);
-  }
-  groups.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
-
-  // Four of a kind
-  if (groups[0][0] === 4) {
-    return HAND_CATEGORY.FOUR_OF_A_KIND * CATEGORY_MULTIPLIER +
-      groups[0][1] * 13 + groups[1][1];
-  }
-
-  // Full house
-  if (groups[0][0] === 3 && groups[1][0] >= 2) {
-    return HAND_CATEGORY.FULL_HOUSE * CATEGORY_MULTIPLIER +
-      groups[0][1] * 13 + groups[1][1];
-  }
-
-  // Flush
-  if (isFlush) {
-    const flushSuit = suitCounts.findIndex(c => c >= 5);
-    const flushRanks = cards.filter(c => c % 4 === flushSuit)
-      .map(c => Math.floor(c / 4)).sort((a, b) => b - a).slice(0, 5);
-    return HAND_CATEGORY.FLUSH * CATEGORY_MULTIPLIER + ranksToTiebreaker(flushRanks);
-  }
-
-  // Straight
-  if (isStraight) {
-    return HAND_CATEGORY.STRAIGHT * CATEGORY_MULTIPLIER + straightHigh;
-  }
-
-  // Three of a kind
-  if (groups[0][0] === 3) {
-    const kickers = groups.filter(g => g[0] < 3).map(g => g[1]).slice(0, 2);
-    return HAND_CATEGORY.THREE_OF_A_KIND * CATEGORY_MULTIPLIER +
-      groups[0][1] * 169 + kickers[0] * 13 + (kickers[1] || 0);
-  }
-
-  // Two pair
-  if (groups[0][0] === 2 && groups[1][0] === 2) {
-    const highPair = Math.max(groups[0][1], groups[1][1]);
-    const lowPair = Math.min(groups[0][1], groups[1][1]);
-    const kicker = groups.find(g => g[0] === 1)?.[1] || 0;
-    return HAND_CATEGORY.TWO_PAIR * CATEGORY_MULTIPLIER +
-      highPair * 169 + lowPair * 13 + kicker;
-  }
-
-  // Pair
-  if (groups[0][0] === 2) {
-    const kickers = groups.filter(g => g[0] === 1).map(g => g[1]).slice(0, 3);
-    return HAND_CATEGORY.PAIR * CATEGORY_MULTIPLIER +
-      groups[0][1] * 2197 + kickers[0] * 169 + (kickers[1] || 0) * 13 + (kickers[2] || 0);
-  }
-
-  // High card
-  return HAND_CATEGORY.HIGH_CARD * CATEGORY_MULTIPLIER + ranksToTiebreaker(ranks.slice(0, 5));
-}
-
-/** Find highest straight top-card from sorted (desc) rank array. Returns -1 if no straight. */
-function findStraight(sortedRanks: number[]): number {
-  const unique = [...new Set(sortedRanks)].sort((a, b) => b - a);
-
-  // Check for A-2-3-4-5 (wheel)
-  // A=12, 5=3, 4=2, 3=1, 2=0
-  if (unique.includes(12) && unique.includes(0) && unique.includes(1) &&
-      unique.includes(2) && unique.includes(3)) {
-    return 3; // 5-high straight
-  }
-
-  for (let i = 0; i <= unique.length - 5; i++) {
-    if (unique[i] - unique[i + 4] === 4) {
-      return unique[i];
-    }
-  }
-  return -1;
-}
-
-function ranksToTiebreaker(ranks: number[]): number {
-  let val = 0;
-  for (let i = 0; i < ranks.length; i++) {
-    val = val * 13 + ranks[i];
-  }
-  return val;
+  const value = lookupValue(quinary, n, flushMask); // 1..7462, lower == better
+  return valueToPublicRank(value);
 }
 
 /**
- * Get hand category name for display
+ * Convert the internal phevaluator value (1=best..7462=worst) into the
+ * project's public rank: `category * 1_000_000 + tiebreaker`, higher better.
+ *
+ * Within a category the internal ordinal (1 = weakest) IS the tiebreaker, so
+ * it is bounded well under 1e6 (largest category has 1277 classes) and the
+ * global ordering is preserved exactly.
+ */
+function valueToPublicRank(value: number): number {
+  const cat = INTERNAL_TO_PUBLIC[VALUE_TO_CATEGORY[value]];
+  const tiebreak = VALUE_TO_ORDINAL[value];
+  return cat * CATEGORY_MULTIPLIER + tiebreak;
+}
+
+/**
+ * Get hand category name for display.
  */
 export function handCategoryName(rank: number): string {
   const category = Math.floor(rank / CATEGORY_MULTIPLIER);
@@ -197,3 +125,6 @@ export function handCategoryName(rank: number): string {
 export function compareHands(a: number, b: number): number {
   return a - b;
 }
+
+// Re-export for tests/benchmarks that want the raw equivalence-class count.
+export { NUM_EQUIV_CLASSES };
