@@ -2,9 +2,47 @@ import { GameState, Position, Action as GameAction, Street } from '../../types/p
 import { cardToId, handGroupName } from '../cfr/card-utils';
 import { charts as greenlineCharts, Cell, Chart } from './greenline-gto';
 import { charts as pekarstasCharts } from './pekarstas-gto';
+import { charts as headsupCharts } from './headsup-gto';
+import { shoveRange, callRange } from './pushfold-nash';
 
-function lookupChart(key: string): Chart | undefined {
+// Effective-stack threshold (in big blinds) at or below which the
+// short-stack push/fold Nash recommendation is surfaced.
+const PUSHFOLD_MAX_BB = 20;
+
+/**
+ * Look up a preflop chart by key. When the table is heads-up (exactly
+ * two active players) the heads-up charts are consulted first so HU
+ * keys like 'SB-RFI'/'BB-vs-open-SB'/'SB-vs-3bet-BB' override the
+ * multiway versions; otherwise the standard greenline/pekarstas charts
+ * are used, preserving multiway behavior.
+ */
+function lookupChart(key: string, headsUp = false): Chart | undefined {
+  if (headsUp && headsupCharts[key]) return headsupCharts[key];
   return greenlineCharts[key] || pekarstasCharts[key];
+}
+
+/** Count players still in the hand (not folded out / sitting out). */
+function countActivePlayers(state: GameState): number {
+  const foldedNames = new Set(
+    (state.actionHistory.preflop || [])
+      .filter(a => a.type === 'fold')
+      .map(a => a.playerName)
+  );
+  return state.players.filter(
+    p => !p.isSittingOut && !foldedNames.has(p.name)
+  ).length;
+}
+
+/** Hero effective stack in big blinds (capped by the largest opponent). */
+function heroEffectiveStackBB(state: GameState): number {
+  const hero = state.players[state.heroIndex];
+  const bb = state.bigBlind || 1;
+  const opponentStacks = state.players
+    .filter((p, i) => i !== state.heroIndex && !p.isSittingOut)
+    .map(p => p.stack);
+  const maxOpp = opponentStacks.length ? Math.max(...opponentStacks) : hero.stack;
+  const eff = Math.min(hero.stack, maxOpp);
+  return eff / bb;
 }
 
 export interface GTOAdvice {
@@ -41,7 +79,7 @@ function posIndex(pos: Position): number {
   return POSITION_ORDER.indexOf(pos);
 }
 
-function detectScenario(state: GameState): ScenarioResult | null {
+function detectScenario(state: GameState, headsUp: boolean): ScenarioResult | null {
   const hero = state.players[state.heroIndex];
   const heroPos = hero.position;
   const pfActions = state.actionHistory.preflop || [];
@@ -63,12 +101,14 @@ function detectScenario(state: GameState): ScenarioResult | null {
     }
   }
 
+  const huTag = headsUp ? 'HU ' : '';
+
   if (raises === 0) {
     // Unopened — RFI
     if (heroPos === 'BB') return null; // BB checks, not RFI
     const key = `${heroPos}-RFI`;
-    if (lookupChart(key)) {
-      return { scenario: 'RFI', chartKey: key, label: `${heroPos} Open (RFI)` };
+    if (lookupChart(key, headsUp)) {
+      return { scenario: 'RFI', chartKey: key, label: `${huTag}${heroPos} Open (RFI)` };
     }
     return null;
   }
@@ -76,13 +116,13 @@ function detectScenario(state: GameState): ScenarioResult | null {
   if (raises === 1 && lastRaiserPos) {
     // Facing a single open
     const key = `${heroPos}-vs-open-${lastRaiserPos}`;
-    if (lookupChart(key)) {
-      return { scenario: 'vs-open', chartKey: key, label: `${heroPos} vs ${lastRaiserPos} Open` };
+    if (lookupChart(key, headsUp)) {
+      return { scenario: 'vs-open', chartKey: key, label: `${huTag}${heroPos} vs ${lastRaiserPos} Open` };
     }
     // Try ISO (isolation) key
     const isoKey = `${heroPos}-ISO`;
-    if (lookupChart(isoKey)) {
-      return { scenario: 'vs-open', chartKey: isoKey, label: `${heroPos} ISO Raise` };
+    if (lookupChart(isoKey, headsUp)) {
+      return { scenario: 'vs-open', chartKey: isoKey, label: `${huTag}${heroPos} ISO Raise` };
     }
     return null;
   }
@@ -91,8 +131,8 @@ function detectScenario(state: GameState): ScenarioResult | null {
     // Hero opened, facing 3-bet
     const threeBetter = secondRaiserPos || lastRaiserPos;
     const key = `${heroPos}-vs-3bet-${threeBetter}`;
-    if (lookupChart(key)) {
-      return { scenario: 'vs-3bet', chartKey: key, label: `${heroPos} vs ${threeBetter} 3-Bet` };
+    if (lookupChart(key, headsUp)) {
+      return { scenario: 'vs-3bet', chartKey: key, label: `${huTag}${heroPos} vs ${threeBetter} 3-Bet` };
     }
     return null;
   }
@@ -100,8 +140,8 @@ function detectScenario(state: GameState): ScenarioResult | null {
   if (raises >= 3) {
     // Facing 4-bet
     const key = `${heroPos}-vs-4bet-${lastRaiserPos}`;
-    if (lookupChart(key)) {
-      return { scenario: 'vs-4bet', chartKey: key, label: `${heroPos} vs ${lastRaiserPos} 4-Bet` };
+    if (lookupChart(key, headsUp)) {
+      return { scenario: 'vs-4bet', chartKey: key, label: `${huTag}${heroPos} vs ${lastRaiserPos} 4-Bet` };
     }
     return null;
   }
@@ -116,7 +156,48 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
   const c2 = cardToId(state.heroCards[1]);
   const handName = handGroupName(c1, c2);
 
-  const scenarioResult = detectScenario(state);
+  const headsUp = countActivePlayers(state) === 2;
+  const effStackBB = heroEffectiveStackBB(state);
+
+  // --- Short-stack push/fold Nash override ---------------------------------
+  // When hero is short (<= ~20bb), the equilibrium is jam-or-fold. Surface the
+  // Nash recommendation: SB/Button open-jams the shove range; everyone facing
+  // a jam uses the call range. This applies in HU and to short-stack spots
+  // generally; multiway deep-stack play is untouched.
+  if (effStackBB <= PUSHFOLD_MAX_BB && effStackBB > 0) {
+    const pfActions = state.actionHistory.preflop || [];
+    const facingJam = pfActions.some(a => a.type === 'allin' || a.type === 'raise');
+    const hero = state.players[state.heroIndex];
+
+    if (facingJam) {
+      const inCall = callRange(effStackBB).has(handName);
+      return {
+        scenario: `Push/Fold Nash — Call vs Jam (${effStackBB.toFixed(0)}bb eff)`,
+        hand: handName,
+        actions: inCall
+          ? [{ action: 'All-In', frequency: 100 }]
+          : [{ action: 'Fold', frequency: 100 }],
+        inRange: inCall,
+        rangeWeight: inCall ? 100 : 0,
+      };
+    }
+
+    // Hero is the first-in aggressor short-stacked (SB/Button or BB unopened).
+    if (hero.position === 'SB' || hero.position === 'BTN') {
+      const inShove = shoveRange(effStackBB).has(handName);
+      return {
+        scenario: `Push/Fold Nash — Open Jam (${effStackBB.toFixed(0)}bb eff)`,
+        hand: handName,
+        actions: inShove
+          ? [{ action: 'All-In', frequency: 100 }]
+          : [{ action: 'Fold', frequency: 100 }],
+        inRange: inShove,
+        rangeWeight: inShove ? 100 : 0,
+      };
+    }
+  }
+
+  const scenarioResult = detectScenario(state, headsUp);
   if (!scenarioResult) {
     return {
       scenario: 'No GTO chart for this spot',
@@ -127,7 +208,7 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
     };
   }
 
-  const chart = lookupChart(scenarioResult.chartKey);
+  const chart = lookupChart(scenarioResult.chartKey, headsUp);
   if (!chart) return null;
 
   const cell = chart[handName];
