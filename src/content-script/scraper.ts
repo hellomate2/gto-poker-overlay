@@ -240,11 +240,12 @@ export class PokerNowScraper {
       activePlayers.forEach((p, i) => { p.position = positions[i]; });
 
       // Pot
-      const potAddOn = document.querySelector(SEL.potTotal);
-      const potMain = document.querySelector(SEL.potMain);
-      let pot = 0;
-      if (potAddOn) pot += parseChipValue(potAddOn.textContent || '0');
-      if (potMain) pot += parseChipValue(potMain.textContent || '0');
+      // PokerNow shows a "total" (add-on) that already includes the main pot, so
+      // use the total when present and fall back to the main value — never add
+      // them (that double-counted the pot).
+      const potTotal = parseChipValue(document.querySelector(SEL.potTotal)?.textContent || '0');
+      const potMain = parseChipValue(document.querySelector(SEL.potMain)?.textContent || '0');
+      let pot = potTotal > 0 ? potTotal : potMain;
       if (pot === 0) pot = players.reduce((sum, p) => sum + p.currentBet, 0);
 
       const maxStack = Math.max(0, ...players.map(p => p.stack));
