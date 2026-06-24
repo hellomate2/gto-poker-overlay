@@ -5,9 +5,12 @@ import { charts as pekarstasCharts } from './pekarstas-gto';
 import { charts as headsupCharts } from './headsup-gto';
 import { shoveRange, callRange } from './pushfold-nash';
 
-// Effective-stack threshold (in big blinds) at or below which the
-// short-stack push/fold Nash recommendation is surfaced.
-const PUSHFOLD_MAX_BB = 20;
+// Effective-stack threshold (in big blinds) at or below which the short-stack
+// push/fold Nash recommendation is surfaced. Pure jam/fold is only correct very
+// short; above ~10bb heads-up you have a raise/fold (and limp/3-bet) game, so we
+// keep this conservative and defer to the open-raise charts above it. (At 18bb,
+// for example, a hand like K6s is a small open, not a shove.)
+const PUSHFOLD_MAX_BB = 10;
 
 /**
  * Look up a preflop chart by key. When the table is heads-up (exactly
@@ -160,16 +163,19 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
   const effStackBB = heroEffectiveStackBB(state);
 
   // --- Short-stack push/fold Nash override ---------------------------------
-  // When hero is short (<= ~20bb), the equilibrium is jam-or-fold. Surface the
-  // Nash recommendation: SB/Button open-jams the shove range; everyone facing
-  // a jam uses the call range. This applies in HU and to short-stack spots
-  // generally; multiway deep-stack play is untouched.
-  if (effStackBB <= PUSHFOLD_MAX_BB && effStackBB > 0) {
+  // Two distinct short-stack cases:
+  //   1. Facing an all-in shove: it is purely call-or-fold no matter the exact
+  //      depth (we apply it up to ~25bb), so use the Nash call range.
+  //   2. Open-jamming first-in: only correct when very short (<= PUSHFOLD_MAX_BB,
+  //      ~10bb). Above that you have a raise/fold game, so we fall through to the
+  //      open-raise charts (e.g. K6s is a small open at 18bb, not a shove).
+  if (effStackBB > 0) {
     const pfActions = state.actionHistory.preflop || [];
-    const facingJam = pfActions.some(a => a.type === 'allin' || a.type === 'raise');
     const hero = state.players[state.heroIndex];
+    const facingAllIn = pfActions.some(a => a.type === 'allin');
+    const firstIn = !pfActions.some(a => a.type === 'allin' || a.type === 'raise');
 
-    if (facingJam) {
+    if (facingAllIn && effStackBB <= 25) {
       const inCall = callRange(effStackBB).has(handName);
       return {
         scenario: `Push/Fold Nash — Call vs Jam (${effStackBB.toFixed(0)}bb eff)`,
@@ -182,8 +188,7 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
       };
     }
 
-    // Hero is the first-in aggressor short-stacked (SB/Button or BB unopened).
-    if (hero.position === 'SB' || hero.position === 'BTN') {
+    if (firstIn && effStackBB <= PUSHFOLD_MAX_BB && (hero.position === 'SB' || hero.position === 'BTN')) {
       const inShove = shoveRange(effStackBB).has(handName);
       return {
         scenario: `Push/Fold Nash — Open Jam (${effStackBB.toFixed(0)}bb eff)`,
