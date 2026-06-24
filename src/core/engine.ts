@@ -4,12 +4,19 @@ import {
 } from '../types/poker';
 import { cardToId, handGroupName, rankIndex } from './cfr/card-utils';
 import { quickEquity } from './equity/monte-carlo';
+import { equityVsRange } from './equity/range-equity';
+import { evaluateHand, HAND_CATEGORY } from './equity/hand-eval';
+import { villainContinuingRange } from './postflop-strategy';
 import { RFI_RANGES, THREE_BET_RANGES, getHandFrequency } from './ranges/preflop';
 import { getGTOAdvice } from './ranges/gto-advisor';
 import { OpponentTracker } from './exploit/tracker';
 import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
-import { solvePostflop } from './solver/postflop-cfr';
+// NOTE: solvePostflop (the depth-limited CFR study solver) is intentionally NOT
+// imported on the live hot path anymore. It computed equity vs effectively a
+// random/abstract opponent and value-bet dominated hands. Live postflop now uses
+// decidePostflopRanged (range-aware heuristic). The solver module and its tests
+// are left untouched for offline study.
 
 // ============================================================
 // GTO Decision Engine
@@ -306,97 +313,236 @@ export class DecisionEngine {
   // ============================================================
 
   /**
-   * Postflop decision. Tries the genuine depth-limited CFR subgame solver first
-   * (see src/core/solver/postflop-cfr.ts); if it returns a usable strategy
-   * within its hard time/iteration budget, we build the BotDecision from the
-   * solved distribution. On ANY error, timeout, or unsupported spot we fall
-   * back to the existing heuristic logic so decide() always stays responsive.
-   */
-  private decidePostflop(state: GameState, heroCards: [number, number], equity: number): BotDecision {
-    const solved = this.decidePostflopFromSolver(state, heroCards);
-    if (solved) return solved;
-    return this.decidePostflopHeuristic(state, heroCards, equity);
-  }
-
-  /**
-   * Run the depth-limited postflop CFR solver for the current spot and convert
-   * its solved root distribution into a BotDecision. Returns null when the spot
-   * is unsupported or the solve fails/times out so the caller can fall back.
+   * Postflop decision (LIVE).
    *
-   * The solved `mixedStrategy` is attached verbatim so the executor samples the
-   * equilibrium mix; `action`/`amount` are set to the argmax for display.
+   * Uses the transparent range-aware heuristic (decidePostflopRanged). The
+   * previous implementation called the depth-limited CFR solver, which judged
+   * hands vs an effectively random/abstract opponent and therefore value-bet
+   * hands that were crushed by villain's real continuing range (e.g. two pair on
+   * a three-flush board). decidePostflopRanged measures hero's equity vs a
+   * concrete continuing range and applies explicit anti-blunder guards.
+   *
+   * `equity` (vs random) is no longer used for the live decision; it stays in
+   * the signature for logging/compatibility with the caller and sanityCheck.
    */
-  private decidePostflopFromSolver(state: GameState, heroCards: [number, number]): BotDecision | null {
-    try {
-      const board = state.communityCards.map(c => cardToId(c));
-      if (board.length < 3 || board.length > 5) return null;
-
-      const hero = state.players[state.heroIndex];
-      const heroBet = hero?.currentBet || 0;
-      const toCall = Math.max(0, state.currentBet - heroBet);
-      // Effective stack = smaller of hero's and the active villain's remaining
-      // stacks (heads-up subgame abstraction).
-      const heroStack = hero?.stack ?? 100;
-      const villainStacks = state.players
-        .filter((p, i) => i !== state.heroIndex && !p.isSittingOut)
-        .map(p => p.stack);
-      const villStack = villainStacks.length > 0 ? Math.min(...villainStacks) : heroStack;
-      const effectiveStack = Math.max(1, Math.min(heroStack, villStack));
-
-      const result = solvePostflop({
-        board,
-        heroCards,
-        pot: state.pot,
-        effectiveStack,
-        toCall,
-        heroInPosition: this.isInPosition(state),
-        // Hard live budget: bounded iterations and wall-clock.
-        maxIterations: this.settings.cfrIterations > 0 ? Math.min(400, this.settings.cfrIterations) : 300,
-        timeBudgetMs: Math.max(50, Math.min(250, this.settings.cfrTimeLimit || 200)),
-        seed: (state.handNumber * 2654435761 + state.communityCards.length) >>> 0,
-      });
-
-      return this.botDecisionFromStrategy(result.strategy, state, toCall, result);
-    } catch (err) {
-      console.warn('[GTO Bot] Postflop CFR solve failed, falling back to heuristic:', err);
-      return null;
-    }
+  private decidePostflop(state: GameState, heroCards: [number, number], _equityVsRandom: number): BotDecision {
+    return this.decidePostflopRanged(state, heroCards);
   }
 
-  /**
-   * Build a BotDecision from a solved StrategyDistribution. Picks the argmax
-   * action/amount for display while keeping the full mix for the executor.
-   */
-  private botDecisionFromStrategy(
-    strat: StrategyDistribution,
-    state: GameState,
-    toCall: number,
-    result: { iterations: number; timeMs: number; ev: number },
-  ): BotDecision {
-    const action = this.pickBestAction(strat);
-    // Map the abstract 'raise' argmax to bet vs raise based on whether hero is
-    // facing a bet, matching how the executor/labels expect it.
-    let displayAction: ActionType = action;
-    let amount: number | undefined;
-    if (action === 'raise') {
-      displayAction = toCall > 0 ? 'raise' : 'bet';
-      amount = this.pickBetAmount(strat, state);
-    }
-    const confidence = displayAction === 'fold' ? strat.fold
-      : displayAction === 'check' ? strat.check
-      : displayAction === 'call' ? strat.call
-      : strat.bets.reduce((s, b) => s + b.probability, 0);
+  // ============================================================
+  // Range-aware postflop heuristic (the anti-blunder fix)
+  // ============================================================
 
-    const reasoning = `CFR solve (${result.iterations} iters, ${result.timeMs}ms, EV ${result.ev.toFixed(1)})`;
+  /**
+   * Live postflop decision based on hero equity vs villain's CONTINUING RANGE.
+   *
+   * Formulas used (all standard, commented inline):
+   *   - pot odds to call: toCall / (pot + toCall)   == B / (P + 2B)
+   *   - optimal bluff fraction alpha: bet / (bet + pot)
+   *   - board-texture sizing: dry -> small (~33% pot), wet -> bigger (~66-75%)
+   *
+   * Anti-blunder guards:
+   *   - never VALUE bet/raise when eqR < 0.55
+   *   - on a monotone / 4-flush board where hero does NOT hold the flush, do not
+   *     value-bet non-nut hands (check/call only)
+   *   - on a paired board, downgrade two-pair-type hands (don't treat as nuts)
+   *   - sizes are always fractions of pot; legalizeDecision caps to stack
+   */
+  private decidePostflopRanged(state: GameState, heroCards: [number, number]): BotDecision {
+    const hero = state.players[state.heroIndex];
+    const heroBet = hero?.currentBet || 0;
+    const toCall = Math.max(0, state.currentBet - heroBet);
+    const facingBet = toCall > 0;
+    const pot = state.pot;
+    const bb = state.bigBlind || 20;
+    const board = this.analyzeBoard(state.communityCards);
+    const boardIds = state.communityCards.map(c => cardToId(c));
+
+    // --- Context for the continuing-range model ---
+    const activeVillains = state.players.filter(
+      (p, i) => i !== state.heroIndex && !p.isSittingOut,
+    ).length;
+    const multiway = activeVillains > 1;
+    const aggression = facingBet; // someone has bet/raised into us this street
+
+    // --- Equity vs the concrete continuing range (THE FIX) ---
+    const range = villainContinuingRange(heroCards, boardIds, { aggression, multiway });
+    const eqR = equityVsRange(heroCards, boardIds, range, 3000).equity;
+
+    // --- Hero's made-hand category and board-danger flags ---
+    const heroCat = boardIds.length >= 3
+      ? Math.floor(evaluateHand([heroCards[0], heroCards[1], ...boardIds]) / 1_000_000)
+      : HAND_CATEGORY.HIGH_CARD;
+    const heroHoldsFlush = this.heroHoldsRelevantFlush(heroCards, state.communityCards);
+    // Dangerous flush board: monotone (3+) or 4-flush and hero has no flush.
+    const dangerousFlushBoard =
+      (board.isMonotone || this.isFourFlushBoard(state.communityCards)) && !heroHoldsFlush;
+    // Paired board: two-pair-type hands are downgraded (could be counterfeited /
+    // beaten by trips/boats), so don't treat them as premium value.
+    const pairedBoard = board.isPaired;
+    const twoPairType = heroCat === HAND_CATEGORY.TWO_PAIR;
+
+    console.log(
+      `[GTO Bot] Ranged: eqR=${(eqR * 100).toFixed(0)}% cat=${heroCat} ` +
+      `combos=${range.length} flushBoard=${dangerousFlushBoard} paired=${pairedBoard} ` +
+      `facing=${facingBet ? toCall : 'no'}`,
+    );
+
+    // Is hero "obviously dominated by the board"? Used to suppress value raises.
+    const dominatedByBoard = dangerousFlushBoard || (pairedBoard && twoPairType);
+
+    if (facingBet) {
+      return this.rangedFacingBet(state, eqR, toCall, board, dominatedByBoard, heroCat);
+    }
+    return this.rangedFirstToAct(state, eqR, board, pot, bb, dangerousFlushBoard, heroCat);
+  }
+
+  /** FACING A BET: pot-odds call, value raise only when very strong & not dominated. */
+  private rangedFacingBet(
+    state: GameState,
+    eqR: number,
+    toCall: number,
+    board: BoardAnalysis,
+    dominatedByBoard: boolean,
+    heroCat: number,
+  ): BotDecision {
+    const pot = state.pot;
+    // pot odds: toCall / (pot + toCall) == B / (P + 2B)
+    const callThreshold = toCall / (pot + toCall);
+    const buffer = 0.02; // small cushion so marginal calls aren't -EV after rake/variance
+    const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
+
+    // VALUE RAISE: only with high equity vs range AND not dominated by the board.
+    if (eqR >= 0.70 && !dominatedByBoard) {
+      const raiseTo = Math.round(state.currentBet * 2.5);
+      const raiseFreq = eqR >= 0.82 ? 0.8 : 0.6;
+      return {
+        action: 'raise', amount: raiseTo, confidence: eqR,
+        reasoning: `value raise to ${raiseTo} (${pct(eqR)} vs range)`,
+        mixedStrategy: { fold: 0, check: 0, call: 1 - raiseFreq, bets: [{ amount: raiseTo, probability: raiseFreq }] },
+      };
+    }
+
+    // BLUFF RAISE (low frequency): low equity but good blockers/draws (use top-pair-
+    // or-worse on non-paired boards as a proxy for "has some equity/blockers").
+    if (
+      eqR < callThreshold && eqR > 0.20 && state.street !== 'river' &&
+      heroCat <= HAND_CATEGORY.PAIR && !dominatedByBoard
+    ) {
+      // Bluff at a low frequency only.
+      const raiseTo = Math.round(state.currentBet * 2.5);
+      const bluffFreq = 0.10;
+      return {
+        action: 'raise', amount: raiseTo, confidence: eqR,
+        reasoning: `bluff raise to ${raiseTo} (${pct(eqR)} vs range, blockers/draw)`,
+        mixedStrategy: { fold: 1 - bluffFreq, check: 0, call: 0, bets: [{ amount: raiseTo, probability: bluffFreq }] },
+      };
+    }
+
+    // CALL: equity beats pot odds (+ buffer).
+    if (eqR >= callThreshold + buffer) {
+      return {
+        action: 'call', confidence: eqR,
+        reasoning: `call ${toCall} (${pct(eqR)} vs range > ${pct(callThreshold)} odds)`,
+        mixedStrategy: { fold: 0, check: 0, call: 1, bets: [] },
+      };
+    }
+
+    // Otherwise FOLD.
     return {
-      action: displayAction,
-      amount,
-      confidence,
-      reasoning,
-      mixedStrategy: strat,
+      action: 'fold', confidence: 1 - eqR,
+      reasoning: `fold (${pct(eqR)} vs range < ${pct(callThreshold)} pot odds)`,
+      mixedStrategy: { fold: 1, check: 0, call: 0, bets: [] },
     };
   }
 
+  /** CHECKED TO / FIRST TO ACT: value-bet, check medium, or bluff with equity. */
+  private rangedFirstToAct(
+    state: GameState,
+    eqR: number,
+    board: BoardAnalysis,
+    pot: number,
+    bb: number,
+    dangerousFlushBoard: boolean,
+    heroCat: number,
+  ): BotDecision {
+    const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
+    const check = (reason: string): BotDecision =>
+      this.defaultDecision('check', reason);
+
+    // Board-texture bet sizing: dry -> ~33% pot, wet/monotone -> ~66-75% pot.
+    const wet = board.texture === 'wet' || board.texture === 'very_wet' ||
+      board.texture === 'semi_wet' || board.isMonotone;
+    const sizeFrac = wet ? 0.66 : 0.33;
+    const betSize = Math.max(bb, Math.round(pot * sizeFrac));
+    const sizeLabel = wet ? '2/3' : '1/3';
+
+    // ANTI-BLUNDER: on a dangerous flush board without the flush, never value-bet
+    // a non-nut made hand. Just check (and call later vs pot odds).
+    if (dangerousFlushBoard && heroCat < HAND_CATEGORY.FLUSH) {
+      return check(`check (behind range on flush board, ${pct(eqR)} vs range)`);
+    }
+
+    // VALUE BET: eqR >= ~0.62 vs range. The hard floor of 0.55 is enforced too,
+    // so we never "value bet" a sub-coinflip-vs-range hand.
+    if (eqR >= 0.62 && eqR >= 0.55) {
+      return {
+        action: 'bet', amount: betSize, confidence: eqR,
+        reasoning: `value bet ${sizeLabel} (${pct(eqR)} vs range)`,
+        mixedStrategy: { fold: 0, check: 0.1, call: 0, bets: [{ amount: betSize, probability: 0.9 }] },
+      };
+    }
+
+    // BLUFF: with hands that have equity to improve (draws), at frequency
+    // alpha = bet / (bet + pot). Never bluff a medium MADE hand into danger.
+    const alpha = betSize / (betSize + pot); // optimal bluff fraction
+    const hasDrawEquity = eqR >= 0.30 && eqR < 0.55 && heroCat <= HAND_CATEGORY.PAIR;
+    if (hasDrawEquity && state.street !== 'river' && !dangerousFlushBoard) {
+      if (Math.random() < alpha) {
+        return {
+          action: 'bet', amount: betSize, confidence: eqR,
+          reasoning: `semi-bluff ${sizeLabel} (${pct(eqR)} vs range, draw, alpha=${pct(alpha)})`,
+          mixedStrategy: { fold: 0, check: 1 - alpha, call: 0, bets: [{ amount: betSize, probability: alpha }] },
+        };
+      }
+      return check(`check draw (${pct(eqR)} vs range)`);
+    }
+
+    // Everything else (medium made hands, no draw): check / pot control.
+    return check(`check (${pct(eqR)} vs range, medium/no value)`);
+  }
+
+  /**
+   * Does hero hold a card of the suit that makes a flush on the board?
+   * True when the board has 3+ of one suit and hero holds at least one of that
+   * suit (4-flush board) or two of that suit (3-flush board), i.e. hero actually
+   * has a made flush. Used to decide whether the flush board is "dangerous".
+   */
+  private heroHoldsRelevantFlush(heroCards: [number, number], community: Card[]): boolean {
+    const suitCount = [0, 0, 0, 0];
+    for (const c of community) suitCount[cardToId(c) % 4]++;
+    const flushSuit = suitCount.findIndex(n => n >= 3);
+    if (flushSuit < 0) return false;
+    const heroSuited = heroCards.filter(c => c % 4 === flushSuit).length;
+    const onBoard = suitCount[flushSuit];
+    // 5-card flush needs hero contributions: board 3 -> need 2; board 4 -> need 1.
+    if (onBoard >= 5) return true; // flush plays off the board (very rare here)
+    if (onBoard === 4) return heroSuited >= 1;
+    return heroSuited >= 2; // onBoard === 3
+  }
+
+  /** True when any single suit has exactly 4 cards on the board (4-flush). */
+  private isFourFlushBoard(community: Card[]): boolean {
+    const suitCount = [0, 0, 0, 0];
+    for (const c of community) suitCount[cardToId(c) % 4]++;
+    return suitCount.some(n => n >= 4);
+  }
+
+  /**
+   * Legacy equity-vs-random heuristic. Kept for reference/fallback but NO LONGER
+   * called on the live path (decidePostflopRanged replaces it). It judged hands
+   * vs a random opponent, which is exactly the blunder this change fixes.
+   */
   private decidePostflopHeuristic(state: GameState, heroCards: [number, number], equity: number): BotDecision {
     const hero = state.players[state.heroIndex];
     const heroBet = hero?.currentBet || 0;
