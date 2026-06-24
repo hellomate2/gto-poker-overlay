@@ -12,6 +12,8 @@ import { getGTOAdvice } from './ranges/gto-advisor';
 import { OpponentTracker } from './exploit/tracker';
 import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
+import { predictPostflop } from './ml/policy';
+import { Spot } from './ml/features';
 // NOTE: solvePostflop (the depth-limited CFR study solver) is intentionally NOT
 // imported on the live hot path anymore. It computed equity vs effectively a
 // random/abstract opponent and value-bet dominated hands. Live postflop now uses
@@ -326,7 +328,144 @@ export class DecisionEngine {
    * the signature for logging/compatibility with the caller and sanityCheck.
    */
   private decidePostflop(state: GameState, heroCards: [number, number], _equityVsRandom: number): BotDecision {
+    // Heads-up only: the distilled net was trained on heads-up PokerBench spots.
+    // For multiway pots (or any net error) fall back to the range-aware heuristic.
+    const activeVillains = state.players.filter(
+      (p, i) => i !== state.heroIndex && !p.isSittingOut,
+    ).length;
+    if (activeVillains !== 1) {
+      return this.decidePostflopRanged(state, heroCards);
+    }
+    try {
+      const netDecision = this.decidePostflopNet(state, heroCards);
+      if (netDecision) return netDecision;
+    } catch (e) {
+      console.warn('[GTO Bot] postflop net failed, using ranged fallback', e);
+    }
     return this.decidePostflopRanged(state, heroCards);
+  }
+
+  /**
+   * Distilled neural-net postflop decision.
+   *
+   * Builds a normalized `Spot` from GameState using the SAME encodeSpot feature
+   * module the training data was prepped with (no train/inference mismatch),
+   * runs predictPostflop (masked to legal actions), then:
+   *   - returns the argmax action,
+   *   - for bet/raise, sizes via the existing board-texture sizing
+   *     (getGTOBetSize) — the net only decides the action class, not the size,
+   *   - sets mixedStrategy from the net's masked probabilities so the overlay
+   *     and executor reflect the equilibrium distribution.
+   * legalizeDecision (called later) caps any size to the hero's stack.
+   * Returns null if the spot can't be built (e.g. fewer than 3 board cards).
+   */
+  private decidePostflopNet(state: GameState, heroCards: [number, number]): BotDecision | null {
+    const board = state.communityCards;
+    if (board.length < 3) return null;
+    const street = state.street;
+    if (street !== 'flop' && street !== 'turn' && street !== 'river') return null;
+
+    const hero = state.players[state.heroIndex];
+    const heroBet = hero?.currentBet || 0;
+    const toCall = Math.max(0, state.currentBet - heroBet);
+    const facingBet = toCall > 0;
+    const pot = Math.max(1, state.pot);
+    const isIP = this.isInPosition(state);
+
+    const spot: Spot = {
+      holeCards: heroCards,
+      board: board.map(c => cardToId(c)),
+      street,
+      heroPos: isIP ? 'IP' : 'OOP',
+      facingBet,
+      toCallFrac: toCall / pot,
+      // Offered size proxy: facing a bet -> the bet we'd be raising over; else
+      // a default value bet of ~2/3 pot. Sizing itself is decided below; this is
+      // only a feature signal mirroring how the dataset's available_moves offered
+      // a single Bet/Raise size.
+      offeredSizeFrac: facingBet ? toCall / pot : 0.66,
+      canCheck: !facingBet,
+      canBet: !facingBet,
+      canCall: facingBet,
+      canRaise: facingBet,
+      canFold: facingBet,
+      threeBetPot: this.isThreeBetPot(state),
+    };
+
+    const pred = predictPostflop(spot);
+    const probs = pred.probs;
+    const action = pred.action;
+
+    // Build a StrategyDistribution from the net's masked probabilities. Bet/raise
+    // share the single chosen size from board-texture sizing.
+    const boardAnalysis = this.analyzeBoard(board);
+    const bb = state.bigBlind || 20;
+    const { size: textureSize } = this.getGTOBetSize(boardAnalysis, pot, street);
+    const betSize = Math.max(bb, textureSize);
+    const raiseSize = Math.max(Math.round(state.currentBet * 2.5), state.currentBet + betSize);
+
+    const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
+    const betProb = probs.bet + probs.raise;
+
+    // Safety guard over the net: never bet/raise a hand that cannot beat a flush
+    // into a monotone / 4-flush board where hero holds no flush. The net is
+    // solver-trained, but this hard rule prevents the catastrophic
+    // value-bet-into-an-obvious-flush blunder even if the net is wrong here.
+    const heroCat = Math.floor(
+      evaluateHand([heroCards[0], heroCards[1], ...board.map(c => cardToId(c))]) / 1_000_000,
+    );
+    const dangerousFlushBoard =
+      (boardAnalysis.isMonotone || this.isFourFlushBoard(board)) &&
+      !this.heroHoldsRelevantFlush(heroCards, board);
+    let finalAction = action;
+    if ((action === 'bet' || action === 'raise') && dangerousFlushBoard && heroCat < HAND_CATEGORY.FLUSH) {
+      finalAction = facingBet ? 'call' : 'check';
+    }
+
+    const guarded = finalAction !== action;
+    const sizeForBets = finalAction === 'raise' || facingBet ? raiseSize : betSize;
+    const mixedStrategy: StrategyDistribution = guarded
+      ? {
+          fold: probs.fold,
+          check: finalAction === 'check' ? probs.check + betProb : probs.check,
+          call: finalAction === 'call' ? probs.call + betProb : probs.call,
+          bets: [],
+        }
+      : {
+          fold: probs.fold,
+          check: probs.check,
+          call: probs.call,
+          bets: betProb > 0 ? [{ amount: sizeForBets, probability: betProb }] : [],
+        };
+
+    const reasoning = guarded
+      ? `net ${action}->${finalAction} (behind range on flush board)`
+      : `net ${action} (f${pct(probs.fold)} k${pct(probs.check)} ` +
+        `c${pct(probs.call)} b${pct(probs.bet)} r${pct(probs.raise)})`;
+
+    switch (finalAction) {
+      case 'fold':
+        return { action: 'fold', amount: undefined, confidence: probs.fold, reasoning, mixedStrategy };
+      case 'check':
+        return { action: 'check', amount: undefined, confidence: probs.check, reasoning, mixedStrategy };
+      case 'call':
+        return { action: 'call', amount: undefined, confidence: probs.call, reasoning, mixedStrategy };
+      case 'bet':
+        return { action: 'bet', amount: betSize, confidence: probs.bet, reasoning, mixedStrategy };
+      case 'raise':
+        return { action: 'raise', amount: raiseSize, confidence: probs.raise, reasoning, mixedStrategy };
+      default:
+        return null;
+    }
+  }
+
+  /** True when the preflop action contains a 3-bet+ (>=2 raises). Used as a net feature. */
+  private isThreeBetPot(state: GameState): boolean {
+    let raises = 0;
+    for (const a of state.actionHistory.preflop || []) {
+      if (a.type === 'raise' || a.type === 'allin') raises++;
+    }
+    return raises >= 2;
   }
 
   // ============================================================
