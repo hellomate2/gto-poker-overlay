@@ -12,6 +12,7 @@ interface SessionStats {
   vpip: number;
   vpipOpp: number;
   startTime: number;
+  bigBlind: number; // latest big blind, for bb/100 win-rate
 }
 
 export class HUDOverlay {
@@ -21,7 +22,7 @@ export class HUDOverlay {
   private panel: HTMLElement | null = null;
   private toggleBtn: HTMLElement | null = null;
   private visible: boolean = true;
-  private sessionStats: SessionStats = { hands: 0, profit: 0, vpip: 0, vpipOpp: 0, startTime: Date.now() };
+  private sessionStats: SessionStats = { hands: 0, profit: 0, vpip: 0, vpipOpp: 0, startTime: Date.now(), bigBlind: 0 };
   private lastDecision: BotDecision | null = null;
   private lastEquity: number = 0;
   private lastAdvice: GTOAdvice | null = null;
@@ -316,8 +317,14 @@ export class HUDOverlay {
     const timeStr = elapsed >= 60
       ? `${Math.floor(elapsed / 60)}h ${Math.round(elapsed % 60)}m`
       : `${Math.round(elapsed)}m`;
-    const hourly = s.hands > 0 ? (s.profit / (elapsed / 60)) : 0;
-    const hourlyStr = (hourly >= 0 ? '+' : '') + hourly.toFixed(2);
+    // bb/100: the standard poker win-rate. This is the BOT's rate (the seat the
+    // extension plays); heads-up, your rate is the mirror image, so bot > 0 means
+    // it's beating you.
+    const bb100 = (s.bigBlind > 0 && s.hands > 0)
+      ? (s.profit / s.bigBlind) / s.hands * 100
+      : 0;
+    const bb100Color = bb100 >= 0 ? '#2ecc71' : '#e74c3c';
+    const bb100Str = (bb100 >= 0 ? '+' : '') + bb100.toFixed(1);
 
     return `
       <div class="session-strip">
@@ -330,8 +337,8 @@ export class HUDOverlay {
           <span class="ss-label">Profit</span>
         </div>
         <div class="ss-item">
-          <span class="ss-val">${hourlyStr}</span>
-          <span class="ss-label">$/hr</span>
+          <span class="ss-val" style="color:${bb100Color}">${bb100Str}</span>
+          <span class="ss-label">bb/100</span>
         </div>
         <div class="ss-item">
           <span class="ss-val">${timeStr}</span>
