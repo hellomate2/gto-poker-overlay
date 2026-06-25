@@ -255,11 +255,13 @@ export function laterStreet(a: Street, b: Street): Street {
  */
 export function detectStreetFromLog(logLines: string[]): Street | null {
   for (let i = logLines.length - 1; i >= 0; i--) {
-    const t = (logLines[i] || '').toLowerCase();
-    if (t.includes('starting hand') || t.includes('hand #')) break;
-    if (t.includes('river')) return 'river';
-    if (t.includes('turn')) return 'turn';
-    if (t.includes('flop')) return 'flop';
+    const t = (logLines[i] || '');
+    if (/starting hand|hand #/i.test(t)) break;
+    // Anchor to the DEAL announcement ("Flop:  [..]", "Turn: [..]", "River: [..]")
+    // so chat or a player named Flop/Turn/River can't mis-street the hand.
+    if (/\briver\b\s*[:[]/i.test(t)) return 'river';
+    if (/\bturn\b\s*[:[]/i.test(t)) return 'turn';
+    if (/\bflop\b\s*[:[]/i.test(t)) return 'flop';
   }
   return null;
 }
@@ -536,9 +538,9 @@ export class PokerNowScraper {
     for (const entry of Array.from(logEntries).reverse()) {
       const text = (entry.textContent || '').trim().toLowerCase();
       if (text.includes('starting hand') || text.includes('hand #')) break;
-      if (text.includes('flop')) currentStreet = 'flop';
-      else if (text.includes('turn')) currentStreet = 'turn';
-      else if (text.includes('river')) currentStreet = 'river';
+      if (/\bflop\b\s*[:[]/.test(text)) currentStreet = 'flop';
+      else if (/\bturn\b\s*[:[]/.test(text)) currentStreet = 'turn';
+      else if (/\briver\b\s*[:[]/.test(text)) currentStreet = 'river';
 
       const fold = text.match(/"(.+?)" folds/);
       if (fold) { history[currentStreet].push({ type: 'fold', playerName: fold[1] }); continue; }

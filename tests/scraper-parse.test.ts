@@ -37,6 +37,11 @@ describe('detectStreetFromLog', () => {
   it('returns null for an empty log', () => {
     expect(detectStreetFromLog([])).toBeNull();
   });
+  it('does NOT mis-street on chat or a player named Flop/Turn/River (only deal lines count)', () => {
+    expect(detectStreetFromLog(hand('"River" raises to 50', 'nice turn buddy', '"Flop" calls 50'))).toBeNull();
+    // a real deal line still wins over chatter
+    expect(detectStreetFromLog(hand('"River" raises to 50', 'Flop:  [8d 4s 3d]'))).toBe('flop');
+  });
 });
 
 describe('laterStreet (board vs log cross-check)', () => {

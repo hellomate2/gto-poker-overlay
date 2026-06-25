@@ -950,11 +950,20 @@ export class ActionExecutor {
   private confirmActionRegistered(): Promise<boolean> {
     return new Promise((resolve) => {
       const start = Date.now();
+      let weakStreak = 0;
       const check = (): boolean => {
+        // STRONG signal: it's genuinely no longer our turn (the action registered
+        // and the turn passed). Confirm immediately.
+        if (!this.isHeroTurnLive()) return true;
+        // WEAK signal: the action area vanished but the turn signal is still here.
+        // React re-renders briefly drop the buttons, so a single poll can false-
+        // positive a click that did NOT register. Require it to persist across two
+        // consecutive polls before trusting it.
         const formGone = !document.querySelector(SEL.raiseForm);
         const buttonsGone = !this.hasLiveActionButton();
-        const notOurTurn = !this.isHeroTurnLive();
-        return notOurTurn || (formGone && buttonsGone);
+        if (formGone && buttonsGone) { weakStreak += 1; return weakStreak >= 2; }
+        weakStreak = 0;
+        return false;
       };
 
       if (check()) { resolve(true); return; }
