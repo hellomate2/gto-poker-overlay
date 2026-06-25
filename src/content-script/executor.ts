@@ -262,6 +262,7 @@ export class ActionExecutor {
         if (actedSig) this.lastActedSignature = spotSignatureKey(actedSig);
       } else {
         log.warn('All action attempts failed (including safe fallback)');
+        this.setStatus('STUCK: no reachable button');
       }
       return success;
     } finally {
@@ -743,11 +744,23 @@ export class ActionExecutor {
 
   /** Close the raise form (BACK button or Escape) so it stops covering the action buttons. */
   private async closeRaiseForm(): Promise<void> {
-    const back = (Array.from(document.querySelectorAll('button')) as HTMLElement[])
-      .find(b => /^back$/i.test((b.textContent || '').trim()));
-    if (back) { this.dispatchReactClick(back); await this.sleep(80); return; }
+    if (!this.findRaiseForm()) return; // nothing open
+    // 1) A BACK / CANCEL / CLOSE / X control, by text or aria-label. An open bet
+    //    form that won't close covers Call/Check/Fold and is the #1 cause of the
+    //    bot "stopping" — so try every closer before giving up.
+    const closer = (Array.from(document.querySelectorAll('button, [role="button"], [aria-label]')) as HTMLElement[])
+      .find((b) => this.clickable(b) && (
+        /^(back|cancel|close|×|✕|x)$/i.test((b.textContent || '').trim())
+        || /close|cancel|back/i.test(b.getAttribute('aria-label') || '')
+      ));
+    if (closer) {
+      this.dispatchReactClick(closer);
+      await this.sleep(100);
+      if (!this.findRaiseForm()) return;
+    }
+    // 2) Escape key.
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
-    await this.sleep(80);
+    await this.sleep(100);
   }
 
   /**
