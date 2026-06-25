@@ -1,7 +1,7 @@
 {
-  "name": "pokernow-gto-bot",
+  "name": "gto-poker-overlay",
   "version": "1.0.0",
-  "description": "GTO poker bot for PokerNow with opponent tracking and exploit adjustments",
+  "description": "Open-source poker game-theory toolkit: heads-up preflop CFR solver, distilled postflop policy net, equity engine, and a PokerNow study overlay.",
   "scripts": {
     "build": "webpack --mode production",
     "dev": "webpack --mode development --watch",
