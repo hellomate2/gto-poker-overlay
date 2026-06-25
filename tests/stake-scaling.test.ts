@@ -93,3 +93,38 @@ describe('executor amount handling preserves decimal stakes', () => {
     expect(amountMatches(50, 50, 1.5)).toBe(true);     // whole-chip still matches
   });
 });
+
+describe('facing a bet — never "bet", raise must be at least the minimum', () => {
+  // Build a heads-up turn spot where the opponent has LED for `bet`, hero to act.
+  function facingBetState(bet: number, heroCards: [string, string]): GameState {
+    const hero: Player = {
+      name: 'Hero', stack: 1700, position: 'BTN' as Position, isDealer: true,
+      isSittingOut: false, seatIndex: 0, isHero: true, currentBet: 0, hasActed: false,
+    };
+    const villain: Player = {
+      name: 'Villain', stack: 1400, position: 'BB' as Position, isDealer: false,
+      isSittingOut: false, seatIndex: 1, isHero: false, currentBet: bet, hasActed: true,
+    };
+    return {
+      tableId: 't', handNumber: 1, street: 'turn', pot: 600 + bet, sidePots: [],
+      heroCards: [card(heroCards[0]), card(heroCards[1])],
+      communityCards: ['Td', '2h', '3c', 'Qh'].map(card),
+      players: [hero, villain], heroIndex: 0, dealerIndex: 0, activePlayerIndex: 0,
+      currentBet: bet, minRaise: bet * 2, bigBlind: 20, smallBlind: 10,
+      actionHistory: { preflop: [], flop: [], turn: [], river: [] },
+      isOurTurn: true, timestamp: Date.now(),
+    };
+  }
+
+  it('never returns a "bet" when facing a bet, and any raise is >= min (double)', async () => {
+    // Strong hand (top set) facing a 300 lead — if it raises, it must be to >= 600.
+    const d = await new DecisionEngine().decide(facingBetState(300, ['Th', 'Tc']));
+    expect(d.action).not.toBe('bet');
+    if (d.action === 'raise') expect(d.amount!).toBeGreaterThanOrEqual(600);
+  });
+
+  it('a weak hand facing a bet folds or calls — never bets', async () => {
+    const d = await new DecisionEngine().decide(facingBetState(300, ['Ad', '7h'])); // ace high
+    expect(['fold', 'call']).toContain(d.action);
+  });
+})

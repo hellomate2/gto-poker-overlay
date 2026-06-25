@@ -142,18 +142,33 @@ export class DecisionEngine {
     const maxTo = heroStack + heroBet; // total chips committed if all-in
     const bb = state.bigBlind || 1;
 
+    // Facing a bet: you cannot "bet", only raise/call/fold, and a raise must be
+    // to at least the minimum (roughly double the bet). This prevents the bot
+    // from trying to "bet 402" into a 300 lead — illegal; it must raise to >=600.
+    const toCall = Math.max(0, (state.currentBet || 0) - heroBet);
+    const facingBet = toCall > 0;
+    const minRaiseTo = facingBet
+      ? Math.max(state.minRaise || 0, (state.currentBet || 0) * 2)
+      : 0;
+    if (facingBet && decision.action === 'bet') decision.action = 'raise';
+
     // Bets at or above the all-in amount become Infinity so the executor clicks
-    // the dedicated All-In button instead of typing a full-stack number.
-    const clampBet = (amt: number): number =>
-      (amt === Infinity || amt >= maxTo) ? Infinity : this.roundToStake(amt, bb);
+    // the dedicated All-In button. Raises are floored at the legal minimum.
+    const clampBet = (amt: number): number => {
+      if (amt === Infinity) return Infinity;
+      const floored = facingBet ? Math.max(amt, minRaiseTo) : amt;
+      return floored >= maxTo ? Infinity : this.roundToStake(floored, bb);
+    };
 
     if ((decision.action === 'raise' || decision.action === 'bet') && decision.amount) {
-      if (decision.amount >= maxTo) {
+      let amt = decision.amount;
+      if (facingBet) amt = Math.max(amt, minRaiseTo); // never below the min raise
+      if (amt >= maxTo) {
         decision.action = 'allin';
         decision.amount = maxTo;
         decision.reasoning += ' (all-in: capped to stack)';
       } else {
-        decision.amount = this.roundToStake(decision.amount, bb);
+        decision.amount = this.roundToStake(amt, bb);
       }
     } else if (decision.action === 'allin') {
       decision.amount = maxTo;

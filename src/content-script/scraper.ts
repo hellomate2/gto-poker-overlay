@@ -250,7 +250,16 @@ export class PokerNowScraper {
 
       const maxStack = Math.max(0, ...players.map(p => p.stack));
       const bigBlind = this.detectBigBlind(maxStack || Infinity);
-      const currentBet = Math.max(0, ...players.map(p => p.currentBet));
+      // Determine the amount to call. The "Call N" button is the most reliable
+      // signal that the hero is facing a bet (the opponent's bet chips aren't
+      // always scrapeable), so trust it over the bet-chip read.
+      const heroBet = players[heroIndex]?.currentBet || 0;
+      const toCallBtn = this.detectToCall();
+      let currentBet = Math.max(0, ...players.map(p => p.currentBet));
+      if (toCallBtn > 0) currentBet = Math.max(currentBet, heroBet + toCallBtn);
+      // Minimum raise-to: facing a bet you must raise to at least double it; when
+      // unopened, at least 2bb.
+      const minRaise = currentBet > 0 ? currentBet * 2 : bigBlind * 2;
       const isOurTurn = this.isMyTurn();
       const street = detectStreet(communityCards);
       const actionHistory = this.parseGameLog();
@@ -261,7 +270,7 @@ export class PokerNowScraper {
         heroCards: heroCards.length === 2 ? [heroCards[0], heroCards[1]] : null,
         communityCards, players, heroIndex, dealerIndex,
         activePlayerIndex: isOurTurn ? heroIndex : -1,
-        currentBet, minRaise: bigBlind, bigBlind, smallBlind: bigBlind / 2,
+        currentBet, minRaise, bigBlind, smallBlind: bigBlind / 2,
         actionHistory, isOurTurn, timestamp: Date.now(),
       };
     } catch (err) {
@@ -306,6 +315,16 @@ export class PokerNowScraper {
       this.handCounter++;
     }
     return this.handCounter;
+  }
+
+  /** Amount the hero must call, read from the "Call N" action button (0 if none). */
+  private detectToCall(): number {
+    const btn = document.querySelector(SEL.callBtn) as HTMLButtonElement | null;
+    if (!btn || btn.disabled) return 0;
+    const txt = (btn.textContent || '').toLowerCase();
+    if (!txt.includes('call')) return 0;
+    const m = txt.match(/call\s*([\d.,]+)/);
+    return m ? parseChipValue(m[1]) : 0;
   }
 
   private detectBigBlind(maxStack: number = Infinity): number {
