@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PokerNow GTO Bot",
+  "name": "GTO Poker Overlay",
   "version": "1.0.0",
-  "description": "GTO poker bot with opponent tracking for PokerNow",
+  "description": "GTO study overlay for PokerNow: solved preflop ranges, postflop policy, equity, and opponent stats.",
   "permissions": ["storage", "activeTab", "tabs"],
   "content_scripts": [
     {
@@ -19,7 +19,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "PokerNow GTO Bot"
+    "default_title": "GTO Poker Overlay"
   },
   "background": {
     "service_worker": "background.js"
