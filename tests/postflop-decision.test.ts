@@ -1,16 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Seed the engine's mixed-strategy randomization (semi-bluff/bluff frequencies
-// use Math.random) so these assertions are deterministic. Equity itself is
-// already deterministic, so fixing Math.random doesn't affect hand strength —
-// it just suppresses the random bluff lines, which is what these anti-blunder /
-// value-bet tests are checking.
+// The ranged path uses Math.random for its low-frequency semi-bluff/bluff lines.
+// Seeding it to 0.99 suppresses those random bluffs so the anti-blunder / value
+// assertions are deterministic. (The distilled-net path is pure argmax and uses
+// no randomness, so this only affects the multiway ranged section below.)
 beforeEach(() => { vi.spyOn(Math, 'random').mockReturnValue(0.99); });
 afterEach(() => { vi.restoreAllMocks(); });
 
-// The DecisionEngine loads opponent stats from IndexedDB, which doesn't exist in
-// the node test environment. Stub the storage layer so decide() runs with empty
-// (no-read) opponent data — postflop decisions don't depend on stats here.
+// DecisionEngine loads opponent stats from IndexedDB, absent in node. Stub the
+// storage layer so decide() runs with empty opponent data.
 vi.mock('../src/storage/db', async () => {
   const actual = await vi.importActual<typeof import('../src/storage/db')>('../src/storage/db');
   return {
@@ -25,18 +23,22 @@ import { GameState, Player, Position, Street, Card } from '../src/types/poker';
 import { card } from './helpers';
 
 // ============================================================
-// Live postflop decision rule (decidePostflopRanged via decide()).
-// These assert the anti-blunder guarantees: never value-bet a hand that is
-// behind the continuing range, fold without pot odds, value-bet the nuts, and
-// do not bet a medium hand into a monotone board without the flush.
+// IMPORTANT routing note (this is what the previous version of this file got
+// wrong): decide() routes a HEADS-UP postflop spot (exactly one active villain)
+// to the distilled NEURAL-NET path (decidePostflopNet), and a MULTIWAY spot
+// (>=2 active villains) to the range-aware heuristic (decidePostflopRanged).
+// Both paths must honor the same anti-blunder guarantees, so we test BOTH
+// explicitly and label each correctly. The net path's reasoning is "net ...";
+// the ranged path's value line literally contains the word "value", so the
+// isValueBet() helper below is only meaningful on the ranged (multiway) path.
 // ============================================================
 
-function mkPlayer(name: string, position: Position, isHero = false, stack = 1000): Player {
+function mkPlayer(name: string, position: Position, isHero = false, stack = 1000, seat = 0): Player {
   return {
     name, stack, position,
     isDealer: position === 'BTN',
     isSittingOut: false,
-    seatIndex: position === 'BTN' ? 0 : 1,
+    seatIndex: seat,
     isHero,
     currentBet: 0,
     hasActed: false,
@@ -50,22 +52,27 @@ interface Opts {
   currentBet?: number; // highest bet this street (0 = checked to hero)
   heroBet?: number;
   street?: Street;
-  heroPos?: Position;
-  villainPos?: Position;
+  multiway?: boolean;  // add a second villain so decide() takes the ranged path
 }
 
 function buildState(o: Opts): GameState {
-  const hero = mkPlayer('Hero', o.heroPos ?? 'BTN', true);
+  const hero = mkPlayer('Hero', 'BTN', true, 1000, 0);
   hero.currentBet = o.heroBet ?? 0;
-  const villain = mkPlayer('Villain', o.villainPos ?? 'BB', false);
+  const villain = mkPlayer('Villain', 'BB', false, 1000, 1);
   villain.currentBet = o.currentBet ?? 0;
+  const players: Player[] = [hero, villain];
+  if (o.multiway) {
+    const v2 = mkPlayer('Villain2', 'CO', false, 1000, 2);
+    v2.currentBet = o.currentBet ?? 0;
+    players.push(v2);
+  }
   const community: Card[] = o.community.map(card);
   return {
     tableId: 't', handNumber: 1, street: o.street ?? 'river',
     pot: o.pot, sidePots: [],
     heroCards: [card(o.heroCards[0]), card(o.heroCards[1])],
     communityCards: community,
-    players: [hero, villain],
+    players,
     heroIndex: 0, dealerIndex: 0, activePlayerIndex: 0,
     currentBet: o.currentBet ?? 0,
     minRaise: 20, bigBlind: 20, smallBlind: 10,
@@ -74,76 +81,122 @@ function buildState(o: Opts): GameState {
   };
 }
 
-/** Is this decision a bet/raise FOR VALUE (not a labelled bluff/semi-bluff)? */
+/** Is this decision an aggressive bet/raise labelled FOR VALUE (ranged path)? */
 function isValueBet(reasoning: string, action: string): boolean {
   const aggressive = action === 'bet' || action === 'raise';
-  const value = /value/i.test(reasoning);
-  return aggressive && value;
+  return aggressive && /value/i.test(reasoning);
 }
 
-describe('live postflop decision (range-aware)', () => {
-  it('value-bets the nuts (top set on a dry board, checked to hero)', async () => {
-    const engine = new DecisionEngine();
-    const state = buildState({
-      heroCards: ['Ah', 'Ad'],
-      community: ['Ac', '7d', '2s'], // top set, dry
-      pot: 100, currentBet: 0, street: 'river',
-    });
-    const d = await engine.decide(state);
+// ============================================================
+// A) Heads-up live decision — the distilled NET path (decidePostflopNet).
+// Assertions are on the ACTION (net reasoning never says "value"), so they are
+// not vacuous. These are the guarantees that matter when the bot actually plays
+// heads-up.
+// ============================================================
+describe('live heads-up postflop decision (distilled net path)', () => {
+  it('routes heads-up postflop to the net path (reasoning says "net ...")', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Ah', 'Ad'], community: ['Ac', '7d', '2s'], pot: 100, currentBet: 0, street: 'flop',
+    }));
+    // Guards the routing assumption this whole section depends on.
+    expect(d.reasoning.toLowerCase()).toContain('net');
+  });
+
+  it('bets/raises the nuts (top set on a dry board, checked to hero)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Ah', 'Ad'], community: ['Ac', '7d', '2s'], pot: 100, currentBet: 0, street: 'flop',
+    }));
     expect(['bet', 'raise']).toContain(d.action);
     expect(d.amount).toBeGreaterThan(0);
   });
 
-  it('does NOT bet a medium hand into a monotone board without the flush', async () => {
-    const engine = new DecisionEngine();
-    const state = buildState({
-      heroCards: ['Ks', 'Qc'], // top two pair, NO heart
-      community: ['Kh', 'Qh', '7h'], // monotone hearts
-      pot: 100, currentBet: 0, street: 'flop',
-    });
-    const d = await engine.decide(state);
-    // Must not value-bet into the flush board without a flush.
-    expect(isValueBet(d.reasoning, d.action)).toBe(false);
-    // Strongly expect a check here.
+  it('does NOT bet top two pair into a monotone board without the flush (anti-blunder guard)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Ks', 'Qc'], community: ['Kh', 'Qh', '7h'], pot: 100, currentBet: 0, street: 'flop',
+    }));
+    // The dangerous-flush-board guard must fire on the net path too: a non-flush
+    // hand is crushed by villain's flush-heavy range, so never bet — check.
     expect(d.action).toBe('check');
   });
 
-  it('never produces a value bet when equity vs range is below ~0.55', async () => {
-    const engine = new DecisionEngine();
-    // Run several spots that are behind their continuing ranges.
-    const spots: Opts[] = [
-      { heroCards: ['Ks', 'Qc'], community: ['Kh', 'Qh', '7h'], pot: 100, currentBet: 0, street: 'flop' },
-      { heroCards: ['8c', '8d'], community: ['Ah', 'Kh', 'Qh'], pot: 100, currentBet: 0, street: 'flop' },
-      { heroCards: ['7c', '6c'], community: ['Ah', 'Ks', 'Qd'], pot: 80, currentBet: 0, street: 'turn' },
-    ];
-    for (const s of spots) {
-      const d = await engine.decide(buildState(s));
-      expect(isValueBet(d.reasoning, d.action)).toBe(false);
-    }
-  });
-
-  it('folds when facing a bet with equity below the pot odds', async () => {
-    const engine = new DecisionEngine();
-    // Hero has a weak hand (no pair, no draw of note) facing a big bet on a
-    // scary board. Pot odds require ~33%+; hero is below that vs a value range.
-    const state = buildState({
-      heroCards: ['7c', '2d'],
-      community: ['Ah', 'Kd', 'Qs', '9c', '3h'], // river, hero has 7-high
+  it('folds 7-high facing a big bet on a scary river (below pot odds)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['7c', '2d'], community: ['Ah', 'Kd', 'Qs', '9c', '3h'],
       pot: 100, currentBet: 50, heroBet: 0, street: 'river',
-    });
-    const d = await engine.decide(state);
+    }));
     expect(d.action).toBe('fold');
   });
 
-  it('calls facing a bet when equity beats pot odds (strong made hand)', async () => {
-    const engine = new DecisionEngine();
-    const state = buildState({
-      heroCards: ['As', 'Ad'],
-      community: ['Ac', 'Kd', '7s', '2c', '3h'], // top set, river
+  it('never folds the nuts facing a bet (top set on the river)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['As', 'Ad'], community: ['Ac', 'Kd', '7s', '2c', '3h'],
       pot: 100, currentBet: 40, heroBet: 0, street: 'river',
-    });
-    const d = await engine.decide(state);
-    // Should not fold the nuts; calls or raises for value.
+    }));
+    expect(d.action).not.toBe('fold');
+    expect(['call', 'raise']).toContain(d.action);
+  });
+});
+
+// ============================================================
+// B) Range-aware path (decidePostflopRanged) — exercised by making the pot
+// MULTIWAY (two villains), which is how decide() reaches the heuristic. Here the
+// engine measures hero equity vs a concrete continuing range and labels true
+// value bets "value bet ...", so isValueBet() is meaningful. This is the path
+// the old file CLAIMED to test but never actually reached.
+// ============================================================
+describe('range-aware postflop decision (decidePostflopRanged, multiway)', () => {
+  it('actually takes the ranged path (reasoning is not the "net ..." path)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Ah', 'Ad'], community: ['Ac', '7d', '2s'], pot: 100, currentBet: 0,
+      street: 'flop', multiway: true,
+    }));
+    expect(d.reasoning.toLowerCase()).not.toContain('net ');
+  });
+
+  it('value-bets the nuts vs the continuing range (top set, dry board)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Ah', 'Ad'], community: ['Ac', '7d', '2s'], pot: 100, currentBet: 0,
+      street: 'flop', multiway: true,
+    }));
+    expect(isValueBet(d.reasoning, d.action)).toBe(true);
+  });
+
+  it('never VALUE-bets a hand crushed by the range (dominated flush boards)', async () => {
+    // These spots are behind their continuing ranges; the ranged path CAN label a
+    // bet "value" (so the assertion is non-vacuous) and must not here.
+    const spots: Opts[] = [
+      { heroCards: ['Ks', 'Qc'], community: ['Kh', 'Qh', '7h'], pot: 100, currentBet: 0, street: 'flop', multiway: true },
+      { heroCards: ['8c', '8d'], community: ['Ah', 'Kh', 'Qh'], pot: 100, currentBet: 0, street: 'flop', multiway: true },
+      { heroCards: ['7c', '6c'], community: ['Ah', 'Ks', 'Qd'], pot: 80, currentBet: 0, street: 'turn', multiway: true },
+    ];
+    for (const s of spots) {
+      const d = await new DecisionEngine().decide(buildState(s));
+      expect(isValueBet(d.reasoning, d.action), `${s.heroCards} on ${s.community}`).toBe(false);
+    }
+  });
+
+  it('checks (does not value-bet) top two pair on a monotone board without the flush', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Ks', 'Qc'], community: ['Kh', 'Qh', '7h'], pot: 100, currentBet: 0,
+      street: 'flop', multiway: true,
+    }));
+    expect(isValueBet(d.reasoning, d.action)).toBe(false);
+    expect(d.action).toBe('check');
+  });
+
+  it('folds facing a bet with equity below the pot odds (7-high river)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['7c', '2d'], community: ['Ah', 'Kd', 'Qs', '9c', '3h'],
+      pot: 100, currentBet: 50, heroBet: 0, street: 'river', multiway: true,
+    }));
+    expect(d.action).toBe('fold');
+  });
+
+  it('does not fold the nuts facing a bet (top set river, calls or raises for value)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['As', 'Ad'], community: ['Ac', 'Kd', '7s', '2c', '3h'],
+      pot: 100, currentBet: 40, heroBet: 0, street: 'river', multiway: true,
+    }));
     expect(d.action).not.toBe('fold');
   });
 });

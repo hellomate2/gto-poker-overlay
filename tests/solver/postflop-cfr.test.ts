@@ -79,9 +79,16 @@ describe('depth-limited postflop CFR solver', () => {
     expect(betMass(res.strategy)).toBeGreaterThan(0.5);
   });
 
-  it('mixes with pure air on a dry board (does not bluff 100% of the time)', () => {
-    // Dry board, hero holds total air (no pair, no draw): 3 of clubs / 2 of
-    // diamonds on an unconnected rainbow-ish board.
+  it('does not over-bluff pure air on a dry board (checks back at high frequency)', () => {
+    // Dry board, hero holds total air (no pair, no draw). The OLD version of this
+    // test claimed the solver "mixes" bluffs and checks, but its loose bounds
+    // (betMass<0.95, checkOrFold>0.05) were satisfied by a 100% check — vacuous.
+    // In this depth-limited solver, all-in is gated at SPR>2.5 and the leaf models
+    // no future-street fold equity, so air finds no profitable bluff size and
+    // PURE-CHECKS (~0.4% bet across seeds). The honest, non-vacuous guarantee is
+    // therefore "does not over-bluff": air must not be firing a high-frequency
+    // bluff. (See suspected source note: a true balanced bluff range would require
+    // un-gating all-in / modelling future streets.)
     const board = [card('As'), card('Kd'), card('7c')];
     const air = combo('3h', '2d');
     const res = solvePostflop({
@@ -94,10 +101,10 @@ describe('depth-limited postflop CFR solver', () => {
       timeBudgetMs: 400,
     });
     const bm = betMass(res.strategy);
-    // It MIXES: some check, some bluff — not pure 100% bet, not pure 100% check.
     const checkOrFold = res.strategy.check + res.strategy.fold + res.strategy.call;
-    expect(bm).toBeLessThan(0.95); // not always bluffing
-    expect(checkOrFold).toBeGreaterThan(0.05); // checks at least sometimes
+    // A regression that made air bluff at high frequency (or always) trips this.
+    expect(bm).toBeLessThan(0.2);
+    expect(checkOrFold).toBeGreaterThan(0.8);
   });
 
   it('stronger hands bet/raise more than weaker hands on the same board (monotonicity)', () => {

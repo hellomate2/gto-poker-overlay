@@ -104,6 +104,24 @@ export function parseChipValue(text: string): number {
 }
 
 /**
+ * Parse the "Call N" action-button text into the chip amount owed (0 when the
+ * text is not a call). Tolerates a leading currency symbol ("Call $50"),
+ * thousands separators ("Call 1,250"), and k/m suffixes ("Call 2k") — the amount
+ * is handed to parseChipValue, which strips $ , and expands k/m.
+ *
+ * NOTE: the previous inline regex /call\s*([\d.,]+)/ failed to match dollar-stake
+ * rooms ("Call $50") because the capture group excluded the '$' that sits between
+ * "call " and the digits, so the bot read a faced bet as "no bet" and could check
+ * into a wager it owed. The `call[^\d]*` prefix below skips any such separators.
+ */
+export function parseCallAmount(text: string): number {
+  const t = (text || '').toLowerCase();
+  if (!t.includes('call')) return 0;
+  const m = t.match(/call[^\d]*([\d.,]+\s*[km]?)/);
+  return m ? parseChipValue(m[1]) : 0;
+}
+
+/**
  * Pure big-blind selection from the two scraped blind-chip values: the big blind
  * is the LARGER of the two, accepted only if it's positive and not larger than
  * the biggest stack on the table (a sanity check — a "BB" bigger than every
@@ -397,10 +415,7 @@ export class PokerNowScraper {
   private detectToCall(): number {
     const btn = document.querySelector(SEL.callBtn) as HTMLButtonElement | null;
     if (!btn || btn.disabled) return 0;
-    const txt = (btn.textContent || '').toLowerCase();
-    if (!txt.includes('call')) return 0;
-    const m = txt.match(/call\s*([\d.,]+)/);
-    return m ? parseChipValue(m[1]) : 0;
+    return parseCallAmount(btn.textContent || '');
   }
 
   private detectBigBlind(maxStack: number = Infinity): number {

@@ -221,3 +221,36 @@ describe('evaluator — strict ordering across all 9 categories', () => {
     }
   });
 });
+
+// ============================================================
+// 6/7-card FLUSH REDUCTION — the riskiest untested evaluator path
+// (bestFlushValue enumerates C(n,5) sub-masks). The subtle case: a 6/7-card
+// flush whose best plain-flush 5 (highest ranks) is NOT the best 5, because a
+// LOWER straight flush exists in the same suit and outranks it.
+// ============================================================
+
+describe('evaluator — 6/7-card flush sub-mask reduction', () => {
+  it('a same-suit straight flush beats the higher plain flush in the same hand', () => {
+    // Flush suit (hearts) holds A,9,8,7,6,5. The high-card best-5 is the A-high
+    // flush (A-9-8-7-6), but 9-8-7-6-5 is a STRAIGHT FLUSH and must win.
+    const sf = evaluateHand(ids('Ah', '9h', '8h', '7h', '6h', '5h', '2c'));
+    expect(categoryOf(sf)).toBe(HAND_CATEGORY.STRAIGHT_FLUSH);
+    // It must outrank the equivalent ace-high PLAIN flush of the same suit.
+    const aceHighFlush = evaluateHand(ids('Ah', 'Kh', '9h', '8h', '6h'));
+    expect(categoryOf(aceHighFlush)).toBe(HAND_CATEGORY.FLUSH);
+    expect(sf).toBeGreaterThan(aceHighFlush);
+  });
+
+  it('a 6-card flush reduces to its best 5 ranks (no straight flush available)', () => {
+    // 6 hearts A,K,Q,9,5,2 -> best 5 = A,K,Q,9,5 (the 2h is dropped).
+    const six = evaluateHand(ids('Ah', 'Kh', 'Qh', '9h', '5h', '2h'));
+    const bestFive = evaluateHand(ids('Ah', 'Kh', 'Qh', '9h', '5h'));
+    expect(categoryOf(six)).toBe(HAND_CATEGORY.FLUSH);
+    expect(six).toBe(bestFive);
+  });
+
+  it('the all-spades 7-card royal is the top hand', () => {
+    const royal = evaluateHand(ids('As', 'Ks', 'Qs', 'Js', 'Ts', '4s', '2c'));
+    expect(categoryOf(royal)).toBe(HAND_CATEGORY.STRAIGHT_FLUSH);
+  });
+});
