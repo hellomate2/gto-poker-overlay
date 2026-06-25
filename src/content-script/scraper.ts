@@ -94,7 +94,7 @@ function normalizeSuit(s: string): Suit {
   return 'h';
 }
 
-function parseChipValue(text: string): number {
+export function parseChipValue(text: string): number {
   if (!text) return 0;
   const cleaned = text.replace(/[$,\s]/g, '').toLowerCase().trim();
   if (cleaned.endsWith('k')) return parseFloat(cleaned) * 1000;
@@ -102,7 +102,60 @@ function parseChipValue(text: string): number {
   return parseFloat(cleaned) || 0;
 }
 
-function assignPositions(numPlayers: number, dealerIndex: number): Position[] {
+/**
+ * Pure big-blind selection from the two scraped blind-chip values: the big blind
+ * is the LARGER of the two, accepted only if it's positive and not larger than
+ * the biggest stack on the table (a sanity check — a "BB" bigger than every
+ * stack is a misread of stray "x / y" text). Returns null when the blind chips
+ * can't be trusted so the caller can fall back. Pure extraction of the logic in
+ * PokerNowScraper.detectBigBlind (no behavior change).
+ */
+export function bigBlindFromChips(blindChips: number[], maxStack: number = Infinity): number | null {
+  const valid = blindChips.filter(v => v > 0);
+  if (valid.length >= 2) {
+    const bb = Math.max(valid[0], valid[1]);
+    if (bb > 0 && bb <= maxStack) return bb;
+  }
+  return null;
+}
+
+/**
+ * Pure pot read: PokerNow's "total" (add-on) already INCLUDES the main pot, so
+ * use the total when present and fall back to the main value — never add them
+ * (that double-counted the pot). When neither is shown, fall back to the sum of
+ * the chips currently in front of players. Pure extraction of scraper pot logic.
+ */
+export function potFromValues(potTotal: number, potMain: number, sumOfBets: number = 0): number {
+  let pot = potTotal > 0 ? potTotal : potMain;
+  if (pot === 0) pot = sumOfBets;
+  return pot;
+}
+
+/**
+ * Pure "facing a bet" / current-bet resolution. PokerNow never offers a Check
+ * button when the hero owes chips, so on our turn with no Check available we ARE
+ * facing a bet even if the bet chips / Call amount failed to scrape. Mirrors the
+ * scraper's currentBet computation exactly (no behavior change).
+ */
+export function resolveCurrentBet(args: {
+  maxPlayerBet: number;
+  heroBet: number;
+  toCallBtn: number;
+  isOurTurn: boolean;
+  canCheck: boolean;
+  bigBlind: number;
+}): number {
+  const { maxPlayerBet, heroBet, toCallBtn, isOurTurn, canCheck, bigBlind } = args;
+  let currentBet = Math.max(0, maxPlayerBet);
+  if (toCallBtn > 0) currentBet = Math.max(currentBet, heroBet + toCallBtn);
+  if (isOurTurn && !canCheck) {
+    const faced = toCallBtn > 0 ? toCallBtn : Math.max(currentBet - heroBet, bigBlind);
+    currentBet = Math.max(currentBet, heroBet + faced);
+  }
+  return currentBet;
+}
+
+export function assignPositions(numPlayers: number, dealerIndex: number): Position[] {
   const templates: Record<number, Position[]> = {
     2: ['SB', 'BB'],
     3: ['BTN', 'SB', 'BB'],
@@ -119,7 +172,7 @@ function assignPositions(numPlayers: number, dealerIndex: number): Position[] {
   return positions;
 }
 
-function detectStreet(communityCards: Card[]): Street {
+export function detectStreet(communityCards: Card[]): Street {
   switch (communityCards.length) {
     case 0: return 'preflop';
     case 3: return 'flop';
@@ -245,8 +298,9 @@ export class PokerNowScraper {
       // them (that double-counted the pot).
       const potTotal = parseChipValue(document.querySelector(SEL.potTotal)?.textContent || '0');
       const potMain = parseChipValue(document.querySelector(SEL.potMain)?.textContent || '0');
-      let pot = potTotal > 0 ? potTotal : potMain;
-      if (pot === 0) pot = players.reduce((sum, p) => sum + p.currentBet, 0);
+      const pot = potFromValues(
+        potTotal, potMain, players.reduce((sum, p) => sum + p.currentBet, 0),
+      );
 
       const maxStack = Math.max(0, ...players.map(p => p.stack));
       const bigBlind = this.detectBigBlind(maxStack || Infinity);
@@ -262,12 +316,10 @@ export class PokerNowScraper {
       // bot from trying to "bet" into a bet.
       const checkBtnEl = document.querySelector(SEL.checkBtn) as HTMLButtonElement | null;
       const canCheck = !!(checkBtnEl && !checkBtnEl.disabled);
-      let currentBet = Math.max(0, ...players.map(p => p.currentBet));
-      if (toCallBtn > 0) currentBet = Math.max(currentBet, heroBet + toCallBtn);
-      if (isOurTurn && !canCheck) {
-        const faced = toCallBtn > 0 ? toCallBtn : Math.max(currentBet - heroBet, bigBlind);
-        currentBet = Math.max(currentBet, heroBet + faced);
-      }
+      const currentBet = resolveCurrentBet({
+        maxPlayerBet: Math.max(0, ...players.map(p => p.currentBet)),
+        heroBet, toCallBtn, isOurTurn, canCheck, bigBlind,
+      });
       // Minimum raise-to: facing a bet you must raise to at least double it; when
       // unopened, at least 2bb.
       const minRaise = currentBet > 0 ? currentBet * 2 : bigBlind * 2;
@@ -346,10 +398,8 @@ export class PokerNowScraper {
     const blindChips = Array.from(document.querySelectorAll(SEL.blindValues))
       .map(e => parseChipValue(e.textContent || '0'))
       .filter(v => v > 0);
-    if (blindChips.length >= 2) {
-      const bb = Math.max(blindChips[0], blindChips[1]);
-      if (bb > 0 && bb <= maxStack) return bb;
-    }
+    const bbFromChips = bigBlindFromChips(blindChips, maxStack);
+    if (bbFromChips !== null) return bbFromChips;
     // Fallback: the stakes header "small / big", sanity-checked vs the stacks.
     const body = document.body.textContent || '';
     for (const m of body.matchAll(/(\d[\d,]*)\s*\/\s*(\d[\d,]*)/g)) {

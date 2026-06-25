@@ -434,28 +434,67 @@ export class ActionExecutor {
     // Additional wait for form animations to complete.
     await this.sleep(150);
 
+    // 1) Try the exact (clamped) amount via the input.
     if (amount !== undefined) {
-      // RAISE AMOUNT VERIFICATION (#3): clamp to the table's allowed range,
-      // then enter + read back, retrying a bounded number of times.
       const bounds = this.readRaiseBounds();
       const clamped = clampRaiseAmount(amount, bounds);
-
-      if (clamped.invalid || clamped.amount === null) {
-        // Amount is unusable for this table — don't enter garbage. Bail so the
-        // caller falls back to call/check.
-        log.warn(`Raise amount ${amount} invalid for bounds [${bounds.min}, ${bounds.max}] — falling back`);
-        return false;
-      }
-
-      const entered = await this.enterAndVerifyAmount(clamped.amount);
-      if (!entered) {
-        log.warn('Could not enter/verify raise amount — falling back');
-        return false;
+      if (!clamped.invalid && clamped.amount !== null && await this.enterAndVerifyAmount(clamped.amount)) {
+        await this.sleep(100);
+        if (await this.submitRaiseForm()) return true;
       }
     }
 
-    await this.sleep(100);
-    return this.submitRaiseForm();
+    // 2) Exact entry failed (amount below the table min, bounds unreadable, or
+    //    the input snapped). Fall back to a PRESET button — always a legal
+    //    raise, picked closest to the intended size (else MIN RAISE). This is
+    //    what stops the bot from getting stuck on an un-submittable amount.
+    if (await this.clickClosestPreset(amount)) {
+      await this.sleep(120);
+      if (await this.submitRaiseForm()) return true;
+    }
+
+    // 3) Could not raise at all — CLOSE the form so it stops covering the
+    //    Call/Check/Fold buttons, letting clickAction's fallback act (no freeze).
+    await this.closeRaiseForm();
+    return false;
+  }
+
+  /**
+   * Click the preset bet button (MIN RAISE / 1/2 / 3/4 / POT) whose resulting
+   * amount is closest to `amount`. Presets are always legal raises, so this is
+   * the reliable fallback when typing an exact amount fails. With no target,
+   * uses the first preset (MIN RAISE) — the legal floor. Excludes ALL IN.
+   */
+  private async clickClosestPreset(amount?: number): Promise<boolean> {
+    const presets = (Array.from(document.querySelectorAll(SEL.presetBetBtns)) as HTMLElement[])
+      .filter(b => b.offsetWidth > 0 && getComputedStyle(b).display !== 'none'
+        && !/all\s*in/i.test(b.textContent || ''));
+    if (presets.length === 0) return false;
+    if (amount === undefined) { this.dispatchReactClick(presets[0]); return true; }
+
+    let best = presets[0];
+    let bestDiff = Infinity;
+    for (const b of presets) {
+      this.dispatchReactClick(b);
+      await this.sleep(40);
+      const v = parseInputAmount((document.querySelector(SEL.raiseInput) as HTMLInputElement | null)?.value);
+      if (Number.isFinite(v)) {
+        const d = Math.abs(v - amount);
+        if (d < bestDiff) { bestDiff = d; best = b; }
+      }
+    }
+    this.dispatchReactClick(best);
+    await this.sleep(40);
+    return true;
+  }
+
+  /** Close the raise form (BACK button or Escape) so it stops covering the action buttons. */
+  private async closeRaiseForm(): Promise<void> {
+    const back = (Array.from(document.querySelectorAll('button')) as HTMLElement[])
+      .find(b => /^back$/i.test((b.textContent || '').trim()));
+    if (back) { this.dispatchReactClick(back); await this.sleep(80); return; }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+    await this.sleep(80);
   }
 
   /**
