@@ -16,6 +16,8 @@
     "ml:train": "python3 ml/train.py",
     "ml:verify": "npx tsx ml/verify.ts",
     "ml:fixtures": "npx tsx ml/build-fixtures.ts && npx tsx ml/build-parity-inputs.ts && npx tsx ml/export-weights.ts && python3 ml/parity-gen.py",
+    "sim": "npx tsx sim/run.ts",
+    "sim:selftest": "npx tsx sim/run.ts --selftest",
     "lint": "eslint \"src/**/*.ts\" \"ml/**/*.ts\" \"tests/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"ml/**/*.ts\" \"tests/**/*.ts\" \"*.md\" \"docs/**/*.md\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"ml/**/*.ts\" \"tests/**/*.ts\""
