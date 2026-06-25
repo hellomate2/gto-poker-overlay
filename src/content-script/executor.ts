@@ -446,19 +446,36 @@ export class ActionExecutor {
    * bot loop can call it every poll.
    */
   handleRebuy(): boolean {
-    const re = /^(buy[\s-]?in|rebuy|add[\s-]?on|add chips|top[\s-]?up|reload chips)$/i;
+    // Match rebuy / buy-in / rejoin / sit-back-in controls by text (NOT anchored —
+    // PokerNow labels carry amounts like "Buy In $1,000"). If a bot busts or is set
+    // away and this misses, the heads-up table halts (one player) and BOTH bots
+    // appear to "stop making moves", so robustness here is what keeps unattended
+    // self-play alive. Excludes the bare chat/video "Join". Word-boundary anchored
+    // so it can't match inside unrelated words.
+    const TRIGGER = /\b(buy[\s-]?in|re-?buy|add[\s-]?on|add\s*chips|top[\s-]?up|reload|rejoin|sit[\s-]?back(\s*in)?|sit[\s-]?in|i'?m\s*back|back\s*in|return\s*to\s*(the\s*)?(seat|table)|deal\s*me\s*in)\b/i;
     const els = Array.from(document.querySelectorAll(
-      'button, [role="button"], input[type="submit"], input[type="button"]',
+      'button, [role="button"], input[type="submit"], input[type="button"], a',
     )) as HTMLElement[];
-    for (const e of els) {
+    const candidates = els.filter((e) => {
+      if (!this.clickable(e)) return false;
       const t = ((e.textContent || (e as HTMLInputElement).value) || '').trim();
-      if (re.test(t) && this.clickable(e)) {
-        log.warn(`Auto buy-back-in: clicking "${t}"`);
-        this.dispatchReactClick(e);
-        return true;
-      }
+      if (!TRIGGER.test(t)) return false;
+      if (/^join$/i.test(t)) return false; // chat/video Join, not a seat action
+      return true;
+    });
+    if (candidates.length === 0) return false;
+    // If a rebuy dialog has a numeric amount input that's empty, fill it with the
+    // table's max so the confirm submits a full buy-in (PokerNow usually pre-fills,
+    // but some skins leave it blank). Then click the rebuy/confirm control.
+    const amountInput = this.findAmountInput();
+    if (amountInput && !parseInputAmount(amountInput.value)) {
+      const max = parseInputAmount(amountInput.getAttribute('max'));
+      if (Number.isFinite(max) && max > 0) { void this.setInputValue(amountInput, String(max)); }
     }
-    return false;
+    const btn = candidates[0];
+    log.warn(`Auto buy-back-in / rejoin: clicking "${btn.textContent?.trim() || (btn as HTMLInputElement).value}"`);
+    this.dispatchReactClick(btn);
+    return true;
   }
 
   /**
