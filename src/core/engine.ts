@@ -123,6 +123,16 @@ export class DecisionEngine {
    * the amounts inside mixedStrategy (the executor samples those). No-ops when
    * the stack can't be read, so a bad read can't freeze the bot at zero.
    */
+  /**
+   * Round a chip amount to the table's granularity. Whole-chip games (BB is an
+   * integer >= 1) round to integers; decimal-stake games ($0.25/$0.50) round to
+   * cents so a 2.5bb open stays $1.25 instead of collapsing to $1.
+   */
+  private roundToStake(amount: number, bb: number): number {
+    if (Number.isInteger(bb) && bb >= 1) return Math.round(amount);
+    return Math.round(amount * 100) / 100;
+  }
+
   private legalizeDecision(decision: BotDecision, state: GameState): BotDecision {
     const hero = state.players[state.heroIndex];
     const heroStack = hero?.stack || 0;
@@ -130,11 +140,12 @@ export class DecisionEngine {
 
     const heroBet = hero.currentBet || 0;
     const maxTo = heroStack + heroBet; // total chips committed if all-in
+    const bb = state.bigBlind || 1;
 
     // Bets at or above the all-in amount become Infinity so the executor clicks
     // the dedicated All-In button instead of typing a full-stack number.
     const clampBet = (amt: number): number =>
-      (amt === Infinity || amt >= maxTo) ? Infinity : Math.round(amt);
+      (amt === Infinity || amt >= maxTo) ? Infinity : this.roundToStake(amt, bb);
 
     if ((decision.action === 'raise' || decision.action === 'bet') && decision.amount) {
       if (decision.amount >= maxTo) {
@@ -142,7 +153,7 @@ export class DecisionEngine {
         decision.amount = maxTo;
         decision.reasoning += ' (all-in: capped to stack)';
       } else {
-        decision.amount = Math.round(decision.amount);
+        decision.amount = this.roundToStake(decision.amount, bb);
       }
     } else if (decision.action === 'allin') {
       decision.amount = maxTo;
@@ -243,39 +254,29 @@ export class DecisionEngine {
   // GTO Bet Sizing by Board Texture
   // ============================================================
 
-  private getGTOBetSize(board: BoardAnalysis, pot: number, street: Street): { size: number; frequency: number } {
-    // GTO sizing heuristics from solver research:
-    // Board texture determines SIZE. Range/nut advantage determines FREQUENCY.
+  private getGTOBetSize(board: BoardAnalysis, pot: number, street: Street, bb: number = 1): { size: number; frequency: number } {
+    // GTO sizing heuristics: board texture determines SIZE (as a pot fraction),
+    // range/nut advantage determines FREQUENCY. Rounding is stake-aware so small
+    // decimal pots (e.g. $1.50 * 0.33) don't collapse to 0.
+    const sz = (frac: number) => this.roundToStake(pot * frac, bb);
     switch (board.texture) {
       case 'dry':
-        // Dry rainbow: small bet, high frequency
-        if (board.hasAce) return { size: Math.round(pot * 0.33), frequency: 0.75 };
-        return { size: Math.round(pot * 0.33), frequency: 0.65 };
-
+        if (board.hasAce) return { size: sz(0.33), frequency: 0.75 };
+        return { size: sz(0.33), frequency: 0.65 };
       case 'paired_dry':
-        // Paired boards: small bet, very high frequency
-        return { size: Math.round(pot * 0.25), frequency: 0.72 };
-
+        return { size: sz(0.25), frequency: 0.72 };
       case 'paired_wet':
-        return { size: Math.round(pot * 0.50), frequency: 0.50 };
-
+        return { size: sz(0.50), frequency: 0.50 };
       case 'semi_wet':
-        return { size: Math.round(pot * 0.50), frequency: 0.55 };
-
+        return { size: sz(0.50), frequency: 0.55 };
       case 'wet':
-        // Moderately wet: larger bet, medium frequency
-        return { size: Math.round(pot * 0.67), frequency: 0.48 };
-
+        return { size: sz(0.67), frequency: 0.48 };
       case 'very_wet':
-        // Very wet/connected: big polarized bet, low frequency
-        return { size: Math.round(pot * 0.75), frequency: 0.35 };
-
+        return { size: sz(0.75), frequency: 0.35 };
       case 'monotone':
-        // Monotone: small bet, low frequency (nut advantage diminished)
-        return { size: Math.round(pot * 0.33), frequency: 0.38 };
-
+        return { size: sz(0.33), frequency: 0.38 };
       default:
-        return { size: Math.round(pot * 0.50), frequency: 0.50 };
+        return { size: sz(0.50), frequency: 0.50 };
     }
   }
 
@@ -400,9 +401,9 @@ export class DecisionEngine {
     // share the single chosen size from board-texture sizing.
     const boardAnalysis = this.analyzeBoard(board);
     const bb = state.bigBlind || 20;
-    const { size: textureSize } = this.getGTOBetSize(boardAnalysis, pot, street);
+    const { size: textureSize } = this.getGTOBetSize(boardAnalysis, pot, street, bb);
     const betSize = Math.max(bb, textureSize);
-    const raiseSize = Math.max(Math.round(state.currentBet * 2.5), state.currentBet + betSize);
+    const raiseSize = Math.max(this.roundToStake(state.currentBet * 2.5, bb), state.currentBet + betSize);
 
     const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
     const betProb = probs.bet + probs.raise;
@@ -546,6 +547,7 @@ export class DecisionEngine {
     heroCat: number,
   ): BotDecision {
     const pot = state.pot;
+    const bb = state.bigBlind || 1;
     // pot odds: toCall / (pot + toCall) == B / (P + 2B)
     const callThreshold = toCall / (pot + toCall);
     const buffer = 0.02; // small cushion so marginal calls aren't -EV after rake/variance
@@ -553,7 +555,7 @@ export class DecisionEngine {
 
     // VALUE RAISE: only with high equity vs range AND not dominated by the board.
     if (eqR >= 0.70 && !dominatedByBoard) {
-      const raiseTo = Math.round(state.currentBet * 2.5);
+      const raiseTo = this.roundToStake(state.currentBet * 2.5, bb);
       const raiseFreq = eqR >= 0.82 ? 0.8 : 0.6;
       return {
         action: 'raise', amount: raiseTo, confidence: eqR,
@@ -569,7 +571,7 @@ export class DecisionEngine {
       heroCat <= HAND_CATEGORY.PAIR && !dominatedByBoard
     ) {
       // Bluff at a low frequency only.
-      const raiseTo = Math.round(state.currentBet * 2.5);
+      const raiseTo = this.roundToStake(state.currentBet * 2.5, bb);
       const bluffFreq = 0.10;
       return {
         action: 'raise', amount: raiseTo, confidence: eqR,
@@ -613,7 +615,7 @@ export class DecisionEngine {
     const wet = board.texture === 'wet' || board.texture === 'very_wet' ||
       board.texture === 'semi_wet' || board.isMonotone;
     const sizeFrac = wet ? 0.66 : 0.33;
-    const betSize = Math.max(bb, Math.round(pot * sizeFrac));
+    const betSize = Math.max(bb, this.roundToStake(pot * sizeFrac, bb));
     const sizeLabel = wet ? '2/3' : '1/3';
 
     // ANTI-BLUNDER: on a dangerous flush board without the flush, never value-bet
@@ -739,7 +741,7 @@ export class DecisionEngine {
       // Medium strength — mostly check, pot control
       const checkFreq = 0.75;
       if (Math.random() > checkFreq) {
-        const smallBet = Math.max(bb, Math.round(pot * 0.33));
+        const smallBet = Math.max(bb, this.roundToStake(pot * 0.33, bb));
         return {
           action: 'bet', amount: smallBet, confidence: equity,
           reasoning: `Thin bet ${smallBet} (${(equity * 100).toFixed(0)}% eq)`,
@@ -770,6 +772,7 @@ export class DecisionEngine {
     spr: number, toCall: number,
   ): BotDecision {
     const pot = state.pot;
+    const bb = state.bigBlind || 1;
     const potOdds = toCall / (pot + toCall);
     const mdf = pot / (pot + toCall); // minimum defense frequency
 
@@ -780,7 +783,7 @@ export class DecisionEngine {
 
     if (equity >= 0.70) {
       // Strong hand facing bet — raise for value
-      const raiseSize = Math.round(state.currentBet * 2.5);
+      const raiseSize = this.roundToStake(state.currentBet * 2.5, bb);
       const raiseFreq = equity > 0.80 ? 0.75 : 0.55;
       if (Math.random() < raiseFreq) {
         return {
@@ -818,7 +821,7 @@ export class DecisionEngine {
 
     // Check if we have enough equity to semi-bluff raise
     if (equity > 0.25 && equity < 0.45 && state.street !== 'river' && Math.random() < 0.12) {
-      const raiseSize = Math.round(state.currentBet * 2.5);
+      const raiseSize = this.roundToStake(state.currentBet * 2.5, bb);
       return {
         action: 'raise', amount: raiseSize, confidence: equity,
         reasoning: `Check-raise bluff ${raiseSize} (${(equity * 100).toFixed(0)}% eq draw)`,
@@ -876,11 +879,12 @@ export class DecisionEngine {
         mixedStrategy: { fold: 0, check: 0, call: 0, bets: [{ amount: Infinity, probability: 1 }] } };
     }
 
-    // Raise / 3-bet / 4-bet: size by tier, capped to the hero's stack.
+    // Raise / 3-bet / 4-bet: size by tier, capped to the hero's stack. Rounding is
+    // stake-aware (cents for $0.25/$0.50 games, whole chips otherwise).
     let size: number;
-    if (facing3bet) size = Math.round(state.currentBet * 2.3);
-    else if (facingRaise) size = Math.round(state.currentBet * 3);
-    else size = Math.round(bb * 2.5);
+    if (facing3bet) size = this.roundToStake(state.currentBet * 2.3, bb);
+    else if (facingRaise) size = this.roundToStake(state.currentBet * 3, bb);
+    else size = this.roundToStake(bb * 2.5, bb);
     size = Math.min(size, hero.stack + (hero.currentBet || 0));
 
     // Safety: a first-in OPEN at a deep stack must never become an all-in. If the
@@ -888,7 +892,7 @@ export class DecisionEngine {
     // a small fraction so a bad read can't turn a 2.5bb open into a shove.
     const effBB = hero.stack / Math.max(bb, 1);
     if (!facingRaise && effBB > 20) {
-      size = Math.min(size, Math.round(hero.stack * 0.1));
+      size = Math.min(size, this.roundToStake(hero.stack * 0.1, bb));
     }
 
     return { action: 'raise', amount: size, confidence: freq, reasoning,
