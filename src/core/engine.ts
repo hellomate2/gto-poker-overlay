@@ -460,24 +460,87 @@ export class DecisionEngine {
     if ((action === 'bet' || action === 'raise') && dangerousFlushBoard && heroCat < HAND_CATEGORY.FLUSH) {
       finalAction = facingBet ? 'call' : 'check';
     }
+    const flushGuarded = finalAction !== action;
 
-    const guarded = finalAction !== action;
+    // ----------------------------------------------------------------
+    // C-BET NUDGE (IP-PFR-checked-to leak fix).
+    //
+    // The distilled net was trained on 6-max data and systematically UNDER
+    // c-bets heads-up: as the in-position preflop aggressor with the action
+    // checked to it, it returns 'check' with hands that should bet for
+    // value/protection (top pair, top-pair-top-kicker, sets, etc.). When the
+    // net checks such a hand IN POSITION and NOT facing a bet, convert it to a
+    // board-texture-sized c-bet at high frequency.
+    //
+    // This is a NUDGE, not always-bet. It only fires when ALL hold:
+    //   (1) not facing a bet (checked to / first to act),
+    //   (2) hero is IN POSITION (the specific leaking spot; OOP left as-is),
+    //   (3) the net's chosen action is 'check' (we never downgrade a net bet),
+    //   (4) hero has a real made hand worth betting for value/protection:
+    //         heroCat >= PAIR  (at least one pair).
+    // It is SUPPRESSED when:
+    //   (a) the dangerous-flush-board guard applies (monotone / 4-flush board on
+    //       which hero can't beat a flush) — never bet there,
+    //   (b) the board is very wet / monotone AND hero holds only a marginal
+    //       one pair — pot-control, keep checking,
+    //   (c) hero has pure air / a draw (heroCat < PAIR) — keep the net's
+    //       behavior (check, or bluff at the net's own frequency).
+    // ----------------------------------------------------------------
+    const CBET_FREQ = 0.85;                  // c-bet frequency for a qualifying value/protection hand
+    const CBET_MIN_CAT = HAND_CATEGORY.PAIR; // need >= one pair to value/protection c-bet
+    let cbetNudged = false;
+    if (
+      finalAction === 'check' &&        // (3) net wants to check
+      !facingBet &&                     // (1) checked to hero / first to act
+      isIP &&                           // (2) hero is the IP preflop-aggressor spot
+      !dangerousFlushBoard &&           // (a) not a flush board we can't beat
+      heroCat >= CBET_MIN_CAT           // (4)/(c) at least one pair (not air/draw)
+    ) {
+      // (b) Marginal lone pair on a very wet / monotone texture: keep checking
+      // for pot control. Stronger made hands (two pair+, sets, etc.) still
+      // c-bet for value/protection.
+      const veryWetOrMono =
+        boardAnalysis.texture === 'very_wet' || boardAnalysis.isMonotone;
+      const marginalPair = heroCat === HAND_CATEGORY.PAIR;
+      const suppressForTexture = veryWetOrMono && marginalPair;
+      if (!suppressForTexture) {
+        finalAction = 'bet';
+        cbetNudged = true;
+      }
+    }
+
+    const guarded = flushGuarded; // the flush guard downgraded the net's action
     const sizeForBets = finalAction === 'raise' || facingBet ? raiseSize : betSize;
-    const mixedStrategy: StrategyDistribution = guarded
-      ? {
-          fold: probs.fold,
-          check: finalAction === 'check' ? probs.check + betProb : probs.check,
-          call: finalAction === 'call' ? probs.call + betProb : probs.call,
-          bets: [],
-        }
-      : {
-          fold: probs.fold,
-          check: probs.check,
-          call: probs.call,
-          bets: betProb > 0 ? [{ amount: sizeForBets, probability: betProb }] : [],
-        };
+    let mixedStrategy: StrategyDistribution;
+    if (cbetNudged) {
+      // Reflect the c-bet in the distribution so the executor actually bets:
+      // bet at CBET_FREQ with a small checking tail for balance. Size comes from
+      // board-texture sizing (betSize); legalizeDecision caps it to stack.
+      mixedStrategy = {
+        fold: 0,
+        check: 1 - CBET_FREQ,
+        call: 0,
+        bets: [{ amount: betSize, probability: CBET_FREQ }],
+      };
+    } else if (guarded) {
+      mixedStrategy = {
+        fold: probs.fold,
+        check: finalAction === 'check' ? probs.check + betProb : probs.check,
+        call: finalAction === 'call' ? probs.call + betProb : probs.call,
+        bets: [],
+      };
+    } else {
+      mixedStrategy = {
+        fold: probs.fold,
+        check: probs.check,
+        call: probs.call,
+        bets: betProb > 0 ? [{ amount: sizeForBets, probability: betProb }] : [],
+      };
+    }
 
-    const reasoning = guarded
+    const reasoning = cbetNudged
+      ? `net check->c-bet IP (cat${heroCat}, ${boardAnalysis.texture}, ${pct(CBET_FREQ)} freq) [cbet-nudge]`
+      : guarded
       ? `net ${action}->${finalAction} (behind range on flush board)`
       : `net ${action} (f${pct(probs.fold)} k${pct(probs.check)} ` +
         `c${pct(probs.call)} b${pct(probs.bet)} r${pct(probs.raise)})`;
@@ -490,7 +553,7 @@ export class DecisionEngine {
       case 'call':
         return { action: 'call', amount: undefined, confidence: probs.call, reasoning, mixedStrategy };
       case 'bet':
-        return { action: 'bet', amount: betSize, confidence: probs.bet, reasoning, mixedStrategy };
+        return { action: 'bet', amount: betSize, confidence: cbetNudged ? CBET_FREQ : probs.bet, reasoning, mixedStrategy };
       case 'raise':
         return { action: 'raise', amount: raiseSize, confidence: probs.raise, reasoning, mixedStrategy };
       default:
