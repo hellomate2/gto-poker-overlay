@@ -272,6 +272,11 @@ export class PokerNowScraper {
   private lastStateHash: string = '';
   private handCounter: number = 0;
   private lastHandMarker: string = '';
+  // Within-hand pot floor: the pot only grows until it's awarded, so if both pot
+  // elements fail to scrape postflop (chips swept, bets reset to 0) we keep the
+  // last known pot instead of reading 0 and corrupting pot-odds/MDF. Reset each
+  // hand by trusting the preflop read.
+  private lastPotValue: number = 0;
 
   start(): void {
     console.log('[GTO Bot] Scraper starting...');
@@ -447,9 +452,20 @@ export class PokerNowScraper {
       const minRaise = currentBet > 0 ? currentBet * 2 : bigBlind * 2;
       const actionHistory = this.parseGameLog();
 
+      // Pot floor (within the hand): preflop the scraped pot is trusted and resets
+      // the baseline (new hand); postflop the pot can only have grown, so never let
+      // a failed scrape read below the last known pot.
+      let effectivePot = pot;
+      if (street === 'preflop') {
+        this.lastPotValue = pot;
+      } else {
+        effectivePot = Math.max(pot, this.lastPotValue);
+        this.lastPotValue = effectivePot;
+      }
+
       return {
         tableId: window.location.pathname.split('/').pop() || 'unknown',
-        handNumber: this.detectHandNumber(), street, pot, sidePots: [],
+        handNumber: this.detectHandNumber(), street, pot: effectivePot, sidePots: [],
         heroCards: heroCards.length === 2 ? [heroCards[0], heroCards[1]] : null,
         communityCards, players, heroIndex, dealerIndex,
         activePlayerIndex: isOurTurn ? heroIndex : -1,
