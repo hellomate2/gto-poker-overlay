@@ -200,3 +200,42 @@ describe('range-aware postflop decision (decidePostflopRanged, multiway)', () =>
     expect(d.action).not.toBe('fold');
   });
 });
+
+// ============================================================
+// ANTI-PUNT guard (the reported "calling all-ins on the river with king-high"
+// bug). These are HEADS-UP (the distilled NET path), where the net used to call
+// off with no equity. The hard pot-odds floor must override the net and FOLD.
+// ============================================================
+describe('anti-punt: never continue facing a bet without the equity (net path)', () => {
+  it('FOLDS king-high facing a pot-sized river bet (no pair, no draw)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Kc', '9d'], community: ['Ah', 'Qs', 'Jd', '5c', '2h'],
+      pot: 200, currentBet: 200, heroBet: 0, street: 'river',
+    }));
+    expect(d.action).toBe('fold');
+  });
+
+  it('FOLDS king-high facing an ALL-IN on the river (the exact reported blunder)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Kd', '7c'], community: ['Ah', 'Ts', '8d', '4c', '2s'],
+      pot: 150, currentBet: 1000, heroBet: 0, street: 'river',
+    }));
+    expect(d.action).toBe('fold');
+  });
+
+  it('FOLDS a no-pair, no-draw hand facing a flop bet (no equity to continue)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Qd', '7c'], community: ['Ah', 'Ks', '5h'], // Q-high, no pair/draw
+      pot: 100, currentBet: 75, heroBet: 0, street: 'flop',
+    }));
+    expect(d.action).toBe('fold');
+  });
+
+  it('does NOT over-fold: the nuts still continues facing the same river jam', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Ad', 'As'], community: ['Ah', 'Ts', '8d', '4c', '2s'], // top set
+      pot: 150, currentBet: 1000, heroBet: 0, street: 'river',
+    }));
+    expect(d.action).not.toBe('fold');
+  });
+});

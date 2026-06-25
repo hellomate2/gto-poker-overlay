@@ -486,6 +486,44 @@ export class DecisionEngine {
     const flushGuarded = finalAction !== action;
 
     // ----------------------------------------------------------------
+    // HARD POT-ODDS FLOOR facing a bet — the "don't punt" guard.
+    //
+    // The distilled net is ~84% accurate, so ~1 in 6 spots it is wrong — and
+    // facing a bet a wrong CALL is catastrophic (it called river all-ins with
+    // king-high, and called OOP with no draw). A human never does that: facing a
+    // bet you continue only with the EQUITY to beat the pot odds. So we measure
+    // hero's equity vs villain's plausible betting/continuing range and, if it is
+    // below the pot odds, FOLD — overriding the net. equityVsRange runs the board
+    // out, so a real draw's equity counts (a flush draw with the odds still
+    // calls); pure air with no equity folds. This makes the basic turn/river
+    // decision (call / fold / jam) correct ~always, instead of punting.
+    if (facingBet && finalAction !== 'fold') {
+      const boardIds = board.map(c => cardToId(c));
+      const range = villainContinuingRange(heroCards, boardIds, { aggression: true, multiway: false });
+      // Cap the combo count for speed: equityVsRange ENUMERATES every runout per
+      // combo postflop, so an evenly-strided subsample (spread across the range's
+      // flush/pair/straight/draw groups, not head-truncated) keeps the estimate
+      // representative while bounding the flop cost.
+      let evalRange = range;
+      if (range.length > 120) {
+        const stride = Math.ceil(range.length / 120);
+        evalRange = range.filter((_, i) => i % stride === 0);
+      }
+      const eqR = evalRange.length ? equityVsRange(heroCards, boardIds, evalRange, 1500).equity : 0.5;
+      const potOdds = toCall / (pot + toCall);
+      if (eqR < potOdds + 0.02) {
+        return {
+          action: 'fold', amount: undefined, confidence: 1 - eqR,
+          reasoning: `fold ${toCall} (${pct(eqR)} vs range < ${pct(potOdds)} pot odds) [anti-punt]`,
+          mixedStrategy: { fold: 1, check: 0, call: 0, bets: [] },
+        };
+      }
+      // Have the odds to continue, but not strong enough to raise for value:
+      // don't turn a marginal call into a -EV raise/bluff-raise. Just call.
+      if (finalAction === 'raise' && eqR < 0.60) finalAction = 'call';
+    }
+
+    // ----------------------------------------------------------------
     // C-BET NUDGE (IP-PFR-checked-to leak fix).
     //
     // The distilled net was trained on 6-max data and systematically UNDER

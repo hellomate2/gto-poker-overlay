@@ -11,7 +11,7 @@ improve release over release. Scale:
 > **not** proof it beats real humans. They track relative progress and leaks, not
 > absolute skill. The rating is a judgment call, explained below.
 
-## Current rating: **62 / 100**
+## Current rating: **63 / 100**
 
 A legitimately solid study bot: it works end-to-end on PokerNow, plays
 near-equilibrium preflop, avoids the big postflop blunders, and clearly beats
@@ -24,7 +24,7 @@ solver would out-play it on later streets — which is what keeps it out of the
 | Area | Score | Why |
 |---|---:|---|
 | Preflop | 85 | Real heads-up CFR-solved charts; push/fold is **exact** Nash. Measured open/defend frequencies match the solved targets (~81% / ~74%). |
-| Postflop | 53 | Wider net (512×256) + richer features (84.19% action accuracy) **+ a learned bet-SIZE head**: a second classifier predicts the solver's size bucket from the same features at **92.4%** accuracy (vs 39% majority baseline), replacing the flat texture heuristic that under-bet (it used 0.33–0.66 pot; the solver bets ~0.66–0.9+). Still **not** a street-by-street solver, which is what keeps it here — but it now picks both the action and a solver-calibrated size. |
+| Postflop | 53 | Wider net (512×256) + richer features (84.19% action accuracy) **+ a learned bet-SIZE head**: a second classifier predicts the solver's size bucket from the same features at **92.4%** accuracy (vs 39% majority baseline), replacing the flat texture heuristic that under-bet (it used 0.33–0.66 pot; the solver bets ~0.66–0.9+). **Plus a hard pot-odds floor facing a bet**: the net (84% acc) used to punt — calling river all-ins with king-high / calling OOP with no equity — so it now folds whenever equity vs villain's continuing range is below the pot odds (overriding the net). Still **not** a street-by-street solver, which is what keeps it here, but it no longer punts and sizes like the solver. |
 | Live execution | 70 | Functional MV3 extension: scrapes the table, acts, never-freeze fallback. Fragile to PokerNow DOM changes; that's the cap. |
 | Exploitation | 55 | Tracks opponents and now adapts in the right direction with a real read (net-positive in sim). Still shallow vs a thinking player. |
 | Correctness/tests | 80 | 416 tests, hand evaluator enumerated over all 2.6M five-card hands, CFR validated to the analytic Kuhn value, train/serve parity on the net, a chip-conserving HU simulator. |
@@ -38,6 +38,7 @@ solver would out-play it on later streets — which is what keeps it out of the
 
 | Version | Date | Tests | Rating | Postflop net (test acc) | Notable |
 |---|---|---:|---:|---|---|
+| v0.1.27 | 2026-06-25 | 432 | **63** | + anti-punt pot-odds floor | **Stop punting (critical fix)**: the net was calling river all-ins with king-high and calling OOP with no equity. Added a hard guard — facing a bet, fold whenever equity vs villain's continuing range is below the pot odds, overriding the net. Regression tests pin king-high-folds-to-jam while the nuts still continues. |
 | v0.1.26 | 2026-06-25 | 426 | **62** | + bet-size head **92.4%** | **Learned bet sizing**: added a second head predicting the solver's size bucket (small/⅔/¾–pot/overbet/all-in) from the same features — 92.4% val accuracy vs 39% baseline. Replaces the flat texture heuristic, which under-bet. The bot now chooses both the action and a solver-calibrated size. |
 | v0.1.25 | 2026-06-25 | 421 | **60** | 512×256, 48 feat, **84.19%** | **Richer features**: added draw + pair-quality structure (flush/straight draws, overpair/top-pair/dominated-pair, kicker), 37 → 48 features; re-prepped 500k rows and retrained. Held-out 82.96% → **84.19%**, log-loss 0.40 → 0.37. Bigger gain than the width bump — features were the bottleneck. |
 | v0.1.23 | 2026-06-25 | 416 | **59** | 512×256, 37 feat, 83.34% | Widened the postflop net (256/128 → 512/256, ~43k → ~150k params) and retrained on the 500k solver decisions: held-out accuracy 82.96% → **83.34%**, log-loss 0.40 → 0.39. TS↔numpy parity 7.6e-6. |
