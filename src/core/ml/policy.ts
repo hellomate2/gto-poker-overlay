@@ -1,7 +1,7 @@
 import { MODEL } from './model';
 import {
   encodeSpot, Spot, FEATURE_DIM, ACTIONS, ActionClass,
-  legalMaskFromFeatures,
+  legalMaskFromFeatures, SIZE_BUCKET_FRACS,
 } from './features';
 
 // ============================================================
@@ -31,6 +31,11 @@ interface LoadedModel {
   dims: Record<string, number[]>;
   mean: Float32Array;
   std: Float32Array;
+  // Bet-size head (shares mean/std + the same 48 features).
+  sW1: Float32Array; sb1: Float32Array;
+  sW2: Float32Array; sb2: Float32Array;
+  sW3: Float32Array; sb3: Float32Array;
+  sizeDims: Record<string, number[]>;
 }
 
 let MODEL_CACHE: LoadedModel | null = null;
@@ -38,6 +43,7 @@ let MODEL_CACHE: LoadedModel | null = null;
 function getModel(): LoadedModel {
   if (MODEL_CACHE) return MODEL_CACHE;
   const w = MODEL.weights;
+  const s = MODEL.sizeWeights;
   MODEL_CACHE = {
     W1: b64ToF32(w.W1), b1: b64ToF32(w.b1),
     W2: b64ToF32(w.W2), b2: b64ToF32(w.b2),
@@ -45,6 +51,10 @@ function getModel(): LoadedModel {
     dims: MODEL.dims,
     mean: b64ToF32(MODEL.mean),
     std: b64ToF32(MODEL.std),
+    sW1: b64ToF32(s.W1), sb1: b64ToF32(s.b1),
+    sW2: b64ToF32(s.W2), sb2: b64ToF32(s.b2),
+    sW3: b64ToF32(s.W3), sb3: b64ToF32(s.b3),
+    sizeDims: MODEL.sizeDims,
   };
   return MODEL_CACHE;
 }
@@ -145,4 +155,37 @@ export function predictPostflop(spot: Spot): PostflopPrediction {
   return { probs, action: ACTIONS[bestI] };
 }
 
+export interface BetSizePrediction {
+  /** chosen size bucket index (argmax of the size head) */
+  bucket: number;
+  /** representative size as a fraction of the pot (engine multiplies by pot) */
+  fraction: number;
+}
+
+/**
+ * Predict how big to bet/raise via the size head — the solver-learned size for
+ * this spot, replacing the old flat texture heuristic (which under-bet). Returns
+ * a pot-fraction the engine multiplies by the pot. Uses the SAME standardized
+ * features as the action head.
+ */
+export function predictBetSize(spot: Spot): BetSizePrediction {
+  const m = getModel();
+  const raw = encodeSpot(spot);
+  const x = new Float32Array(FEATURE_DIM);
+  for (let i = 0; i < FEATURE_DIM; i++) x[i] = (raw[i] - m.mean[i]) / m.std[i];
+
+  const h1 = m.sizeDims.b1[0];
+  const h2 = m.sizeDims.b2[0];
+  const out = m.sizeDims.b3[0];
+  const a1 = denseRelu(x, m.sW1, m.sb1, FEATURE_DIM, h1);
+  const a2 = denseRelu(a1, m.sW2, m.sb2, h1, h2);
+  const logits = dense(a2, m.sW3, m.sb3, h2, out);
+
+  let bestI = 0, bestV = -Infinity;
+  for (let i = 0; i < out; i++) if (logits[i] > bestV) { bestV = logits[i]; bestI = i; }
+  const fraction = SIZE_BUCKET_FRACS[bestI] ?? SIZE_BUCKET_FRACS[SIZE_BUCKET_FRACS.length - 1];
+  return { bucket: bestI, fraction };
+}
+
 export const MODEL_ACCURACY = MODEL.accuracy;
+export const SIZE_ACCURACY = MODEL.sizeAccuracy;

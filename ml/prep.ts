@@ -14,13 +14,16 @@
 import * as fs from 'fs';
 import * as readline from 'readline';
 import { parseCard, cardToId } from '../src/core/cfr/card-utils';
-import { encodeSpot, Spot, FEATURE_DIM, ACTIONS } from '../src/core/ml/features';
+import { encodeSpot, Spot, FEATURE_DIM, ACTIONS, sizeBucketOf } from '../src/core/ml/features';
 
 const DATA = `${__dirname}/data`;
 
 export interface Parsed {
   spot: Spot;
   label: number;
+  /** Bet/raise SIZE bucket (0..NUM_SIZE_BUCKETS-1) for bet/raise rows; 255 =
+   *  not a sized action (fold/check/call) — ignored by the size head. */
+  szLabel: number;
 }
 
 /** Parse a card string like "Ks7h2d" into CardIds. */
@@ -144,6 +147,14 @@ export function parseRow(cols: string[], header: Record<string, number>): Parsed
   const label = labelFor(get('correct_decision'));
   if (label < 0) return null;
 
+  // Size bucket from the solver's actual chosen size (chips / pot), for bet (3)
+  // and raise (4) decisions only; 255 elsewhere so the size head ignores them.
+  let szLabel = 255;
+  if ((label === 3 || label === 4) && pot > 0) {
+    const dm = get('correct_decision').match(/^(?:Bet|Raise)\s+(\d+(?:\.\d+)?)/i);
+    if (dm) szLabel = sizeBucketOf(parseFloat(dm[1]) / pot);
+  }
+
   const spot: Spot = {
     holeCards: [hole[0], hole[1]],
     board,
@@ -155,7 +166,7 @@ export function parseRow(cols: string[], header: Record<string, number>): Parsed
     canCheck, canBet, canCall, canRaise, canFold,
     threeBetPot,
   };
-  return { spot, label };
+  return { spot, label, szLabel };
 }
 
 async function prep(split: 'train' | 'test'): Promise<void> {
@@ -168,6 +179,7 @@ async function prep(split: 'train' | 'test'): Promise<void> {
 
   const xs: Float32Array[] = [];
   const ys: number[] = [];
+  const szs: number[] = [];
   let total = 0;
   let skipped = 0;
   const t0 = Date.now();
@@ -186,6 +198,7 @@ async function prep(split: 'train' | 'test'): Promise<void> {
       if (!p) { skipped++; continue; }
       xs.push(encodeSpot(p.spot));
       ys.push(p.label);
+      szs.push(p.szLabel);
     } catch (e) {
       skipped++;
     }
@@ -197,12 +210,15 @@ async function prep(split: 'train' | 'test'): Promise<void> {
   const n = xs.length;
   const X = new Float32Array(n * FEATURE_DIM);
   const y = new Uint8Array(n);
+  const sz = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     X.set(xs[i], i * FEATURE_DIM);
     y[i] = ys[i];
+    sz[i] = szs[i];
   }
   fs.writeFileSync(`${DATA}/${split}_X.f32`, Buffer.from(X.buffer));
   fs.writeFileSync(`${DATA}/${split}_y.u8`, Buffer.from(y.buffer));
+  fs.writeFileSync(`${DATA}/${split}_sz.u8`, Buffer.from(sz.buffer));
   fs.writeFileSync(`${DATA}/${split}_shape.json`, JSON.stringify({ n, dim: FEATURE_DIM }));
 
   // Class distribution sanity.

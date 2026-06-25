@@ -86,6 +86,22 @@ export const NUM_ACTIONS = 5;
 export const ACTIONS = ['fold', 'check', 'call', 'bet', 'raise'] as const;
 export type ActionClass = (typeof ACTIONS)[number];
 
+// --- Bet-SIZE head ---------------------------------------------------------
+// A second classifier predicts a bet/raise SIZE bucket from the SAME 48 features.
+// The action head only decides WHETHER to bet; the size head decides HOW BIG,
+// trained on the solver's actual chosen size (chips / pot) from the data. Each
+// bucket maps to a representative pot-fraction the engine sizes with. The data's
+// sizes cluster ~0.66-0.9 pot (the old texture heuristic under-bet at 0.33-0.66),
+// with small/overbet tails — these buckets cover that range.
+export const SIZE_BUCKET_FRACS = [0.40, 0.66, 0.85, 1.25, 2.0] as const;
+export const NUM_SIZE_BUCKETS = SIZE_BUCKET_FRACS.length;
+const SIZE_EDGES = [0.53, 0.755, 1.05, 1.625]; // midpoints between the fracs
+/** Map a raw size fraction (chips/pot) to its bucket index. */
+export function sizeBucketOf(frac: number): number {
+  for (let i = 0; i < SIZE_EDGES.length; i++) if (frac <= SIZE_EDGES[i]) return i;
+  return SIZE_EDGES.length;
+}
+
 const clamp = (x: number, lo: number, hi: number): number =>
   x < lo ? lo : x > hi ? hi : x;
 
