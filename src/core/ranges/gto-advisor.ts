@@ -3,6 +3,7 @@ import { cardToId, handGroupName } from '../cfr/card-utils';
 import { charts as greenlineCharts, Cell, Chart } from './greenline-gto';
 import { charts as pekarstasCharts } from './pekarstas-gto';
 import { charts as headsupCharts } from './headsup-gto';
+import { charts as headsupSolvedCharts } from './headsup-solved';
 import { shoveRange, callRange } from './pushfold-nash';
 
 // Effective-stack threshold (in big blinds) at or below which the short-stack
@@ -13,14 +14,18 @@ import { shoveRange, callRange } from './pushfold-nash';
 const PUSHFOLD_MAX_BB = 10;
 
 /**
- * Look up a preflop chart by key. When the table is heads-up (exactly
- * two active players) the heads-up charts are consulted first so HU
- * keys like 'SB-RFI'/'BB-vs-open-SB'/'SB-vs-3bet-BB' override the
- * multiway versions; otherwise the standard greenline/pekarstas charts
- * are used, preserving multiway behavior.
+ * Look up a preflop chart by key. When the table is heads-up (exactly two
+ * active players) the SOLVED heads-up charts (headsup-solved.ts, a real CFR+
+ * Nash solve over the HU preflop tree) are consulted FIRST so HU keys like
+ * 'SB-RFI'/'BB-vs-open-SB'/'SB-vs-3bet-BB'/'BB-vs-4bet-SB' use the solved
+ * equilibrium. The old hand-tuned headsup-gto.ts is kept only as a fallback for
+ * any key the solver does not cover. Multiway behavior is unchanged.
  */
 function lookupChart(key: string, headsUp = false): Chart | undefined {
-  if (headsUp && headsupCharts[key]) return headsupCharts[key];
+  if (headsUp) {
+    if (headsupSolvedCharts[key]) return headsupSolvedCharts[key];
+    if (headsupCharts[key]) return headsupCharts[key];
+  }
   return greenlineCharts[key] || pekarstasCharts[key];
 }
 
