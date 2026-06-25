@@ -189,3 +189,14 @@ export function predictBetSize(spot: Spot): BetSizePrediction {
 
 export const MODEL_ACCURACY = MODEL.accuracy;
 export const SIZE_ACCURACY = MODEL.sizeAccuracy;
+
+/**
+ * A short fingerprint of the LIVE model — feature count, layer dims, accuracies,
+ * and the head of the W1 weights. Surface this in the overlay/popup so you can
+ * confirm the running extension is using the model you trained (the bundle embeds
+ * model.ts directly, so this string changes whenever the model is retrained).
+ */
+export const MODEL_SIGNATURE =
+  `feat${MODEL.featureDim} ${MODEL.dims.W1.join('x')}->${MODEL.dims.b3[0]} ` +
+  `+size${MODEL.numSizeBuckets} act${(MODEL.accuracy.test * 100).toFixed(1)}% ` +
+  `sz${(MODEL.sizeAccuracy.val * 100).toFixed(1)}% w#${MODEL.weights.W1.slice(0, 10)}`;
