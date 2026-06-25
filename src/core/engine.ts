@@ -1058,6 +1058,14 @@ export class DecisionEngine {
     const freq = chosen.frequency / 100;
     const reasoning = `${advice.scenario}: ${advice.hand} ${label} (${Math.round(chosen.frequency)}% GTO)`;
 
+    // Effective stack (counting committed chips) — decides whether an "all-in"
+    // from the chart is a real jam (short) or must be sized down (deep).
+    const heroTotal = hero.stack + (hero.currentBet || 0);
+    const villTotals = state.players
+      .filter((p, i) => i !== state.heroIndex && !p.isSittingOut)
+      .map(p => p.stack + (p.currentBet || 0));
+    const effStackBB = Math.min(heroTotal, villTotals.length ? Math.max(...villTotals) : heroTotal) / bb;
+
     if (/fold/i.test(label)) {
       return { action: 'fold', confidence: freq, reasoning,
         mixedStrategy: { fold: 1, check: 0, call: 0, bets: [] } };
@@ -1067,8 +1075,15 @@ export class DecisionEngine {
         mixedStrategy: { fold: 0, check: 0, call: 1, bets: [] } };
     }
     if (/all[- ]?in/i.test(label)) {
-      return { action: 'allin', amount: hero.stack, confidence: freq, reasoning,
-        mixedStrategy: { fold: 0, check: 0, call: 0, bets: [{ amount: Infinity, probability: 1 }] } };
+      // Jamming all-in preflop is only correct SHORT (push/fold, <=25bb). Deep,
+      // the solved charts still carry polarized "all-in" cells (incl. bluffs like
+      // A3o) that would shove 50bb+ — a punt. When deep, do NOT jam: fall through
+      // to a SIZED 3-bet/4-bet below (the chart's all-in becomes a normal raise).
+      if (effStackBB <= 25) {
+        return { action: 'allin', amount: hero.stack, confidence: freq, reasoning,
+          mixedStrategy: { fold: 0, check: 0, call: 0, bets: [{ amount: Infinity, probability: 1 }] } };
+      }
+      // deep: fall through to sized raise (treated as a 3-bet/4-bet).
     }
 
     // Raise / 3-bet / 4-bet: size by tier, capped to the hero's stack. Rounding is
