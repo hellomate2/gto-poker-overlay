@@ -1,5 +1,8 @@
 import { ActionType, BotDecision, BotSettings, DEFAULT_SETTINGS, StrategyDistribution } from '../types/poker';
 import { log } from '../core/logger';
+import {
+  AvailableButtons, chooseSafeAction, findPromptToDismiss, ScrapedButton,
+} from './safety';
 
 // ============================================================
 // Action Executor — Reliable PokerNow button clicking
@@ -225,16 +228,30 @@ export class ActionExecutor {
         return false;
       }
 
+      // Clear any blocking prompt/modal that might be covering the buttons before
+      // we try to act (run-it-twice, show/muck, away nudge, etc.).
+      this.dismissBlockingPrompts();
+
       const action = this.sampleAction(decision);
       log.info(`Executing: ${action.type}${action.amount ? ` $${action.amount}` : ''}`);
 
-      const success = await this.executeWithRetry(action.type, action.amount);
+      let success = await this.executeWithRetry(action.type, action.amount);
+
+      // SAFE-ACTION FALLBACK: if every retry failed (button never registered,
+      // form stuck, misread sizing) and it's still our turn, perform the safest
+      // legal action from the LIVE buttons — check if we can, else fold — so the
+      // bot never sits frozen and never risks chips on a misread.
+      if (!success && this.isHeroTurnLive()) {
+        log.warn('All action attempts failed — falling back to safe legal action');
+        success = await this.safeFallback();
+      }
+
       if (success) {
         // Record the spot we just acted on so we never re-fire on it.
         const actedSig = this.readSpotSignature();
         if (actedSig) this.lastActedSignature = spotSignatureKey(actedSig);
       } else {
-        log.warn('All action attempts failed');
+        log.warn('All action attempts failed (including safe fallback)');
       }
       return success;
     } finally {
@@ -273,6 +290,90 @@ export class ActionExecutor {
     if (document.querySelector(SEL.decisionCurrentHero)) return true;
     // Tertiary: at least one action button is present AND enabled.
     return !!document.querySelector(ANY_ENABLED_BUTTON);
+  }
+
+  // ============================================================
+  // Safe-action fallback + blocking-prompt dismissal
+  // ============================================================
+
+  /** Read which standard action buttons are present AND enabled in the live DOM. */
+  private readAvailableButtons(): AvailableButtons {
+    const enabled = (sel: string): boolean => {
+      const b = document.querySelector(sel) as HTMLButtonElement | null;
+      if (!b || b.disabled) return false;
+      const s = getComputedStyle(b);
+      if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') return false;
+      return b.offsetWidth > 0 && b.offsetHeight > 0;
+    };
+    return {
+      check: enabled(SEL.checkBtn),
+      call: enabled(SEL.callBtn),
+      fold: enabled(SEL.foldBtn),
+      raise: enabled(SEL.raiseBtn),
+      bet: enabled(SEL.betBtn),
+    };
+  }
+
+  /**
+   * Perform the safest legal action from the LIVE buttons: CHECK if a Check
+   * button is available, otherwise FOLD. Never call/raise (those risk chips on a
+   * misread). Used as the last-resort fallback so the bot always makes a move
+   * within the time budget. Public so the bot loop can invoke it directly when
+   * the engine throws / returns nothing usable.
+   */
+  async safeFallback(): Promise<boolean> {
+    // A raise form may be covering the buttons from a failed raise attempt.
+    await this.closeRaiseForm();
+    const buttons = this.readAvailableButtons();
+    const safe = chooseSafeAction(buttons);
+    if (safe === 'none') {
+      log.debug('Safe fallback: no actionable buttons present');
+      return false;
+    }
+    log.warn(`Safe fallback: ${safe}`);
+    const sel = safe === 'check' ? SEL.checkBtn : SEL.foldBtn;
+    return this.reliableClick(sel);
+  }
+
+  /**
+   * Scan for a known blocking prompt/modal (run-it-twice, show/muck, insurance,
+   * rabbit-hunt, away nudge, post-BB) and click its SAFE default so the action
+   * area is reachable and the bot never freezes on a prompt. Matching is by
+   * button TEXT (resilient to class churn). Returns true if it clicked one.
+   * Public so the bot loop can call it every poll, not only when acting.
+   */
+  dismissBlockingPrompts(): boolean {
+    // Collect all visible, clickable buttons (and anchor/role=button) on the page.
+    const els = Array.from(document.querySelectorAll(
+      'button, [role="button"], input[type="button"], input[type="submit"], a.button',
+    )) as HTMLElement[];
+    const visible = els.filter((e) => {
+      const s = getComputedStyle(e);
+      return s.display !== 'none' && s.visibility !== 'hidden'
+        && e.offsetWidth > 0 && e.offsetHeight > 0;
+    });
+    if (visible.length === 0) return false;
+
+    const scraped: ScrapedButton[] = visible.map((e, i) => ({
+      text: (e.textContent || (e as HTMLInputElement).value || '').trim(),
+      ref: i,
+    }));
+    const pageText = document.body?.textContent || '';
+
+    const match = findPromptToDismiss(pageText, scraped);
+    if (!match) return false;
+
+    if (match.button) {
+      const el = visible[match.button.ref];
+      log.warn(`Dismissing prompt "${match.spec.id}" via "${match.button.text}"`);
+      this.dispatchReactClick(el);
+      return true;
+    }
+    // Prompt is showing but no known safe button text matched. Try Escape so the
+    // overlay doesn't permanently block the action area.
+    log.debug(`Prompt "${match.spec.id}" detected but no safe button found; sending Escape`);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+    return false;
   }
 
   // ============================================================

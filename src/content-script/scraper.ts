@@ -1,6 +1,7 @@
 import {
   Card, Rank, Suit, GameState, Player, Position, Action, ActionType, Street,
 } from '../types/poker';
+import { detectStraddleFromLog, effectivePreflopBet } from './safety';
 
 // ============================================================
 // PokerNow DOM Scraper
@@ -316,14 +317,27 @@ export class PokerNowScraper {
       // bot from trying to "bet" into a bet.
       const checkBtnEl = document.querySelector(SEL.checkBtn) as HTMLButtonElement | null;
       const canCheck = !!(checkBtnEl && !checkBtnEl.disabled);
+      // STRADDLE: a 3rd forced bet that inflates the preflop "to match" amount
+      // beyond the big blind. Read it from the game log so preflop sizing and
+      // scenario detection use the real facing amount (max of BB / straddle /
+      // highest live bet). Postflop it has folded into the pot already, so we
+      // only fold it into the preflop facing reference.
+      const street0 = detectStreet(communityCards);
+      const logLines = Array.from(document.querySelectorAll(SEL.logMessages))
+        .map(e => e.textContent || '');
+      const straddle = street0 === 'preflop' ? detectStraddleFromLog(logLines) : 0;
+      const maxPlayerBet = Math.max(0, ...players.map(p => p.currentBet));
+      const facingPreflop = street0 === 'preflop'
+        ? effectivePreflopBet(bigBlind, straddle, maxPlayerBet)
+        : maxPlayerBet;
       const currentBet = resolveCurrentBet({
-        maxPlayerBet: Math.max(0, ...players.map(p => p.currentBet)),
+        maxPlayerBet: facingPreflop,
         heroBet, toCallBtn, isOurTurn, canCheck, bigBlind,
       });
       // Minimum raise-to: facing a bet you must raise to at least double it; when
       // unopened, at least 2bb.
       const minRaise = currentBet > 0 ? currentBet * 2 : bigBlind * 2;
-      const street = detectStreet(communityCards);
+      const street = street0;
       const actionHistory = this.parseGameLog();
 
       return {

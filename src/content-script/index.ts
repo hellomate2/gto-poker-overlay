@@ -7,6 +7,7 @@ import { quickEquity } from '../core/equity/monte-carlo';
 import { cardToId } from '../core/cfr/card-utils';
 import { getGTOAdvice } from '../core/ranges/gto-advisor';
 import { log } from '../core/logger';
+import { isActionableState } from './safety';
 
 // ============================================================
 // Content Script Entry Point
@@ -130,33 +131,66 @@ class PokerBot {
         this.hud.clearGTOAdvice();
       }
 
+      // Always clear any blocking prompt/modal (run-it-twice, show/muck,
+      // insurance, away nudge, post-BB) — even when it is NOT our turn (e.g. a
+      // showdown muck prompt or an all-in run-it-twice prompt after our last
+      // decision) so the prompt never permanently covers the action area.
+      if (this.settings.autoPlay) {
+        try { this.executor.dismissBlockingPrompts(); } catch (e) { console.warn('[GTO Bot] prompt-dismiss error', e); }
+      }
+
+      // CLEAN-STATE GUARD: only act when the table is fully, sanely parsed —
+      // our turn, a hero seat, exactly two hole cards, and >=2 players. Any
+      // transient null (seat shuffle, between hands, sitting out, cards not yet
+      // rendered) means we do NOT act on a half-parsed table.
+      const actionable = isActionableState({
+        heroIndex: state.heroIndex,
+        heroCardCount: state.heroCards ? 2 : 0,
+        numPlayers: state.players.length,
+        isOurTurn: state.isOurTurn,
+      });
+
       // Make decision if it's our turn
-      if (state.isOurTurn && state.heroCards) {
+      if (actionable && state.heroCards) {
         this.isProcessing = true;
         this.processingTimestamp = Date.now();
         console.log(`[GTO Bot] OUR TURN — ${state.heroCards[0].rank}${state.heroCards[0].suit} ${state.heroCards[1].rank}${state.heroCards[1].suit} | Street: ${state.street} | Pot: ${state.pot}`);
 
-        const decision = await this.engine.decide(state);
+        try {
+          const decision = await this.engine.decide(state);
 
-        // Equity for display
-        const heroCardIds: [number, number] = [
-          cardToId(state.heroCards[0]),
-          cardToId(state.heroCards[1]),
-        ];
-        const boardIds = state.communityCards.map(c => cardToId(c));
-        const equity = quickEquity(heroCardIds, boardIds);
+          // Equity for display
+          const heroCardIds: [number, number] = [
+            cardToId(state.heroCards[0]),
+            cardToId(state.heroCards[1]),
+          ];
+          const boardIds = state.communityCards.map(c => cardToId(c));
+          const equity = quickEquity(heroCardIds, boardIds);
 
-        console.log(`[GTO Bot] DECISION: ${decision.action}${decision.amount ? ' $' + decision.amount : ''} | Equity: ${(equity * 100).toFixed(1)}% | ${decision.reasoning}`);
+          console.log(`[GTO Bot] DECISION: ${decision.action}${decision.amount ? ' $' + decision.amount : ''} | Equity: ${(equity * 100).toFixed(1)}% | ${decision.reasoning}`);
 
-        // Show on HUD
-        this.hud.showDecision(decision, equity);
+          // Show on HUD
+          this.hud.showDecision(decision, equity);
 
-        // Execute if auto-play is enabled
-        if (this.settings.autoPlay) {
-          console.log('[GTO Bot] Auto-play ON — executing action...');
-          await this.executor.execute(decision, state.handNumber);
-        } else {
-          console.log('[GTO Bot] Auto-play OFF — advisory only');
+          // Execute if auto-play is enabled
+          if (this.settings.autoPlay) {
+            if (!decision || !decision.action) {
+              console.warn('[GTO Bot] Engine returned no usable decision — safe fallback');
+              await this.executor.safeFallback();
+            } else {
+              console.log('[GTO Bot] Auto-play ON — executing action...');
+              await this.executor.execute(decision, state.handNumber);
+            }
+          } else {
+            console.log('[GTO Bot] Auto-play OFF — advisory only');
+          }
+        } catch (decideErr) {
+          // The engine/executor threw — never sit frozen. Make the safest legal
+          // move from the live buttons (check if possible, else fold).
+          console.error('[GTO Bot] Decision/execution error — safe fallback:', decideErr);
+          if (this.settings.autoPlay) {
+            try { await this.executor.safeFallback(); } catch (fbErr) { console.error('[GTO Bot] Safe fallback error:', fbErr); }
+          }
         }
 
         this.isProcessing = false;
@@ -166,6 +200,10 @@ class PokerBot {
     } catch (err) {
       console.error('[GTO Bot] Error:', err);
       this.isProcessing = false;
+      // Last-ditch: if it's somehow our turn and auto-play is on, try a safe move.
+      if (this.settings.autoPlay && state.isOurTurn) {
+        try { await this.executor.safeFallback(); } catch { /* noop */ }
+      }
     }
   }
 

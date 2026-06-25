@@ -1,0 +1,251 @@
+// ============================================================
+// Defensive-robustness helpers for the PokerNow content script.
+//
+// Governing principle: when anything is uncertain or broke, prefer a SAFE legal
+// action over doing nothing or doing something illegal. The safe action is
+// CHECK if a Check button is available, otherwise FOLD — never a blind call or
+// raise that risks chips on a misread.
+//
+// Everything in this file is PURE (no DOM access) so it is unit-testable. The
+// executor/scraper feed it data scraped from the live DOM and act on the result.
+// ============================================================
+
+import { Player, Position } from '../types/poker';
+
+// ============================================================
+// Safe-action selection
+// ============================================================
+
+/** Which live action buttons are present AND enabled, as scraped from the DOM. */
+export interface AvailableButtons {
+  check: boolean;
+  call: boolean;
+  fold: boolean;
+  raise: boolean;
+  bet: boolean;
+}
+
+export type SafeAction = 'check' | 'fold' | 'none';
+
+/**
+ * The safest legal action given the LIVE buttons:
+ *   - CHECK when a Check button is available (never risks chips),
+ *   - else FOLD when a Fold button is available,
+ *   - else 'none' (no action area — not our turn / nothing to do).
+ *
+ * NEVER returns call/raise: those risk chips on a misread, which violates the
+ * safety principle. This is the last-resort fallback when the engine throws,
+ * returns nothing usable, or the executor exhausts its retries.
+ */
+export function chooseSafeAction(buttons: AvailableButtons): SafeAction {
+  if (buttons.check) return 'check';
+  if (buttons.fold) return 'fold';
+  return 'none';
+}
+
+// ============================================================
+// Blocking-prompt / modal dismissal
+// ============================================================
+
+/**
+ * A blocking prompt that can cover the action buttons and freeze the bot. Each
+ * entry lists the SAFE default button to click. Matching is by button TEXT
+ * (case-insensitive substring / regex) so it is resilient to class-name churn;
+ * an optional `containerMatch` narrows which prompt we are looking at.
+ *
+ * This list is intentionally small, documented, and easy to extend: add a new
+ * entry when PokerNow ships a new modal.
+ */
+export interface PromptSpec {
+  /** Human label for logging. */
+  id: string;
+  /** Text that identifies the prompt is showing (matched against the modal/page text). */
+  promptMatch: RegExp;
+  /** Ordered list of button-text regexes for the SAFE default; first match wins. */
+  safeButtons: RegExp[];
+}
+
+export const PROMPT_DEFAULTS: PromptSpec[] = [
+  {
+    // All-in run-it-twice: decline (run once). After all-in there are no more
+    // decisions, so just clear the prompt with the safe, consistent default.
+    id: 'run-it-twice',
+    promptMatch: /run\s*it\s*twice/i,
+    safeButtons: [/run\s*it\s*once/i, /^\s*no\s*$/i, /decline/i, /once/i],
+  },
+  {
+    // Showdown show/muck: default to MUCK (EV-neutral, never reveals our range).
+    id: 'show-muck',
+    promptMatch: /muck|show\s*(cards|hand)?/i,
+    safeButtons: [/muck/i, /don'?t\s*show/i, /^\s*no\s*$/i],
+  },
+  {
+    // Insurance offer when all-in: decline.
+    id: 'insurance',
+    promptMatch: /insurance/i,
+    safeButtons: [/^\s*no\s*$/i, /decline/i, /no\s*thanks/i, /skip/i],
+  },
+  {
+    // Rabbit hunt: skip / no.
+    id: 'rabbit-hunt',
+    promptMatch: /rabbit/i,
+    safeButtons: [/^\s*no\s*$/i, /skip/i, /cancel/i, /close/i],
+  },
+  {
+    // "I'm back" / "are you still there" / away/idle nudge: confirm we are here
+    // so the seat isn't sat out, which would otherwise stop the bot acting.
+    id: 'still-there',
+    promptMatch: /still\s*there|are\s*you\s*there|i'?m\s*back|come\s*back|sit\s*back|you'?re\s*away|inactive/i,
+    safeButtons: [/i'?m\s*back/i, /still\s*here/i, /sit\s*back/i, /yes/i, /continue/i, /ok/i],
+  },
+  {
+    // Generic "post big blind?" / "wait for big blind" rejoin prompt: choose the
+    // non-committal option (wait for BB) so we never auto-post extra dead money.
+    id: 'post-bb',
+    promptMatch: /post\s*(big\s*blind|bb)|wait\s*for\s*(the\s*)?big\s*blind/i,
+    safeButtons: [/wait/i, /^\s*no\s*$/i, /cancel/i],
+  },
+];
+
+/** A button as scraped from the DOM: its trimmed text plus a click handle index. */
+export interface ScrapedButton {
+  text: string;
+  /** Opaque index/id the caller uses to click the right element. */
+  ref: number;
+}
+
+export interface PromptMatchResult {
+  spec: PromptSpec;
+  /** The button to click (its ref), or null if the prompt shows but no safe button found. */
+  button: ScrapedButton | null;
+}
+
+/**
+ * Given the visible page/modal text and the list of currently-clickable buttons,
+ * find the FIRST known prompt that is showing and the safe-default button to
+ * click for it. Returns null when no known prompt is present.
+ *
+ * Pure: the caller scrapes `pageText` and `buttons` from the DOM and performs
+ * the click on the returned ref.
+ */
+export function findPromptToDismiss(
+  pageText: string,
+  buttons: ScrapedButton[],
+  specs: PromptSpec[] = PROMPT_DEFAULTS,
+): PromptMatchResult | null {
+  for (const spec of specs) {
+    if (!spec.promptMatch.test(pageText)) continue;
+    let chosen: ScrapedButton | null = null;
+    outer: for (const re of spec.safeButtons) {
+      for (const b of buttons) {
+        if (re.test(b.text.trim())) { chosen = b; break outer; }
+      }
+    }
+    return { spec, button: chosen };
+  }
+  return null;
+}
+
+// ============================================================
+// Straddle detection
+// ============================================================
+
+/**
+ * Detect a straddle (a 3rd forced bet) from a single game-log line, returning
+ * the straddle amount or null. PokerNow logs straddles like:
+ *   '"Player" posts a straddle of 40'
+ *   '"Player" straddles 40'
+ * A straddle inflates the preflop "current bet" beyond the big blind, so the
+ * engine must know about it to size opens and classify the scenario correctly.
+ */
+export function detectStraddleAmount(logLine: string): number | null {
+  const t = logLine.toLowerCase();
+  if (!t.includes('straddle')) return null;
+  // "...straddle of 40", "straddles 40", "straddle (40)", "straddle: 40"
+  const m = t.match(/straddle[^0-9]*([\d][\d,]*\.?\d*)/);
+  if (m) {
+    const v = parseFloat(m[1].replace(/,/g, ''));
+    if (Number.isFinite(v) && v > 0) return v;
+  }
+  return null;
+}
+
+/**
+ * Scan recent game-log lines (newest-first or oldest-first, both fine) for the
+ * largest straddle amount this hand. Returns 0 when there is no straddle.
+ */
+export function detectStraddleFromLog(logLines: string[]): number {
+  let max = 0;
+  for (const line of logLines) {
+    const amt = detectStraddleAmount(line);
+    if (amt !== null && amt > max) max = amt;
+  }
+  return max;
+}
+
+// ============================================================
+// Seat / position resolution with sit-outs, joins, leaves
+// ============================================================
+
+/** Position template by number of ACTIVE (non-sitting-out) players. */
+const POSITION_TEMPLATES: Record<number, Position[]> = {
+  2: ['SB', 'BB'],
+  3: ['BTN', 'SB', 'BB'],
+  4: ['BTN', 'SB', 'BB', 'CO'],
+  5: ['BTN', 'SB', 'BB', 'UTG', 'CO'],
+  6: ['BTN', 'SB', 'BB', 'UTG', 'MP', 'CO'],
+};
+
+/**
+ * Resolve positions for the ACTIVE players only (sit-outs / away seats are
+ * excluded — they don't get a position and don't shift the others). Mirrors the
+ * scraper's assignPositions but operates on the filtered active list so seats
+ * shuffling, players sitting out, or joining mid-session never corrupt the
+ * position read. Pure.
+ */
+export function resolveActivePositions(numActive: number, activeDealerIndex: number): Position[] {
+  if (numActive < 2) return [];
+  const template = POSITION_TEMPLATES[Math.min(numActive, 6)] || POSITION_TEMPLATES[6];
+  const dealer = activeDealerIndex >= 0 && activeDealerIndex < numActive ? activeDealerIndex : 0;
+  const positions: Position[] = [];
+  for (let i = 0; i < numActive; i++) {
+    const offset = (i - dealer + numActive) % numActive;
+    positions.push(template[offset % template.length]);
+  }
+  return positions;
+}
+
+// ============================================================
+// Clean-state guard — don't act until the table is cleanly parsed
+// ============================================================
+
+export interface CleanStateInput {
+  heroIndex: number;
+  heroCardCount: number;
+  numPlayers: number;
+  isOurTurn: boolean;
+}
+
+/**
+ * True only when it is genuinely safe to make a decision: it's our turn, we have
+ * a hero seat, exactly two hole cards are readable, and at least two players are
+ * parsed. Any transient null (seat shuffle, between hands, sitting out, cards not
+ * yet rendered) returns false so the bot does NOT act on a half-parsed table.
+ */
+export function isActionableState(s: CleanStateInput): boolean {
+  if (!s.isOurTurn) return false;
+  if (s.heroIndex < 0) return false;
+  if (s.heroCardCount !== 2) return false;
+  if (s.numPlayers < 2) return false;
+  return true;
+}
+
+/**
+ * Effective preflop "facing" amount accounting for a straddle. The straddle is
+ * the new forced bet to match (it exceeds the big blind), so the amount-to-call
+ * reference preflop is max(bigBlind, straddle) unless a raise already exceeds it.
+ * Pure helper used to keep sizing/scenario detection sane under a straddle.
+ */
+export function effectivePreflopBet(bigBlind: number, straddle: number, highestBet: number): number {
+  return Math.max(bigBlind, straddle, highestBet);
+}
