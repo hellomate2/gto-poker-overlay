@@ -35,6 +35,14 @@ export interface Spot {
   canRaise: boolean;
   canFold: boolean;
   threeBetPot: boolean;
+  // --- betting-action context (optional; set by prep.ts from the action sequence
+  //     and by the engine from GameState.actionHistory; default 0/false). ---
+  /** hero took the preflop betting lead (was the preflop aggressor / c-bettor). */
+  isPreflopAggressor?: boolean;
+  /** there has been a raise (not just a bet) on the current street — a raised pot. */
+  facedRaiseThisStreet?: boolean;
+  /** number of bets+raises made on the current street so far (0,1,2,...). */
+  streetBetCount?: number;
 }
 
 // ---- Feature layout (documented; order matters and is FROZEN) ----
@@ -76,8 +84,12 @@ export interface Spot {
 // [45]     second pair or worse / underpair (0/1)
 // [46]     pair kicker rank / 12 (when holding one pair via a hole card)
 // [47]     # board cards out-ranking hero's pair / 5 (dominated-pair risk)
+// --- betting-action context (who's driving / how contested the pot is) ---
+// [48]     hero is the preflop aggressor / c-bettor (0/1)
+// [49]     a raise (not just a bet) has happened this street — raised pot (0/1)
+// [50]     bets+raises this street so far / 3 (capped at 1)
 const CATEGORY_COUNT = 9; // HIGH_CARD(0) .. STRAIGHT_FLUSH(8)
-export const FEATURE_DIM = 48;
+export const FEATURE_DIM = 51;
 
 // Indices of the 5-way legal-action mask inside the feature vector, exported so
 // the trainer/policy can mask logits to legal actions using the SAME features.
@@ -372,6 +384,11 @@ export function encodeSpot(spot: Spot): Float32Array {
   f[45] = hx.secondPairPlus;
   f[46] = hx.pairKicker;
   f[47] = hx.overcardsToPair;
+
+  // --- betting-action context (37..50 region tail) ---
+  f[48] = spot.isPreflopAggressor ? 1 : 0;
+  f[49] = spot.facedRaiseThisStreet ? 1 : 0;
+  f[50] = Math.min(1, (spot.streetBetCount ?? 0) / 3);
 
   return f;
 }

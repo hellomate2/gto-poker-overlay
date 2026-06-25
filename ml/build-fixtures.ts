@@ -59,6 +59,9 @@ function main(): void {
     canRaise: p.spot.canRaise,
     canFold: p.spot.canFold,
     threeBetPot: p.spot.threeBetPot,
+    isPreflopAggressor: p.spot.isPreflopAggressor,
+    facedRaiseThisStreet: p.spot.facedRaiseThisStreet,
+    streetBetCount: p.spot.streetBetCount,
     label: p.label,
   }));
 

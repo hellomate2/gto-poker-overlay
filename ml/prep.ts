@@ -144,6 +144,23 @@ export function parseRow(cols: string[], header: Record<string, number>): Parsed
   const threeBetPot = /3bet|4bet|3-bet|4-bet/i.test(get('preflop_action')) ||
     (get('preflop_action').match(/call|bb/gi)?.length ?? 0) > 4;
 
+  // Betting-action context for the CURRENT street, parsed from postflop_action
+  // (e.g. "OOP_CHECK/IP_BET_2/OOP_CALL/dealcards/5d/OOP_CHECK/IP_BET_7/OOP_RAISE_22").
+  // The current-street segment is everything after the last "dealcards <card>".
+  const isPreflopAggressor = heroPos === get('aggressor_position').trim();
+  let streetBetCount = 0;
+  let facedRaiseThisStreet = false;
+  {
+    const toks = seq.split('/').filter(Boolean);
+    let lastDeal = -1;
+    for (let i = 0; i < toks.length; i++) if (toks[i] === 'dealcards') lastDeal = i;
+    const cur = lastDeal >= 0 ? toks.slice(lastDeal + 2) : toks; // skip 'dealcards' + the card
+    for (const t of cur) {
+      if (/_BET_/.test(t)) streetBetCount++;
+      else if (/_RAISE_/.test(t)) { streetBetCount++; facedRaiseThisStreet = true; }
+    }
+  }
+
   const label = labelFor(get('correct_decision'));
   if (label < 0) return null;
 
@@ -165,6 +182,7 @@ export function parseRow(cols: string[], header: Record<string, number>): Parsed
     offeredSizeFrac: pot > 0 ? offeredSize / pot : 0,
     canCheck, canBet, canCall, canRaise, canFold,
     threeBetPot,
+    isPreflopAggressor, facedRaiseThisStreet, streetBetCount,
   };
   return { spot, label, szLabel };
 }

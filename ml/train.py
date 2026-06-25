@@ -25,7 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 OUT_TS = os.path.join(HERE, "..", "src", "core", "ml", "model.ts")
 
-FEATURE_DIM = 48
+FEATURE_DIM = 51
 NUM_ACTIONS = 5
 ACTION_MASK_OFFSET = 32  # must match features.ts (mask stays at 32..36; richer
                          # card-derived features are appended at 37..47)

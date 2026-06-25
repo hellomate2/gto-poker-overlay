@@ -428,12 +428,28 @@ export class DecisionEngine {
     const pot = Math.max(1, state.pot);
     const isIP = this.isInPosition(state);
 
+    // Betting-action context (mirrors prep.ts: preflop aggressor + this-street
+    // bet/raise counts) so the net sees who's driving and whether it's a raised
+    // pot. Computed from GameState.actionHistory to match the training labels.
+    const pfActions = state.actionHistory.preflop || [];
+    let pfAggressor: string | null = null;
+    for (const a of pfActions) if (a.type === 'raise' || a.type === 'allin') pfAggressor = a.playerName;
+    const isPreflopAggressor = !!hero && pfAggressor === hero.name;
+    const curActions = state.actionHistory[street] || [];
+    let streetBetCount = 0;
+    let facedRaiseThisStreet = false;
+    for (const a of curActions) {
+      if (a.type === 'bet') streetBetCount++;
+      else if (a.type === 'raise' || a.type === 'allin') { streetBetCount++; facedRaiseThisStreet = true; }
+    }
+
     const spot: Spot = {
       holeCards: heroCards,
       board: board.map(c => cardToId(c)),
       street,
       heroPos: isIP ? 'IP' : 'OOP',
       facingBet,
+      isPreflopAggressor, facedRaiseThisStreet, streetBetCount,
       toCallFrac: toCall / pot,
       // Offered size proxy: facing a bet -> the bet we'd be raising over; else
       // a default value bet of ~2/3 pot. Sizing itself is decided below; this is
