@@ -9,6 +9,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "solve:bench": "npx tsx src/solver/bench.ts",
+    "solve:preflop": "npx tsx src/solver/preflop/run-solve.ts",
+    "solve:equity": "npx tsx src/solver/preflop/build-equity.ts",
     "eval:bench": "npx tsx src/core/equity/eval-bench.ts",
     "ml:prep": "npx tsx ml/prep.ts",
     "ml:train": "python3 ml/train.py"

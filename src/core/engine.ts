@@ -455,9 +455,7 @@ export class DecisionEngine {
     const heroCat = Math.floor(
       evaluateHand([heroCards[0], heroCards[1], ...board.map(c => cardToId(c))]) / 1_000_000,
     );
-    const dangerousFlushBoard =
-      (boardAnalysis.isMonotone || this.isFourFlushBoard(board)) &&
-      !this.heroHoldsRelevantFlush(heroCards, board);
+    const dangerousFlushBoard = this.isDangerousFlushBoard(heroCards, board);
     let finalAction = action;
     if ((action === 'bet' || action === 'raise') && dangerousFlushBoard && heroCat < HAND_CATEGORY.FLUSH) {
       finalAction = facingBet ? 'call' : 'check';
@@ -553,10 +551,8 @@ export class DecisionEngine {
     const heroCat = boardIds.length >= 3
       ? Math.floor(evaluateHand([heroCards[0], heroCards[1], ...boardIds]) / 1_000_000)
       : HAND_CATEGORY.HIGH_CARD;
-    const heroHoldsFlush = this.heroHoldsRelevantFlush(heroCards, state.communityCards);
     // Dangerous flush board: monotone (3+) or 4-flush and hero has no flush.
-    const dangerousFlushBoard =
-      (board.isMonotone || this.isFourFlushBoard(state.communityCards)) && !heroHoldsFlush;
+    const dangerousFlushBoard = this.isDangerousFlushBoard(heroCards, state.communityCards);
     // Paired board: two-pair-type hands are downgraded (could be counterfeited /
     // beaten by trips/boats), so don't treat them as premium value.
     const pairedBoard = board.isPaired;
@@ -717,6 +713,22 @@ export class DecisionEngine {
     const suitCount = [0, 0, 0, 0];
     for (const c of community) suitCount[cardToId(c) % 4]++;
     return suitCount.some(n => n >= 4);
+  }
+
+  /**
+   * Monotone (3-suited flop) or 4-flush board on which hero holds NO flush.
+   * Value-betting a non-flush made hand here is the classic dominated blunder:
+   * the hand looks strong vs a random holding but is crushed by villain's
+   * flush-heavy continuing range. Used to suppress value bets/raises in the
+   * ranged path, the net path, AND the equity-vs-random sanity override so none
+   * of them re-introduce the blunder.
+   */
+  private isDangerousFlushBoard(heroCards: [number, number], community: Card[]): boolean {
+    const board = this.analyzeBoard(community);
+    return (
+      (board.isMonotone || this.isFourFlushBoard(community)) &&
+      !this.heroHoldsRelevantFlush(heroCards, community)
+    );
   }
 
   /**
@@ -1032,8 +1044,21 @@ export class DecisionEngine {
       decision.reasoning += ' [free check]';
     }
 
-    // Never check with 80%+ equity — always bet
-    if (decision.action === 'check' && !facingBet && equity >= 0.80) {
+    // Never check with 80%+ equity — always bet. EXCEPT on a monotone / 4-flush
+    // board where hero holds no flush: `equity` here is computed vs a RANDOM
+    // hand, which overrates non-flush made hands that are actually crushed by
+    // villain's flush-heavy continuing range. Betting there is exactly the
+    // dominated-hand blunder the range-aware path deliberately avoids, so this
+    // noisy override must not re-introduce it. (Without this guard the borderline
+    // ~80%-vs-random hand flips check->bet whenever the Monte-Carlo estimate
+    // happens to land above the threshold.)
+    const heroCards: [number, number] | null = state.heroCards
+      ? [cardToId(state.heroCards[0]), cardToId(state.heroCards[1])]
+      : null;
+    const flushBoardBlunder = heroCards
+      ? this.isDangerousFlushBoard(heroCards, state.communityCards)
+      : false;
+    if (decision.action === 'check' && !facingBet && equity >= 0.80 && !flushBoardBlunder) {
       const betSize = Math.max(state.bigBlind, Math.round(state.pot * 0.67));
       decision.action = 'bet';
       decision.amount = betSize;
