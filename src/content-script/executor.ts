@@ -85,11 +85,15 @@ export function clampRaiseAmount(desired: number | undefined, bounds: RaiseBound
     return { amount: null, invalid: true };
   }
 
-  let amount = Math.round(desired);
+  // Round to cents, NOT whole chips — decimal stakes ($0.25/$0.50) are valid and
+  // forcing integers would turn a $1.25 raise into $1. The engine already sized
+  // in the table's chip units; we just clamp to the legal min/max.
+  const round2 = (x: number) => Math.round(x * 100) / 100;
+  let amount = round2(desired);
 
   const { min, max } = bounds;
-  if (max !== null && Number.isFinite(max) && amount > max) amount = Math.round(max);
-  if (min !== null && Number.isFinite(min) && amount < min) amount = Math.round(min);
+  if (max !== null && Number.isFinite(max) && amount > max) amount = round2(max);
+  if (min !== null && Number.isFinite(min) && amount < min) amount = round2(min);
 
   // After clamping, a min that exceeds max (or any non-positive result) is unusable.
   if (max !== null && Number.isFinite(max) && amount > max) return { amount: null, invalid: true };
@@ -98,10 +102,15 @@ export function clampRaiseAmount(desired: number | undefined, bounds: RaiseBound
   return { amount, invalid: false };
 }
 
-/** True if the read-back input value matches the intended amount within tolerance. */
+/**
+ * True if the read-back input value matches the intended amount within tolerance.
+ * Does NOT round the intended value to an integer — that broke decimal stakes
+ * (e.g. a $1.25 intended would only match a read-back of 1). Callers pass a
+ * stake-relative tolerance for cents games.
+ */
 export function amountMatches(intended: number, readBack: number, tolerance: number = AMOUNT_TOLERANCE): boolean {
   if (!Number.isFinite(readBack)) return false;
-  return Math.abs(Math.round(intended) - readBack) <= tolerance;
+  return Math.abs(intended - readBack) <= tolerance;
 }
 
 /** Parse the numeric value out of an input's string value (strips commas/$/spaces). */
@@ -211,7 +220,7 @@ export class ActionExecutor {
       }
 
       const action = this.sampleAction(decision);
-      log.info(`Executing: ${action.type}${action.amount ? ` $${Math.round(action.amount)}` : ''}`);
+      log.info(`Executing: ${action.type}${action.amount ? ` $${action.amount}` : ''}`);
 
       const success = await this.executeWithRetry(action.type, action.amount);
       if (success) {
@@ -481,7 +490,10 @@ export class ActionExecutor {
       // Read back from a FRESH query (the node may have been replaced).
       const after = document.querySelector(SEL.raiseInput) as HTMLInputElement | null;
       const readBack = parseInputAmount(after?.value);
-      if (amountMatches(amount, readBack)) {
+      // Stake-relative tolerance: ~3% of the amount, min 1 cent. Handles both
+      // whole-chip games and $0.25/$0.50 cents games.
+      const tol = Math.max(0.01, Math.abs(amount) * 0.03);
+      if (amountMatches(amount, readBack, tol)) {
         log.debug(`Raise amount verified: ${readBack}`);
         return true;
       }

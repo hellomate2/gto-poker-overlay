@@ -15,10 +15,12 @@ import { StrategyDistribution } from '../src/types/poker';
 // ============================================================
 
 describe('clampRaiseAmount', () => {
-  it('rounds a valid in-range amount to whole chips', () => {
+  it('preserves decimal (cents) amounts instead of forcing whole chips', () => {
+    // Decimal stakes ($0.25/$0.50) are valid; rounding to integers would break them.
     const r = clampRaiseAmount(123.4, { min: 10, max: 1000 });
     expect(r.invalid).toBe(false);
-    expect(r.amount).toBe(123);
+    expect(r.amount).toBe(123.4);
+    expect(clampRaiseAmount(1.25, { min: 0.5, max: 50 }).amount).toBe(1.25); // cents preserved
   });
 
   it('clamps up to min when below the table minimum', () => {
