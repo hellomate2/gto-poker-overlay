@@ -6,7 +6,7 @@ const OVERLAY_ID = 'gto-bot-overlay';
 const PANEL_ID = 'gto-bot-panel';
 const TOGGLE_ID = 'gto-bot-toggle';
 // Bump on every release so the running build is identifiable on the table.
-const VERSION = 'v0.1.22';
+const VERSION = 'v0.1.23';
 
 interface SessionStats {
   hands: number;
@@ -28,6 +28,7 @@ export class HUDOverlay {
   private lastDecision: BotDecision | null = null;
   private lastEquity: number = 0;
   private lastAdvice: GTOAdvice | null = null;
+  private execStatus: string = '';
 
   initialize(): void {
     // Idempotency guard: remove any overlay elements from a previous init or a
@@ -169,6 +170,14 @@ export class HUDOverlay {
     this.render();
   }
 
+  /** Show the executor's last step (e.g. "try bet $65", "bet via preset",
+   *  "raise form not found", "safe fallback: check") so stalls are visible. */
+  showExecStatus(status: string): void {
+    if (!status || status === this.execStatus) return;
+    this.execStatus = status;
+    this.render();
+  }
+
   /**
    * Render the single consolidated panel: GTO ranges on top, the bot's chosen
    * action + equity below, then the session strip. One panel, one source of
@@ -182,9 +191,12 @@ export class HUDOverlay {
       ? this.renderActionSection(this.lastDecision, this.lastEquity)
       : `<div class="waiting" style="padding:10px 14px;"><div class="pulse"></div>Waiting for your turn...</div>`;
     const sessionHtml = this.renderSessionStrip();
+    const execHtml = this.execStatus
+      ? `<div style="font-size:10px; color:#8aa; padding:2px 8px; font-family:monospace;">exec: ${this.execStatus}</div>`
+      : '';
     const versionHtml = `<div style="font-size:9px; color:#556; text-align:right; padding:3px 8px 4px; letter-spacing:0.5px;">${VERSION} · approximation, not perfect GTO</div>`;
 
-    this.panel.innerHTML = `${gtoHtml}${actionHtml}${sessionHtml}${versionHtml}`;
+    this.panel.innerHTML = `${gtoHtml}${actionHtml}${sessionHtml}${execHtml}${versionHtml}`;
   }
 
   private renderGTOSection(advice: GTOAdvice): string {

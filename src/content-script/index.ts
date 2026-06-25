@@ -183,6 +183,9 @@ class PokerBot {
               console.log('[GTO Bot] Auto-play ON — executing action...');
               await this.executor.execute(decision, state.handNumber);
             }
+            // Surface the executor's last step on the overlay so a stall is
+            // diagnosable straight from a screenshot (no console needed).
+            this.hud.showExecStatus(this.executor.getLastStatus());
           } else {
             console.log('[GTO Bot] Auto-play OFF — advisory only');
           }

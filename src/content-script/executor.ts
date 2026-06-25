@@ -45,9 +45,10 @@ const WAIT_POLL_INTERVAL = 100;
 const CONFIRM_TIMEOUT = 1500;
 const CONFIRM_POLL_INTERVAL = 100;
 
-// Bounded retries
-const MAX_ACTION_ATTEMPTS = 3;   // whole-action retries (click + confirm)
-const MAX_AMOUNT_ATTEMPTS = 3;   // raise amount enter + read-back retries
+// Bounded retries — kept SMALL so a fragile sizing flow fails fast and the
+// single-click safe fallback fires well within PokerNow's clock (no extra-time stall).
+const MAX_ACTION_ATTEMPTS = 2;   // whole-action retries (click + confirm)
+const MAX_AMOUNT_ATTEMPTS = 2;   // raise amount enter + read-back retries
 
 // Read-back tolerance: PokerNow rounds to whole chips, so anything within
 // 1 chip of the intended (rounded) amount is considered a match.
@@ -182,9 +183,23 @@ export class ActionExecutor {
   private lastActedSignature: string | null = null;
   // Reliable hand number supplied by the content script (for the spot signature).
   private currentHandNumber: number = 0;
+  // Human-readable trace of the last execution step — surfaced on the overlay so
+  // a stall is diagnosable from a screenshot (no console needed).
+  private lastStatus: string = '';
 
   constructor(settings: BotSettings = DEFAULT_SETTINGS) {
     this.settings = settings;
+  }
+
+  /** Record + log the current execution step (shown on the overlay). */
+  private setStatus(s: string): void {
+    this.lastStatus = s;
+    log.info(`[exec] ${s}`);
+  }
+
+  /** The last execution step, for the overlay diagnostic line. */
+  getLastStatus(): string {
+    return this.lastStatus;
   }
 
   updateSettings(settings: Partial<BotSettings>): void {
@@ -227,9 +242,10 @@ export class ActionExecutor {
       this.dismissBlockingPrompts();
 
       const action = this.sampleAction(decision);
-      log.info(`Executing: ${action.type}${action.amount ? ` $${action.amount}` : ''}`);
+      this.setStatus(`try ${action.type}${action.amount ? ` $${action.amount}` : ''}`);
 
       let success = await this.executeWithRetry(action.type, action.amount);
+      if (success && !this.lastStatus.startsWith('done')) this.setStatus(`done: ${action.type}`);
 
       // SAFE-ACTION FALLBACK: if every retry failed (button never registered,
       // form stuck, misread sizing) and it's still our turn, perform the safest
@@ -376,8 +392,9 @@ export class ActionExecutor {
       log.debug('Safe fallback: no actionable buttons present');
       return false;
     }
-    log.warn(`Safe fallback: ${safe}`);
-    return this.clickActionButton(safe === 'check' ? 'check' : 'fold');
+    const ok = this.clickActionButton(safe === 'check' ? 'check' : 'fold');
+    this.setStatus(ok ? `safe fallback: ${safe}` : `safe fallback ${safe} FAILED`);
+    return ok;
   }
 
   /**
@@ -588,46 +605,75 @@ export class ActionExecutor {
   // ============================================================
 
   private async executeRaise(amount?: number): Promise<boolean> {
-    // FRESH LOOKUP: re-query the raise/bet button right here.
+    // FRESH LOOKUP: re-query the raise/bet opener (class-or-text robust).
     const raiseClicked = this.clickActionButton('raise') || this.clickActionButton('bet');
     if (!raiseClicked) {
-      log.debug('Raise/bet button not available');
+      this.setStatus('no raise/bet button');
       return false;
     }
 
-    // Wait for the raise form to actually appear and be interactive.
-    const form = await this.waitForElement(SEL.raiseForm, 1500);
+    // Wait briefly for EITHER the sizing form/input to appear OR the turn to end
+    // (some tables commit a quick-bet directly without a form). Short timeout so
+    // we fail fast to the single-click fallback instead of stalling.
+    const form = await this.waitForRaiseForm(900);
     if (!form) {
-      log.warn('Raise form did not appear after clicking raise');
+      if (!this.isHeroTurnLive()) { this.setStatus('bet committed (no form)'); return true; }
+      this.setStatus('raise form not found');
       return false;
     }
-
-    // Additional wait for form animations to complete.
-    await this.sleep(150);
+    await this.sleep(120);
 
     // 1) Try the exact (clamped) amount via the input.
     if (amount !== undefined) {
       const bounds = this.readRaiseBounds();
       const clamped = clampRaiseAmount(amount, bounds);
       if (!clamped.invalid && clamped.amount !== null && await this.enterAndVerifyAmount(clamped.amount)) {
-        await this.sleep(100);
-        if (await this.submitRaiseForm()) return true;
+        await this.sleep(80);
+        if (await this.submitRaiseForm()) { this.setStatus(`bet $${clamped.amount}`); return true; }
       }
     }
 
-    // 2) Exact entry failed (amount below the table min, bounds unreadable, or
-    //    the input snapped). Fall back to a PRESET button — always a legal
-    //    raise, picked closest to the intended size (else MIN RAISE). This is
-    //    what stops the bot from getting stuck on an un-submittable amount.
+    // 2) Exact entry failed — click a PRESET closest to the target (always legal).
     if (await this.clickClosestPreset(amount)) {
-      await this.sleep(120);
-      if (await this.submitRaiseForm()) return true;
+      await this.sleep(100);
+      if (await this.submitRaiseForm()) { this.setStatus('bet via preset'); return true; }
     }
 
-    // 3) Could not raise at all — CLOSE the form so it stops covering the
-    //    Call/Check/Fold buttons, letting clickAction's fallback act (no freeze).
+    // 3) Last resort: submit whatever amount the form currently holds (PokerNow
+    //    pre-fills a legal default), so an open form is never a dead end.
+    if (await this.submitRaiseForm()) { this.setStatus('bet via default amount'); return true; }
+
+    // 4) Give up on the form; close it so the single-click fallback can act.
     await this.closeRaiseForm();
+    this.setStatus('raise failed; falling back');
     return false;
+  }
+
+  /**
+   * Wait for the sizing UI to appear: the class-based form, OR (robust to markup
+   * changes) any visible number/range input that just appeared. Bails early if
+   * the turn ends (a quick-bet committed without a form).
+   */
+  private async waitForRaiseForm(timeout: number): Promise<HTMLElement | null> {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const f = this.findRaiseForm();
+      if (f) return f;
+      if (!this.isHeroTurnLive()) return null;
+      await this.sleep(WAIT_POLL_INTERVAL);
+    }
+    return this.findRaiseForm();
+  }
+
+  /** The sizing UI: the class-based form, else a container holding a live amount input. */
+  private findRaiseForm(): HTMLElement | null {
+    const byClass = document.querySelector(SEL.raiseForm) as HTMLElement | null;
+    if (byClass) return byClass;
+    const input = (Array.from(document.querySelectorAll(
+      'input[type="number"], input[type="range"], input.value',
+    )) as HTMLElement[]).find((i) => this.clickable(i));
+    if (!input) return null;
+    return (input.closest('form, .raise, [class*="raise"], [class*="bet"]') as HTMLElement) ?? input;
   }
 
   /**
@@ -755,26 +801,34 @@ export class ActionExecutor {
   }
 
   private submitRaiseForm(): boolean {
-    // Try 1: Click the submit button with React-compatible click (fresh query).
+    // Try 1: the class-based submit input/button.
     const submitBtn = document.querySelector(SEL.raiseSubmitBtn) as HTMLElement | null;
-    if (submitBtn && !(submitBtn as HTMLInputElement).disabled) {
+    if (submitBtn && !(submitBtn as HTMLInputElement).disabled && this.clickable(submitBtn)) {
       this.dispatchReactClick(submitBtn);
-      log.debug('Clicked raise submit (dispatchEvent)');
+      log.debug('Clicked raise submit (class)');
       return true;
     }
 
-    // Try 2: Submit the form element directly (fresh query).
-    const form = document.querySelector(SEL.raiseForm) as HTMLFormElement | null;
-    if (form) {
-      try {
-        form.requestSubmit();
-        log.debug('Submitted form via requestSubmit()');
-        return true;
-      } catch {
-        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-        log.debug('Submitted form via submit event dispatch');
-        return true;
-      }
+    // Try 2: a confirm button found by TEXT, scoped to the sizing form (robust to
+    // class changes). After the form opens, the confirm is typically "Bet" /
+    // "Raise" / "Confirm" or shows the amount. Scoping to the form avoids clicking
+    // the original opener button still behind it.
+    const formEl = this.findRaiseForm();
+    const scope: ParentNode = formEl ?? document;
+    const confirm = (Array.from(scope.querySelectorAll('button, input[type="submit"], input[type="button"]')) as HTMLElement[])
+      .find((b) => this.clickable(b)
+        && /^(bet|raise|confirm)\b|^\$?\d/i.test(((b.textContent || (b as HTMLInputElement).value) || '').trim()));
+    if (confirm) {
+      this.dispatchReactClick(confirm);
+      log.debug(`Clicked raise submit (text: "${confirm.textContent?.trim()}")`);
+      return true;
+    }
+
+    // Try 3: submit the form element directly.
+    const form = (formEl?.closest('form') ?? document.querySelector('form.raise-controller-form') ?? document.querySelector(SEL.raiseForm)) as HTMLFormElement | null;
+    if (form && typeof form.requestSubmit === 'function') {
+      try { form.requestSubmit(); log.debug('Submitted via requestSubmit()'); return true; }
+      catch { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); return true; }
     }
 
     log.warn('Could not submit raise');
