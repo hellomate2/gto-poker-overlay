@@ -37,12 +37,6 @@ const SEL = {
   communityCards: '.table-cards .card',
 } as const;
 
-// Any enabled action button — used both to detect "it's our turn" and to
-// confirm the action area is still live.
-const ANY_ENABLED_BUTTON =
-  `${SEL.checkBtn}:not([disabled]), ${SEL.callBtn}:not([disabled]), ` +
-  `${SEL.foldBtn}:not([disabled]), ${SEL.raiseBtn}:not([disabled]), ${SEL.betBtn}:not([disabled])`;
-
 // Maximum time to wait for an element to appear in the DOM
 const WAIT_TIMEOUT = 2500;
 const WAIT_POLL_INTERVAL = 100;
@@ -288,8 +282,67 @@ export class ActionExecutor {
     if (document.querySelector(SEL.actionSignal)) return true;
     // Secondary: our seat is the current decision-maker.
     if (document.querySelector(SEL.decisionCurrentHero)) return true;
-    // Tertiary: at least one action button is present AND enabled.
-    return !!document.querySelector(ANY_ENABLED_BUTTON);
+    // Tertiary: at least one action button is live (class OR visible text).
+    return this.hasLiveActionButton();
+  }
+
+  /** True if any standard action button is live (matched by CSS class OR text). */
+  private hasLiveActionButton(): boolean {
+    return (['check', 'call', 'fold', 'raise', 'bet'] as const)
+      .some((k) => this.actionButton(k) !== null);
+  }
+
+  /** Is this element a clickable (enabled + visible) button? */
+  private clickable(btn: HTMLElement | null): boolean {
+    if (!btn || (btn as HTMLButtonElement).disabled) return false;
+    const s = getComputedStyle(btn);
+    if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') return false;
+    return btn.offsetWidth > 0 && btn.offsetHeight > 0;
+  }
+
+  /**
+   * Find a live action button by CSS class first, then by visible TEXT. PokerNow's
+   * button markup/classes vary by version and table, so a class-only lookup can
+   * silently find nothing and freeze the bot (decides but never clicks). The text
+   * fallback makes clicking robust. Exact 'check'/'fold' matches avoid catching
+   * pre-action combo buttons like "Check or Fold".
+   */
+  private actionButton(kind: 'check' | 'call' | 'fold' | 'raise' | 'bet'): HTMLElement | null {
+    const sel = { check: SEL.checkBtn, call: SEL.callBtn, fold: SEL.foldBtn, raise: SEL.raiseBtn, bet: SEL.betBtn }[kind];
+    const byClass = document.querySelector(sel) as HTMLElement | null;
+    if (this.clickable(byClass)) return byClass;
+    const matches = (t: string): boolean => {
+      switch (kind) {
+        case 'check': return t === 'check';
+        case 'fold': return t === 'fold';
+        case 'call': return t === 'call' || t.startsWith('call ');
+        case 'raise': return t === 'raise' || t.startsWith('raise ');
+        case 'bet': return t === 'bet' || t.startsWith('bet ');
+      }
+    };
+    for (const b of Array.from(document.querySelectorAll('button')) as HTMLElement[]) {
+      if (this.clickable(b) && matches((b.textContent || '').trim().toLowerCase())) return b;
+    }
+    return null;
+  }
+
+  /** Click an action button found by class-or-text. Returns false if none is live. */
+  private clickActionButton(kind: 'check' | 'call' | 'fold' | 'raise' | 'bet'): boolean {
+    const el = this.actionButton(kind);
+    if (!el) return false;
+    this.dispatchReactClick(el);
+    log.debug(`Clicked ${kind}: "${el.textContent?.trim()}"`);
+    return true;
+  }
+
+  /** Wait until any action button is live (text-robust), or timeout. */
+  private async waitForActionButtons(timeout: number): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      if (this.hasLiveActionButton()) return true;
+      await this.sleep(WAIT_POLL_INTERVAL);
+    }
+    return this.hasLiveActionButton();
   }
 
   // ============================================================
@@ -298,19 +351,12 @@ export class ActionExecutor {
 
   /** Read which standard action buttons are present AND enabled in the live DOM. */
   private readAvailableButtons(): AvailableButtons {
-    const enabled = (sel: string): boolean => {
-      const b = document.querySelector(sel) as HTMLButtonElement | null;
-      if (!b || b.disabled) return false;
-      const s = getComputedStyle(b);
-      if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') return false;
-      return b.offsetWidth > 0 && b.offsetHeight > 0;
-    };
     return {
-      check: enabled(SEL.checkBtn),
-      call: enabled(SEL.callBtn),
-      fold: enabled(SEL.foldBtn),
-      raise: enabled(SEL.raiseBtn),
-      bet: enabled(SEL.betBtn),
+      check: !!this.actionButton('check'),
+      call: !!this.actionButton('call'),
+      fold: !!this.actionButton('fold'),
+      raise: !!this.actionButton('raise'),
+      bet: !!this.actionButton('bet'),
     };
   }
 
@@ -331,8 +377,32 @@ export class ActionExecutor {
       return false;
     }
     log.warn(`Safe fallback: ${safe}`);
-    const sel = safe === 'check' ? SEL.checkBtn : SEL.foldBtn;
-    return this.reliableClick(sel);
+    return this.clickActionButton(safe === 'check' ? 'check' : 'fold');
+  }
+
+  /**
+   * Best-effort auto buy-back-in so unattended self-play keeps cycling after a
+   * bust. Clicks a buy-in / rebuy / add-chips control found by visible TEXT
+   * (PokerNow uses the same "Buy In" label for the trigger and the dialog
+   * confirm, so calling this each poll opens then confirms over two ticks, using
+   * PokerNow's default amount). Exact-ish text match avoids clicking unrelated
+   * dialogs. No-op (returns false) when no such control is visible. Public so the
+   * bot loop can call it every poll.
+   */
+  handleRebuy(): boolean {
+    const re = /^(buy[\s-]?in|rebuy|add[\s-]?on|add chips|top[\s-]?up|reload chips)$/i;
+    const els = Array.from(document.querySelectorAll(
+      'button, [role="button"], input[type="submit"], input[type="button"]',
+    )) as HTMLElement[];
+    for (const e of els) {
+      const t = ((e.textContent || (e as HTMLInputElement).value) || '').trim();
+      if (re.test(t) && this.clickable(e)) {
+        log.warn(`Auto buy-back-in: clicking "${t}"`);
+        this.dispatchReactClick(e);
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -438,7 +508,7 @@ export class ActionExecutor {
 
   private async executeWithRetry(action: ActionType, amount?: number): Promise<boolean> {
     // First, wait for ANY action button to be present and enabled.
-    const buttonReady = await this.waitForElement(ANY_ENABLED_BUTTON, WAIT_TIMEOUT);
+    const buttonReady = await this.waitForActionButtons(WAIT_TIMEOUT);
     if (!buttonReady) {
       log.warn('No action buttons found after waiting — may not be our turn');
       return false;
@@ -479,32 +549,32 @@ export class ActionExecutor {
     switch (action) {
       case 'fold':
         // If check is available, always check instead of folding.
-        if (await this.reliableClick(SEL.checkBtn)) return true;
-        if (await this.reliableClick(SEL.foldBtn)) return true;
+        if (this.clickActionButton('check')) return true;
+        if (this.clickActionButton('fold')) return true;
         return false;
 
       case 'check':
-        if (await this.reliableClick(SEL.checkBtn)) return true;
-        if (await this.reliableClick(SEL.foldBtn)) return true;
+        if (this.clickActionButton('check')) return true;
+        if (this.clickActionButton('fold')) return true;
         return false;
 
       case 'call':
-        if (await this.reliableClick(SEL.callBtn)) return true;
-        if (await this.reliableClick(SEL.checkBtn)) return true;
+        if (this.clickActionButton('call')) return true;
+        if (this.clickActionButton('check')) return true;
         return false;
 
       case 'bet':
       case 'raise':
         if (await this.executeRaise(amount)) return true;
         // Raise failed/disabled — try call, then check as fallback.
-        if (await this.reliableClick(SEL.callBtn)) return true;
-        if (await this.reliableClick(SEL.checkBtn)) return true;
+        if (this.clickActionButton('call')) return true;
+        if (this.clickActionButton('check')) return true;
         return false;
 
       case 'allin':
         if (await this.executeAllIn()) return true;
-        if (await this.reliableClick(SEL.callBtn)) return true;
-        if (await this.reliableClick(SEL.checkBtn)) return true;
+        if (this.clickActionButton('call')) return true;
+        if (this.clickActionButton('check')) return true;
         return false;
 
       default:
@@ -519,7 +589,7 @@ export class ActionExecutor {
 
   private async executeRaise(amount?: number): Promise<boolean> {
     // FRESH LOOKUP: re-query the raise/bet button right here.
-    const raiseClicked = await this.reliableClick(SEL.raiseBtn) || await this.reliableClick(SEL.betBtn);
+    const raiseClicked = this.clickActionButton('raise') || this.clickActionButton('bet');
     if (!raiseClicked) {
       log.debug('Raise/bet button not available');
       return false;
@@ -665,7 +735,7 @@ export class ActionExecutor {
   }
 
   private async executeAllIn(): Promise<boolean> {
-    const raiseClicked = await this.reliableClick(SEL.raiseBtn) || await this.reliableClick(SEL.betBtn);
+    const raiseClicked = this.clickActionButton('raise') || this.clickActionButton('bet');
     if (!raiseClicked) return false;
 
     const form = await this.waitForElement(SEL.raiseForm, 1500);
@@ -725,7 +795,7 @@ export class ActionExecutor {
       const start = Date.now();
       const check = (): boolean => {
         const formGone = !document.querySelector(SEL.raiseForm);
-        const buttonsGone = !document.querySelector(ANY_ENABLED_BUTTON);
+        const buttonsGone = !this.hasLiveActionButton();
         const notOurTurn = !this.isHeroTurnLive();
         return notOurTurn || (formGone && buttonsGone);
       };

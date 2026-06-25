@@ -137,6 +137,8 @@ class PokerBot {
       // decision) so the prompt never permanently covers the action area.
       if (this.settings.autoPlay) {
         try { this.executor.dismissBlockingPrompts(); } catch (e) { console.warn('[GTO Bot] prompt-dismiss error', e); }
+        // Auto buy-back-in so unattended self-play keeps cycling after a bust.
+        try { this.executor.handleRebuy(); } catch (e) { console.warn('[GTO Bot] rebuy error', e); }
       }
 
       // CLEAN-STATE GUARD: only act when the table is fully, sanely parsed —
