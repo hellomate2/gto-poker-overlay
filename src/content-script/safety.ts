@@ -43,6 +43,35 @@ export function chooseSafeAction(buttons: AvailableButtons): SafeAction {
   return 'none';
 }
 
+export type FallbackAction = 'call' | 'check' | 'fold' | 'none';
+
+/**
+ * The fallback action when the intended action could not be executed, made
+ * AWARE of what the bot meant to do:
+ *   - If it INTENDED to put chips in (raise/bet/call/all-in), folding throws away
+ *     a hand it judged worth playing — so prefer CHECK (free) if available, else
+ *     CALL, and only FOLD if neither. This fixes the disaster where a failed
+ *     raise on a raise-or-fold spot (no check) silently became a fold, so two
+ *     bots just traded blinds.
+ *   - Otherwise (intended check/fold, or unknown/engine error), stay conservative:
+ *     CHECK if free, else FOLD. Never call on a misread.
+ */
+export function chooseFallbackAction(
+  buttons: AvailableButtons,
+  intent?: 'fold' | 'check' | 'call' | 'bet' | 'raise' | 'allin',
+): FallbackAction {
+  const wantedToPlay = intent === 'raise' || intent === 'bet' || intent === 'call' || intent === 'allin';
+  if (wantedToPlay) {
+    if (buttons.check) return 'check'; // continue for free rather than fold
+    if (buttons.call) return 'call';   // we had a hand worth playing — call, don't fold
+    if (buttons.fold) return 'fold';
+    return 'none';
+  }
+  if (buttons.check) return 'check';
+  if (buttons.fold) return 'fold';
+  return 'none';
+}
+
 // ============================================================
 // Blocking-prompt / modal dismissal
 // ============================================================

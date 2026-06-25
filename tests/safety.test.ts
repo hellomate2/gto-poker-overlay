@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   chooseSafeAction,
+  chooseFallbackAction,
   findPromptToDismiss,
   PROMPT_DEFAULTS,
   detectStraddleAmount,
@@ -15,6 +16,38 @@ import {
 // Defensive-robustness pure logic. These mirror exactly what the live executor /
 // scraper feed in, so a passing test here means the live safe path is correct.
 // ============================================================
+
+describe('chooseFallbackAction — never fold a hand we meant to play', () => {
+  const none = { check: false, call: false, fold: false, raise: false, bet: false };
+
+  it('a failed RAISE on a raise-or-fold spot (no check) CALLS, never folds', () => {
+    // This is the exact bug from the bot-vs-bot log: SB intends to raise, the
+    // raise fails, and with no Check available the old fallback folded — so the
+    // bots just traded blinds. Now it must CALL.
+    expect(chooseFallbackAction({ ...none, call: true, raise: true, fold: true }, 'raise')).toBe('call');
+    expect(chooseFallbackAction({ ...none, call: true, fold: true }, 'bet')).toBe('call');
+    expect(chooseFallbackAction({ ...none, call: true, fold: true }, 'allin')).toBe('call');
+  });
+
+  it('a failed aggressive action CHECKS for free when possible (cheaper than calling)', () => {
+    expect(chooseFallbackAction({ ...none, check: true, call: true }, 'raise')).toBe('check');
+  });
+
+  it('only folds an intended-aggressive action when neither check nor call exists', () => {
+    expect(chooseFallbackAction({ ...none, fold: true }, 'raise')).toBe('fold');
+  });
+
+  it('intended check/fold stays conservative (check else fold, never call)', () => {
+    expect(chooseFallbackAction({ ...none, call: true, fold: true }, 'fold')).toBe('fold');
+    expect(chooseFallbackAction({ ...none, check: true, call: true }, 'check')).toBe('check');
+    expect(chooseFallbackAction({ ...none, call: true }, 'fold')).toBe('none');
+  });
+
+  it('no intent (engine error) is conservative: check else fold, never call', () => {
+    expect(chooseFallbackAction({ ...none, call: true, fold: true })).toBe('fold');
+    expect(chooseFallbackAction({ ...none, call: true })).toBe('none');
+  });
+});
 
 describe('chooseSafeAction — the safe legal action when uncertain', () => {
   const none = { check: false, call: false, fold: false, raise: false, bet: false };

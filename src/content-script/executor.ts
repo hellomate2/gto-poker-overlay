@@ -1,7 +1,7 @@
 import { ActionType, BotDecision, BotSettings, DEFAULT_SETTINGS, StrategyDistribution } from '../types/poker';
 import { log } from '../core/logger';
 import {
-  AvailableButtons, chooseSafeAction, findPromptToDismiss, ScrapedButton,
+  AvailableButtons, chooseSafeAction, chooseFallbackAction, findPromptToDismiss, ScrapedButton,
 } from './safety';
 
 // ============================================================
@@ -252,8 +252,8 @@ export class ActionExecutor {
       // legal action from the LIVE buttons — check if we can, else fold — so the
       // bot never sits frozen and never risks chips on a misread.
       if (!success && this.isHeroTurnLive()) {
-        log.warn('All action attempts failed — falling back to safe legal action');
-        success = await this.safeFallback();
+        log.warn('All action attempts failed — intent-aware fallback');
+        success = await this.safeFallback(action.type);
       }
 
       if (success) {
@@ -383,17 +383,21 @@ export class ActionExecutor {
    * within the time budget. Public so the bot loop can invoke it directly when
    * the engine throws / returns nothing usable.
    */
-  async safeFallback(): Promise<boolean> {
+  async safeFallback(intent?: ActionType): Promise<boolean> {
     // A raise form may be covering the buttons from a failed raise attempt.
     await this.closeRaiseForm();
     const buttons = this.readAvailableButtons();
-    const safe = chooseSafeAction(buttons);
-    if (safe === 'none') {
-      log.debug('Safe fallback: no actionable buttons present');
+    // Intent-aware: if we MEANT to put chips in (raise/bet/call/all-in), never let
+    // the fallback fold a hand we judged worth playing — check if free, else call.
+    // Only check/fold intents (or an engine error with no intent) fold.
+    const choice = intent ? chooseFallbackAction(buttons, intent) : chooseSafeAction(buttons);
+    if (choice === 'none') {
+      log.debug('Fallback: no actionable buttons present');
+      this.setStatus('fallback: no buttons');
       return false;
     }
-    const ok = this.clickActionButton(safe === 'check' ? 'check' : 'fold');
-    this.setStatus(ok ? `safe fallback: ${safe}` : `safe fallback ${safe} FAILED`);
+    const ok = this.clickActionButton(choice);
+    this.setStatus(ok ? `fallback: ${choice}${intent ? ` (wanted ${intent})` : ''}` : `fallback ${choice} FAILED`);
     return ok;
   }
 
