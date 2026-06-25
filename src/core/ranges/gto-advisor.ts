@@ -13,6 +13,15 @@ import { shoveRange, callRange } from './pushfold-nash';
 // for example, a hand like K6s is a small open, not a shove.)
 const PUSHFOLD_MAX_BB = 10;
 
+// Hands strong enough to CALL OFF a deep (>25bb) preflop all-in. Stacking off
+// ~30-100bb vs a 3-bet jam is a tight premium decision — NOT the wide "peel a
+// small 3-bet" range from the vs-3bet chart. Without this, the bot read a 48bb
+// jam as a normal 3-bet and "called" with hands like T9s — a stack-off punt.
+const DEEP_JAM_CALL = new Set([
+  'AA', 'KK', 'QQ', 'JJ', 'TT', '99',
+  'AKs', 'AKo', 'AQs', 'AQo', 'AJs', 'KQs',
+]);
+
 /**
  * Look up a preflop chart by key. When the table is heads-up (exactly two
  * active players) the SOLVED heads-up charts (headsup-solved.ts, a real CFR+
@@ -41,16 +50,22 @@ function countActivePlayers(state: GameState): number {
   ).length;
 }
 
-/** Hero effective stack in big blinds (capped by the largest opponent). */
+/**
+ * Hero effective stack in big blinds = total chips each player has IN THIS HAND
+ * (remaining stack + chips already committed this hand), capped by the largest
+ * opponent. Counting committed chips is essential: when villain is all-in their
+ * remaining stack is 0, and ignoring their committed bet would compute a 0bb
+ * effective stack and skip the facing-a-jam logic entirely.
+ */
 function heroEffectiveStackBB(state: GameState): number {
   const hero = state.players[state.heroIndex];
   const bb = state.bigBlind || 1;
-  const opponentStacks = state.players
+  const heroTotal = hero.stack + (hero.currentBet || 0);
+  const oppTotals = state.players
     .filter((p, i) => i !== state.heroIndex && !p.isSittingOut)
-    .map(p => p.stack);
-  const maxOpp = opponentStacks.length ? Math.max(...opponentStacks) : hero.stack;
-  const eff = Math.min(hero.stack, maxOpp);
-  return eff / bb;
+    .map(p => p.stack + (p.currentBet || 0));
+  const maxOpp = oppTotals.length ? Math.max(...oppTotals) : heroTotal;
+  return Math.min(heroTotal, maxOpp) / bb;
 }
 
 export interface GTOAdvice {
@@ -201,10 +216,22 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
     const facingAllIn = pfActions.some(a => a.type === 'allin');
     const firstIn = !pfActions.some(a => a.type === 'allin' || a.type === 'raise');
 
-    if (facingAllIn && effStackBB <= 25) {
-      const inCall = callRange(effStackBB).has(handName);
+    // Treat the spot as a JAM to call/fold if villain is all-in OR the bet to
+    // match is a huge fraction of the effective stack (robust to the scraper not
+    // tagging type 'allin'). Calling here commits the stack, so it must use a
+    // jam-call range — NOT the vs-3bet chart's "peel a small 3-bet" call.
+    const bb = state.bigBlind || 1;
+    const curBetBB = (state.currentBet || 0) / bb;
+    const nearJam = facingAllIn || (curBetBB >= 0.6 * effStackBB && curBetBB > 12);
+
+    if (nearJam) {
+      // <=25bb: exact Nash call range (calling wide is correct short).
+      // >25bb: tight premium stack-off range (T9s etc. must FOLD a deep jam).
+      const inCall = effStackBB <= 25
+        ? callRange(effStackBB).has(handName)
+        : DEEP_JAM_CALL.has(handName);
       return {
-        scenario: `Push/Fold Nash — Call vs Jam (${effStackBB.toFixed(0)}bb eff)`,
+        scenario: `Facing all-in — call/fold (${effStackBB.toFixed(0)}bb eff)`,
         hand: handName,
         actions: inCall
           ? [{ action: 'All-In', frequency: 100 }]
