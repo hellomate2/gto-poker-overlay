@@ -136,7 +136,7 @@ function main(): void {
   const sb = primary.strategies[Node.SB_OPEN];
   const fmt = (n: string) => {
     const s = sb[nameToIndex(n)];
-    return `fold ${(s[0] * 100).toFixed(0)} / limp ${(s[1] * 100).toFixed(0)} / open ${(s[2] * 100).toFixed(0)} / jam ${(s[3] * 100).toFixed(0)}`;
+    return `fold ${(s[0] * 100).toFixed(0)} / open ${(s[1] * 100).toFixed(0)} / limp ${(s[2] * 100).toFixed(0)} / jam ${(s[3] * 100).toFixed(0)}`;
   };
   for (const h of ['AA', 'KK', 'AKs', '72o', '32o', 'K2o', 'A5s']) {
     console.log(`  SB ${h}: ${fmt(h)}`);
