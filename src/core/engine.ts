@@ -107,7 +107,11 @@ export class DecisionEngine {
     const villain = state.street !== 'preflop' ? this.identifyVillain(state) : null;
     if (villain) {
       const villainProfile = this.profiler.profile(villain);
-      if (villainProfile.confidence > 0.1) {
+      // Only deviate from the (proven-strong) GTO baseline once we have a SOLID
+      // read. Simulation showed that exploiting on a thin sample is net -EV: the
+      // profiler's type is noisy under ~50 hands and the adjustment costs more
+      // than it gains. confidence = min(1, hands/100), so 0.5 ≈ 50+ hands.
+      if (villainProfile.confidence >= 0.5) {
         console.log(`[GTO Bot] Villain ${villain}: ${villainProfile.type} (${(villainProfile.confidence * 100).toFixed(0)}%)`);
         decision.mixedStrategy = this.adjuster.adjust(
           decision.mixedStrategy, villainProfile, state,
@@ -1129,21 +1133,54 @@ export class DecisionEngine {
     const heroCards: [number, number] | null = state.heroCards
       ? [cardToId(state.heroCards[0]), cardToId(state.heroCards[1])]
       : null;
+    const boardIds = state.communityCards.map(c => cardToId(c));
+    const postflop = boardIds.length >= 3 && !!heroCards;
     const flushBoardBlunder = heroCards
       ? this.isDangerousFlushBoard(heroCards, state.communityCards)
       : false;
+
+    // These two overrides used to fire on `equity` measured vs a RANDOM hand,
+    // which is range-blind and overrates made hands that are crushed by villain's
+    // actual continuing range (e.g. 2nd pair is ~65% vs random but far behind a
+    // betting range). That turned sound checks into -EV bets and sound folds into
+    // -EV calls. Postflop we now CONFIRM with equity vs the concrete continuing
+    // range (the same model decidePostflopRanged uses) before overriding, so the
+    // safety net only fires when the hand is genuinely ahead — not just ahead of
+    // a random holding. Preflop (no board) keeps the original vs-random behavior.
+    let eqRCache: number | null = null;
+    const eqRange = (): number => {
+      if (eqRCache !== null) return eqRCache;
+      if (!postflop || !heroCards) return (eqRCache = equity);
+      const activeVillains = state.players.filter((p, i) => i !== state.heroIndex && !p.isSittingOut).length;
+      const range = villainContinuingRange(heroCards, boardIds, { aggression: facingBet, multiway: activeVillains > 1 });
+      eqRCache = range.length > 0 ? equityVsRange(heroCards, boardIds, range, 2000).equity : equity;
+      return eqRCache;
+    };
+
+    // Never check a hand that is genuinely strong — but confirm vs the continuing
+    // range postflop so we don't force-bet a range-blind 80%-vs-random hand.
     if (decision.action === 'check' && !facingBet && equity >= 0.80 && !flushBoardBlunder) {
-      const betSize = Math.max(state.bigBlind, Math.round(state.pot * 0.67));
-      decision.action = 'bet';
-      decision.amount = betSize;
-      decision.reasoning = `Must bet ${betSize} (${(equity * 100).toFixed(0)}% eq) [sanity]`;
-      decision.mixedStrategy = { fold: 0, check: 0.05, call: 0, bets: [{ amount: betSize, probability: 0.95 }] };
+      const strongVsRange = postflop ? eqRange() >= 0.72 : true;
+      if (strongVsRange) {
+        const betSize = Math.max(state.bigBlind, Math.round(state.pot * 0.67));
+        decision.action = 'bet';
+        decision.amount = betSize;
+        decision.reasoning = `Must bet ${betSize} (${(equity * 100).toFixed(0)}% eq) [sanity]`;
+        decision.mixedStrategy = { fold: 0, check: 0.05, call: 0, bets: [{ amount: betSize, probability: 0.95 }] };
+      }
     }
 
-    // Never fold with 65%+ equity
+    // Never fold a genuinely strong hand — but postflop, only refuse the fold when
+    // calling is actually +EV vs the continuing range (beats the pot odds). This
+    // stops the bot from turning a correct fold into a -EV "too strong to fold"
+    // call with a hand that only looks strong vs a random holding.
     if (decision.action === 'fold' && equity >= 0.65) {
-      decision.action = 'call';
-      decision.reasoning += ' [too strong to fold]';
+      const potOdds = facingBet ? toCall / (state.pot + toCall) : 0;
+      const callIsPlus = postflop ? eqRange() > potOdds + 0.02 : true;
+      if (callIsPlus) {
+        decision.action = 'call';
+        decision.reasoning += ' [too strong to fold]';
+      }
     }
 
     return decision;
