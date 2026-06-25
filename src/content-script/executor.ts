@@ -238,6 +238,20 @@ export class ActionExecutor {
         return false;
       }
 
+      // FRESHNESS GATE: the decision was computed from a snapshot up to ~2.5s ago.
+      // If the live spot no longer matches what we decided against (a new board
+      // card, or the amount-to-call changed because villain's bet finished
+      // animating after our snapshot), abort and let the next poll recompute on the
+      // real state — never act on a stale plan for a spot that has changed.
+      const liveSig = this.readSpotSignature();
+      if (entrySig && liveSig
+        && (liveSig.boardLength !== entrySig.boardLength
+          || Math.abs(liveSig.currentBet - entrySig.currentBet) > 1)) {
+        log.warn('Spot changed during action delay — aborting to recompute');
+        this.setStatus('spot changed; recompute');
+        return false;
+      }
+
       // Clear any blocking prompt/modal that might be covering the buttons before
       // we try to act (run-it-twice, show/muck, away nudge, etc.).
       this.dismissBlockingPrompts();

@@ -346,14 +346,25 @@ export class PokerNowScraper {
         if (!name) return;
 
         const isHero = el.classList.contains('you-player');
-        const isDealer = !!el.querySelector(SEL.dealerChip) || !!el.querySelector('.dealer-button');
-        const isSittingOut = el.classList.contains('sitting-out') || el.classList.contains('empty');
+        const isDealer = !!el.querySelector(SEL.dealerChip) || !!el.querySelector('.dealer-button')
+          || !!el.querySelector('[class*="dealer-button"], [class*="dealer-position"]');
 
         const stack = parseChipValue(stackEl?.textContent || '0');
 
         const betEl = el.querySelector('.table-player-bet .chips-value') ||
                       el.querySelector('.table-player-bet-value .chips-value');
         const currentBet = parseChipValue(betEl?.textContent || '0');
+
+        // A seat is IN THIS HAND if it's the hero, has hole cards rendered, or has
+        // chips wagered. A dormant seat on a rotating table (a name + stack but not
+        // dealt in) has none of these — treat it as sitting out so HU is detected
+        // as 2 players (wide HU charts, ~81% button open) instead of being misread
+        // as 3 players and using the tight 6-max ranges (which folds the button far
+        // too often). Card/bet presence makes this robust across streets.
+        const sitClass = ['sitting-out', 'empty', 'away', 'sitting', 'standing', 'sit-out']
+          .some(c => el.classList.contains(c));
+        const cardCount = el.querySelectorAll('.table-player-cards .card, .card').length;
+        const isSittingOut = sitClass || !(isHero || cardCount > 0 || currentBet > 0);
 
         if (isHero) heroIndex = players.length;
         if (isDealer) dealerIndex = players.length;
@@ -368,10 +379,20 @@ export class PokerNowScraper {
       if (players.length < 2 || heroIndex === -1) return null;
 
       // Positions
-      if (dealerIndex === -1) dealerIndex = 0;
       const activePlayers = players.filter(p => !p.isSittingOut);
-      const activeDealer = activePlayers.findIndex(p => p.isDealer);
-      const positions = assignPositions(activePlayers.length, Math.max(0, activeDealer));
+      // Dealer button: prefer the scraped chip. If it wasn't found, INFER it rather
+      // than blindly defaulting to seat 0 (which flips SB/BB and IP/OOP for the whole
+      // hand). Heads-up, the button posts the small blind, so the active player with
+      // the smaller positive preflop bet is the dealer.
+      if (dealerIndex === -1) {
+        if (activePlayers.length === 2) {
+          const posters = activePlayers.filter(p => p.currentBet > 0).sort((a, b) => a.currentBet - b.currentBet);
+          if (posters.length >= 1) { posters[0].isDealer = true; dealerIndex = players.indexOf(posters[0]); }
+        }
+        if (dealerIndex === -1) dealerIndex = 0; // last resort
+      }
+      const activeDealer = Math.max(0, activePlayers.findIndex(p => p.isDealer));
+      const positions = assignPositions(activePlayers.length, activeDealer);
       activePlayers.forEach((p, i) => { p.position = positions[i]; });
 
       // Pot

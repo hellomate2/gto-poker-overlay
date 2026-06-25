@@ -109,8 +109,13 @@ class PokerBot {
           await this.engine.processCompletedHand(state);
         }
         const heroStack = state.players[state.heroIndex]?.stack || 0;
-        if (this.lastHandNumber >= 0 && this.lastHeroStack > 0) {
-          const delta = heroStack - this.lastHeroStack;
+        const delta = heroStack - this.lastHeroStack;
+        // A rebuy / top-up adds chips that are NOT winnings. In heads-up you can win
+        // at most what you had at risk, so a positive jump larger than the prior
+        // stack is an auto-buy-back-in, not a hand result — exclude it from P/L so
+        // session profit actually measures whether the bot is winning.
+        const isRebuy = delta > this.lastHeroStack + (state.bigBlind || 20);
+        if (this.lastHandNumber >= 0 && this.lastHeroStack > 0 && !isRebuy) {
           this.sessionProfit += delta;
           this.sessionHands++;
         }
