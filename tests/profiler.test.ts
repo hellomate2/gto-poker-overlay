@@ -106,6 +106,19 @@ describe('PlayerProfiler confidence & sample size', () => {
     expect(many.confidence).toBeLessThanOrEqual(1);
   });
 
+  it('pins the three confidence tiers exactly', () => {
+    // hands<15:   hands/30 * 0.25   (e.g. 10 -> 0.0833)
+    // 15<=hands<30: hands/30 * 0.5  (e.g. 20 -> 0.3333)
+    // hands>=30:  min(1, hands/100) (e.g. 60 -> 0.6, 100 -> 1)
+    const conf = (hands: number) =>
+      new PlayerProfiler(trackerWith(statsFor({ name: 'X', hands, vpipPct: 40, pfrPct: 5, af: 0.8 }))).profile('X').confidence;
+    expect(conf(10)).toBeCloseTo(10 / 30 * 0.25, 4); // ~0.0833
+    expect(conf(20)).toBeCloseTo(20 / 30 * 0.5, 4);  // ~0.3333
+    expect(conf(60)).toBeCloseTo(0.6, 4);
+    expect(conf(100)).toBe(1);
+    expect(conf(500)).toBe(1); // saturates
+  });
+
   it('surfaces computed VPIP/PFR back through the profile stats', () => {
     const profiler = new PlayerProfiler(
       trackerWith(statsFor({ name: 'C', hands: 100, vpipPct: 25, pfrPct: 20, af: 2 })),
@@ -131,21 +144,101 @@ describe('PlayerProfiler confidence & sample size', () => {
 });
 
 describe('PlayerProfiler static helpers', () => {
-  it('maps types to HUD labels', () => {
+  it('maps EVERY type to its exact HUD label', () => {
+    expect(PlayerProfiler.typeLabel('nit')).toBe('NIT');
+    expect(PlayerProfiler.typeLabel('tag')).toBe('TAG');
+    expect(PlayerProfiler.typeLabel('lag')).toBe('LAG');
     expect(PlayerProfiler.typeLabel('calling_station')).toBe('FISH');
     expect(PlayerProfiler.typeLabel('maniac')).toBe('MAN');
     expect(PlayerProfiler.typeLabel('unknown')).toBe('???');
   });
 
-  it('provides a distinct color per known type', () => {
-    const types: PlayerType[] = ['nit', 'tag', 'lag', 'calling_station', 'maniac'];
-    const colors = types.map(t => PlayerProfiler.typeColor(t));
-    expect(new Set(colors).size).toBe(types.length);
+  it('maps EVERY type to its exact HUD color (incl. unknown gray)', () => {
+    // Pin the hex values: a swap (nit<->tag) keeps colors distinct but is wrong.
+    expect(PlayerProfiler.typeColor('nit')).toBe('#4a90d9');
+    expect(PlayerProfiler.typeColor('tag')).toBe('#2ecc71');
+    expect(PlayerProfiler.typeColor('lag')).toBe('#f39c12');
+    expect(PlayerProfiler.typeColor('calling_station')).toBe('#e74c3c');
+    expect(PlayerProfiler.typeColor('maniac')).toBe('#9b59b6');
+    expect(PlayerProfiler.typeColor('unknown')).toBe('#95a5a6');
+    // And all six are distinct.
+    const all: PlayerType[] = ['nit', 'tag', 'lag', 'calling_station', 'maniac', 'unknown'];
+    expect(new Set(all.map(t => PlayerProfiler.typeColor(t))).size).toBe(6);
   });
 
-  it('describes each type with non-empty text', () => {
-    for (const t of ['nit', 'tag', 'lag', 'calling_station', 'maniac', 'unknown'] as PlayerType[]) {
-      expect(PlayerProfiler.describeType(t).length).toBeGreaterThan(0);
-    }
+  it('describes each type with a DISCRIMINATING, non-empty string', () => {
+    // A discriminating substring catches a swapped/placeholder description that a
+    // bare length>0 check would miss.
+    expect(PlayerProfiler.describeType('nit')).toMatch(/tight/i);
+    expect(PlayerProfiler.describeType('tag')).toMatch(/tight-aggressive/i);
+    expect(PlayerProfiler.describeType('lag')).toMatch(/loose-aggressive/i);
+    expect(PlayerProfiler.describeType('calling_station')).toMatch(/passive|caller/i);
+    expect(PlayerProfiler.describeType('maniac')).toMatch(/aggressive/i);
+    expect(PlayerProfiler.describeType('unknown')).toMatch(/not enough data/i);
+  });
+});
+
+// ============================================================
+// classify() fallback branches — the brittle, overlapping later rules that the
+// archetype tests above never reach. Uses hands=100 so the reverse-engineered
+// vpip/pfr land on exact integers (no rounding ambiguity at the boundaries).
+// ============================================================
+
+describe('PlayerProfiler classify() fallback branches', () => {
+  it('17/16 af=2.5 -> tag (the vpip<20 && pfr>15 && af>2 nuance rule)', () => {
+    expect(classify({ hands: 100, vpipPct: 17, pfrPct: 16, af: 2.5 })).toBe('tag');
+  });
+
+  it('18/2 af=0.5 -> nit (the vpip<20 && af<1.5 nuance rule)', () => {
+    expect(classify({ hands: 100, vpipPct: 18, pfrPct: 2, af: 0.5 })).toBe('nit');
+  });
+
+  it('40/16 af=0.8 -> calling_station (the vpip>35 && af<1 nuance rule)', () => {
+    expect(classify({ hands: 100, vpipPct: 40, pfrPct: 16, af: 0.8 })).toBe('calling_station');
+  });
+
+  it('22/14 af=2.5 -> tag (default: af>2, vpip<=25)', () => {
+    expect(classify({ hands: 100, vpipPct: 22, pfrPct: 14, af: 2.5 })).toBe('tag');
+  });
+
+  it('a tracked player matching no archetype returns unknown (NOT the null-stats path)', () => {
+    // 22/14 af=1.6: too loose for nit, too tight/under-aggressive for tag/lag, not
+    // passive-enough-and-loose for calling_station -> falls through to 'unknown'
+    // even though hands>0 (confidence > 0). Distinct from the untracked case.
+    const p = new PlayerProfiler(
+      trackerWith(statsFor({ name: 'U', hands: 100, vpipPct: 22, pfrPct: 14, af: 1.6 })),
+    ).profile('U');
+    expect(p.type).toBe('unknown');
+    expect(p.confidence).toBeGreaterThan(0);
+  });
+
+  it('DOCUMENTS a classify boundary quirk: 28/24 af=2.0 falls to unknown (strict af>2)', () => {
+    // A clearly LAG-ish 28/24 player with af exactly 2.0 fails lag (needs af>2),
+    // fails the default af>2 branch, and ends as 'unknown'. This locks in the
+    // current (arguably-too-strict) boundary so an intentional fix is a conscious
+    // change, not a silent drift. See profiler.ts classify() default branch.
+    expect(classify({ hands: 100, vpipPct: 28, pfrPct: 24, af: 2.0 })).toBe('unknown');
+  });
+});
+
+// ============================================================
+// computeDisplayStats division-by-zero / empty guards — never exercised by the
+// statsFor helper (which always uses callCount=20, handsPlayed>0).
+// ============================================================
+
+describe('computeDisplayStats guards (via profile)', () => {
+  it('callCount=0 yields aggressionFactor 0 (no divide-by-zero)', () => {
+    const base = statsFor({ name: 'Z', hands: 60, vpipPct: 30, pfrPct: 10, af: 1 });
+    const profiler = new PlayerProfiler(
+      trackerWith({ ...base, callCount: 0, betCount: 5, raiseCount: 0 }),
+    );
+    expect(profiler.profile('Z').stats.aggressionFactor).toBe(0);
+  });
+
+  it('handsPlayed=0 is treated as untracked: unknown, confidence 0', () => {
+    const base = statsFor({ name: 'Z0', hands: 0, vpipPct: 0, pfrPct: 0, af: 0 });
+    const p = new PlayerProfiler(trackerWith({ ...base, handsPlayed: 0 })).profile('Z0');
+    expect(p.type).toBe('unknown');
+    expect(p.confidence).toBe(0);
   });
 });

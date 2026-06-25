@@ -15,10 +15,17 @@
     "ml:prep": "npx tsx ml/prep.ts",
     "ml:train": "python3 ml/train.py",
     "ml:verify": "npx tsx ml/verify.ts",
-    "ml:fixtures": "npx tsx ml/build-fixtures.ts && npx tsx ml/build-parity-inputs.ts && npx tsx ml/export-weights.ts && python3 ml/parity-gen.py"
+    "ml:fixtures": "npx tsx ml/build-fixtures.ts && npx tsx ml/build-parity-inputs.ts && npx tsx ml/export-weights.ts && python3 ml/parity-gen.py",
+    "lint": "eslint \"src/**/*.ts\" \"ml/**/*.ts\" \"tests/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\" \"ml/**/*.ts\" \"tests/**/*.ts\" \"*.md\" \"docs/**/*.md\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"ml/**/*.ts\" \"tests/**/*.ts\""
   },
   "devDependencies": {
     "@types/chrome": "^0.1.37",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "prettier": "^3.3.3",
     "copy-webpack-plugin": "^12.0.2",
     "css-loader": "^7.1.2",
     "html-webpack-plugin": "^5.6.3",

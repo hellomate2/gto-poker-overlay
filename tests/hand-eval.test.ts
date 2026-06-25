@@ -66,11 +66,16 @@ describe('hand category detection (5 cards)', () => {
 });
 
 describe('hand ranking ordering', () => {
-  it('royal flush beats a pair', () => {
+  it('royal flush beats a pair AND is the top straight flush', () => {
     const royal = evaluateHand(ids('Ah', 'Kh', 'Qh', 'Jh', 'Th'));
     const pair = evaluateHand(ids('Ah', 'Ad', 'Kc', '7s', '2h'));
+    const kingSF = evaluateHand(ids('Kh', 'Qh', 'Jh', 'Th', '9h'));
     expect(royal).toBeGreaterThan(pair);
     expect(compareHands(royal, pair)).toBeGreaterThan(0);
+    // A mere "beats a pair" check passes even if the royal were mis-evaluated as a
+    // plain flush/straight. Pin that it is actually the strongest straight flush.
+    expect(categoryOf(royal)).toBe(HAND_CATEGORY.STRAIGHT_FLUSH);
+    expect(royal).toBeGreaterThan(kingSF);
   });
 
   it('respects the full hand hierarchy', () => {
@@ -127,7 +132,43 @@ describe('best-of-N selection', () => {
     expect(six).toBe(five);
   });
 
-  it('throws on an invalid card count', () => {
-    expect(() => evaluateHand(ids('Ah', 'Kd'))).toThrow();
+  it('throws on an invalid card count (too few and too many)', () => {
+    expect(() => evaluateHand(ids('Ah', 'Kd'))).toThrow();                       // 2
+    expect(() => evaluateHand(ids('Ah', 'Kd', 'Qc', 'Js'))).toThrow();          // 4
+    expect(() => evaluateHand(ids('Ah', 'Kd', 'Qc', 'Js', 'Th', '9h', '8c', '7d'))).toThrow(); // 8
+    expect(() => evaluateHand(ids('Ah', 'Kd', 'Qc', 'Js', 'Th', '9h'))).not.toThrow();         // 6 ok
+  });
+});
+
+describe('handCategoryName & compareHands helpers', () => {
+  // One representative hand per category, paired with its expected display name.
+  const fixtures: Array<[string, number[], string]> = [
+    ['high card', ids('Ah', 'Jd', '8c', '5s', '2h'), 'High Card'],
+    ['pair', ids('Ah', 'Ad', 'Kc', '7s', '2h'), 'Pair'],
+    ['two pair', ids('Ah', 'Ad', '5c', '5s', '2h'), 'Two Pair'],
+    ['trips', ids('7h', '7d', '7c', 'Ks', '2h'), 'Three of a Kind'],
+    ['straight', ids('9h', '8d', '7c', '6s', '5h'), 'Straight'],
+    ['flush', ids('Ah', 'Jh', '8h', '5h', '2h'), 'Flush'],
+    ['full house', ids('Qh', 'Qd', 'Qc', '4s', '4h'), 'Full House'],
+    ['quads', ids('9h', '9d', '9c', '9s', 'Kh'), 'Four of a Kind'],
+    ['straight flush', ids('9h', '8h', '7h', '6h', '5h'), 'Straight Flush'],
+  ];
+
+  it('handCategoryName returns the correct label for all nine categories', () => {
+    for (const [, hand, name] of fixtures) {
+      expect(handCategoryName(evaluateHand(hand))).toBe(name);
+    }
+  });
+
+  it('handCategoryName returns "Unknown" for an out-of-range category', () => {
+    expect(handCategoryName(99 * 1_000_000)).toBe('Unknown');
+  });
+
+  it('compareHands gives sign of a-b (positive, negative, and zero)', () => {
+    const royal = evaluateHand(ids('Ah', 'Kh', 'Qh', 'Jh', 'Th'));
+    const pair = evaluateHand(ids('Ah', 'Ad', 'Kc', '7s', '2h'));
+    expect(compareHands(royal, pair)).toBeGreaterThan(0);
+    expect(compareHands(pair, royal)).toBeLessThan(0);
+    expect(compareHands(pair, pair)).toBe(0);
   });
 });

@@ -7,6 +7,8 @@ import {
   rankIndex,
   createDeck,
   removeCards,
+  shuffleDeck,
+  cardSetMask,
   allHoleCombos,
   handGroupName,
   handGroupIndex,
@@ -41,17 +43,23 @@ describe('card encoding', () => {
     expect(cardToId({ rank: 'A', suit: 'h' })).toBe(48);
   });
 
-  it('rankIndex orders ranks from 2 (low) to A (high)', () => {
-    expect(rankIndex('2')).toBe(0);
-    expect(rankIndex('A')).toBe(12);
-    expect(rankIndex('K')).toBe(11);
-    expect(rankIndex('A')).toBeGreaterThan(rankIndex('K'));
-    expect(rankIndex('T')).toBeGreaterThan(rankIndex('9'));
+  it('rankIndex is strictly monotonic 2..A across ALL 13 ranks', () => {
+    // Pin the full ordering, not just spot values — a transposition of two
+    // interior ranks (e.g. 5<->6) would slip past 2=0/A=12 checks.
+    expect(RANKS.map(rankIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    for (let i = 1; i < RANKS.length; i++) {
+      expect(rankIndex(RANKS[i])).toBe(rankIndex(RANKS[i - 1]) + 1);
+    }
   });
 
-  it('parseCard and cardToString are inverses', () => {
-    for (const s of ['Ah', 'Kd', 'Tc', '2s', '9h']) {
-      expect(cardToString(parseCard(s))).toBe(s);
+  it('parseCard and cardToString round-trip in BOTH directions for all 52 cards', () => {
+    for (const rank of RANKS) {
+      for (const suit of SUITS) {
+        const s = `${rank}${suit}`;
+        expect(cardToString(parseCard(s))).toBe(s);            // string -> card -> string
+        const c = { rank, suit };
+        expect(parseCard(cardToString(c))).toEqual(c);          // card -> string -> card
+      }
     }
   });
 });
@@ -72,6 +80,25 @@ describe('deck construction', () => {
     expect(remaining.length).toBe(50);
     expect(remaining).not.toContain(cid('Ah'));
     expect(remaining).not.toContain(cid('Kd'));
+  });
+
+  it('removeCards edge cases: empty list, absent card, duplicate known id', () => {
+    const deck = createDeck();
+    expect(removeCards(deck, []).length).toBe(52);          // remove nothing
+    // A duplicate in the known list still removes only that one slot.
+    expect(removeCards(deck, [cid('Ah'), cid('Ah')]).length).toBe(51);
+    // Removing the same id twice over an already-pruned deck is a no-op.
+    const once = removeCards(deck, [cid('Ah')]);
+    expect(removeCards(once, [cid('Ah')]).length).toBe(51);
+  });
+
+  it('shuffleDeck returns a permutation of the same 52 ids (in place)', () => {
+    const deck = createDeck();
+    const ref = new Set(deck);
+    const out = shuffleDeck(deck);
+    expect(out).toBe(deck);                 // mutates and returns the same array
+    expect(out.length).toBe(52);
+    expect(new Set(out)).toEqual(ref);      // exactly the same multiset, reordered
   });
 
   it('allHoleCombos enumerates exactly 1326 unique unordered pairs', () => {
@@ -110,13 +137,53 @@ describe('hand group naming', () => {
     expect(indices.size).toBe(169); // 13 pairs + 78 suited + 78 offsuit
   });
 
-  it('all 13 pairs map to indices 0..12', () => {
-    const pairIdx = new Set<number>();
-    for (const r of RANKS) {
-      const idx = handGroupIndex(cardToId({ rank: r, suit: 'h' }), cardToId({ rank: r, suit: 'd' }));
-      pairIdx.add(idx);
-      expect(idx).toBeLessThan(13);
+  it('all 13 pairs map to EXACTLY the set {0..12}', () => {
+    const pairIdx = RANKS.map(r =>
+      handGroupIndex(cardToId({ rank: r, suit: 'h' }), cardToId({ rank: r, suit: 'd' })),
+    ).sort((a, b) => a - b);
+    // Exact set pins both bounds and the bijection; a {-1,0..11} bug would pass a
+    // bare `<13` check but fail this.
+    expect(pairIdx).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  it('handGroupIndex partitions into pairs [0,13), suited [13,91), offsuit [91,169)', () => {
+    // Downstream strategy tables rely on this layout; a swapped suited/offsuit base
+    // would still yield 169 distinct buckets but break the range semantics.
+    for (const [a, b] of allHoleCombos()) {
+      const idx = handGroupIndex(a, b);
+      const r1 = Math.floor(a / 4), r2 = Math.floor(b / 4);
+      const suited = a % 4 === b % 4;
+      if (r1 === r2) expect(idx, 'pair < 13').toBeLessThan(13);
+      else if (suited) {
+        expect(idx, 'suited >= 13').toBeGreaterThanOrEqual(13);
+        expect(idx, 'suited < 91').toBeLessThan(91);
+      } else {
+        expect(idx, 'offsuit >= 91').toBeGreaterThanOrEqual(91);
+        expect(idx, 'offsuit < 169').toBeLessThan(169);
+      }
     }
-    expect(pairIdx.size).toBe(13);
+    // Spot-check the canonical corners.
+    expect(handGroupIndex(cid('Ah'), cid('Kh'))).toBe(90);  // AKs (top of suited range)
+    expect(handGroupIndex(cid('Ah'), cid('Kd'))).toBe(168); // AKo (top of offsuit range)
+  });
+});
+
+describe('cardSetMask', () => {
+  it('sets bit c for each card id', () => {
+    expect(cardSetMask([cid('2h')])).toBe(1n);            // id 0 -> bit 0
+    expect(cardSetMask([cid('As')])).toBe(1n << 51n);     // id 51 -> bit 51
+  });
+
+  it('ORs distinct cards and equals the OR of singletons', () => {
+    const a = cid('Ah'), b = cid('Kd');
+    expect(cardSetMask([a, b])).toBe((1n << BigInt(a)) | (1n << BigInt(b)));
+  });
+
+  it('a full deck mask has exactly 52 bits set (2^52 - 1)', () => {
+    expect(cardSetMask(createDeck())).toBe((1n << 52n) - 1n);
+  });
+
+  it('the empty set is 0n', () => {
+    expect(cardSetMask([])).toBe(0n);
   });
 });

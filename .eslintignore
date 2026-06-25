@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.js.map
+
+# Generated data (machine-emitted, not linted)
+src/core/ml/model.ts
+src/core/ranges/headsup-solved.ts
+src/solver/preflop/equity-matrix.json
+src/solver/preflop/equity-matrix.ts
+tests/fixtures/
+
+# Offline ML build inputs/artifacts
+ml/data/
+ml/_weights.json
+
+# Config files
+*.config.js
