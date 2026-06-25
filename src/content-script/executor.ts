@@ -647,7 +647,14 @@ export class ActionExecutor {
     //    pre-fills a legal default), so an open form is never a dead end.
     if (await this.submitRaiseForm()) { this.setStatus('bet via default amount'); return true; }
 
-    // 4) Give up on the form; close it so the single-click fallback can act.
+    // 4) Give up on the form. Dump the action-area markup so the exact bet-form
+    //    DOM is recoverable from the console, then close it so the single-click
+    //    fallback can act.
+    const area = (this.findRaiseForm()
+      ?? document.querySelector(SEL.actionArea)
+      ?? document.body) as HTMLElement;
+    log.warn('[exec] raise form unusable — DOM dump follows:');
+    console.log('[GTO Bot] RAISE-FORM DOM:', area?.outerHTML?.slice(0, 4000));
     await this.closeRaiseForm();
     this.setStatus('raise failed; falling back');
     return false;
@@ -680,6 +687,33 @@ export class ActionExecutor {
     return (input.closest('form, .raise, [class*="raise"], [class*="bet"]') as HTMLElement) ?? input;
   }
 
+  /** The bet-amount input: class-based first, then any live number/range/.value input. */
+  private findAmountInput(): HTMLInputElement | null {
+    const byClass = document.querySelector(SEL.raiseInput) as HTMLInputElement | null;
+    if (byClass) return byClass;
+    const inputs = Array.from(document.querySelectorAll(
+      'input[type="number"], input[type="range"], input.value, input[type="text"]',
+    )) as HTMLInputElement[];
+    return inputs.find((i) => this.clickable(i)) ?? null;
+  }
+
+  /**
+   * The preset bet buttons (MIN RAISE / 1/2 / 3/4 / POT / ALL IN). Class-based
+   * first, then any live button whose TEXT looks like a preset — robust to markup
+   * changes. Excludes the opener and submit. `includeAllIn` keeps the all-in preset.
+   */
+  private findPresetButtons(includeAllIn = false): HTMLElement[] {
+    let els = (Array.from(document.querySelectorAll(SEL.presetBetBtns)) as HTMLElement[])
+      .filter((b) => this.clickable(b));
+    if (els.length === 0) {
+      const form = this.findRaiseForm() ?? document;
+      const presetText = /(^|\b)(min|pot|all\s*in|½|⅓|⅔|¾|1\/2|1\/3|2\/3|3\/4|\d+%|\d+(\.\d+)?x)\b/i;
+      els = (Array.from(form.querySelectorAll('button, [role="button"]')) as HTMLElement[])
+        .filter((b) => this.clickable(b) && presetText.test((b.textContent || '').trim()));
+    }
+    return includeAllIn ? els : els.filter((b) => !/all\s*in/i.test(b.textContent || ''));
+  }
+
   /**
    * Click the preset bet button (MIN RAISE / 1/2 / 3/4 / POT) whose resulting
    * amount is closest to `amount`. Presets are always legal raises, so this is
@@ -687,9 +721,7 @@ export class ActionExecutor {
    * uses the first preset (MIN RAISE) — the legal floor. Excludes ALL IN.
    */
   private async clickClosestPreset(amount?: number): Promise<boolean> {
-    const presets = (Array.from(document.querySelectorAll(SEL.presetBetBtns)) as HTMLElement[])
-      .filter(b => b.offsetWidth > 0 && getComputedStyle(b).display !== 'none'
-        && !/all\s*in/i.test(b.textContent || ''));
+    const presets = this.findPresetButtons(false);
     if (presets.length === 0) return false;
     if (amount === undefined) { this.dispatchReactClick(presets[0]); return true; }
 
@@ -698,7 +730,7 @@ export class ActionExecutor {
     for (const b of presets) {
       this.dispatchReactClick(b);
       await this.sleep(40);
-      const v = parseInputAmount((document.querySelector(SEL.raiseInput) as HTMLInputElement | null)?.value);
+      const v = parseInputAmount(this.findAmountInput()?.value);
       if (Number.isFinite(v)) {
         const d = Math.abs(v - amount);
         if (d < bestDiff) { bestDiff = d; best = b; }
@@ -753,7 +785,7 @@ export class ActionExecutor {
   private async enterAndVerifyAmount(amount: number): Promise<boolean> {
     for (let attempt = 0; attempt < MAX_AMOUNT_ATTEMPTS; attempt++) {
       // FRESH LOOKUP every attempt — React may have re-rendered the form.
-      const input = document.querySelector(SEL.raiseInput) as HTMLInputElement | null;
+      const input = this.findAmountInput();
       if (!input) {
         log.warn('Raise input not found');
         return false;
@@ -770,7 +802,7 @@ export class ActionExecutor {
       await this.sleep(120);
 
       // Read back from a FRESH query (the node may have been replaced).
-      const after = document.querySelector(SEL.raiseInput) as HTMLInputElement | null;
+      const after = this.findAmountInput();
       const readBack = parseInputAmount(after?.value);
       // Stake-relative tolerance: ~3% of the amount, min 1 cent. Handles both
       // whole-chip games and $0.25/$0.50 cents games.
@@ -788,15 +820,16 @@ export class ActionExecutor {
     const raiseClicked = this.clickActionButton('raise') || this.clickActionButton('bet');
     if (!raiseClicked) return false;
 
-    const form = await this.waitForElement(SEL.raiseForm, 1500);
-    if (!form) return false;
+    const form = await this.waitForRaiseForm(900);
+    if (!form) { if (!this.isHeroTurnLive()) return true; return false; }
     await this.sleep(150);
 
-    // Click the last preset button (usually "All In"). Re-query fresh.
-    const presets = document.querySelectorAll(SEL.presetBetBtns);
-    if (presets.length > 0) {
-      const allInBtn = presets[presets.length - 1] as HTMLElement;
-      log.debug(`Clicking preset: ${allInBtn.textContent?.trim()}`);
+    // Click the ALL IN preset (robust: class or text), else the last/largest preset.
+    const allIn = this.findPresetButtons(true).filter((b) => /all\s*in/i.test(b.textContent || ''));
+    const presets = this.findPresetButtons(true);
+    const allInBtn = allIn[0] ?? presets[presets.length - 1];
+    if (allInBtn) {
+      log.debug(`Clicking all-in preset: ${allInBtn.textContent?.trim()}`);
       this.dispatchReactClick(allInBtn);
       await this.sleep(300);
     }
