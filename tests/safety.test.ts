@@ -151,6 +151,17 @@ describe('findPromptToDismiss — blocking modal default-button matching', () =>
     expect(r?.button?.text).toBe("I'm back");
   });
 
+  it('post-big-blind prompt -> POSTS and plays (never "wait", which sits the bot out)', () => {
+    // The "stops after a few hands" bug: choosing "Wait for big blind" benches the
+    // bot, and heads-up that halts the table. Must pick Post.
+    const r = findPromptToDismiss(
+      'Post big blind?',
+      btns('Post Big Blind', 'Wait for Big Blind'),
+    );
+    expect(r?.spec.id).toBe('post-bb');
+    expect(r?.button?.text).toBe('Post Big Blind');
+  });
+
   it('returns null when no known prompt is present', () => {
     expect(findPromptToDismiss('It is your turn', btns('Check', 'Fold'))).toBeNull();
   });

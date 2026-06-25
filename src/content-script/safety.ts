@@ -167,11 +167,14 @@ export const PROMPT_DEFAULTS: PromptSpec[] = [
     safeButtons: [/i'?m\s*back/i, /still\s*here/i, /sit\s*back/i, /yes/i, /continue/i, /ok/i],
   },
   {
-    // Generic "post big blind?" / "wait for big blind" rejoin prompt: choose the
-    // non-committal option (wait for BB) so we never auto-post extra dead money.
+    // "Post big blind?" / "wait for big blind" prompt (appears after the button
+    // rotates, a sit-out, or a rejoin). CHOOSE TO POST AND PLAY — picking "wait for
+    // big blind" sits the bot out, and in heads-up that halts the table (no opponent
+    // -> no more hands -> the bot appears to "stop after a few hands"). A self-play
+    // bot must stay in the action, so post over wait.
     id: 'post-bb',
-    promptMatch: /post\s*(big\s*blind|bb)|wait\s*for\s*(the\s*)?big\s*blind/i,
-    safeButtons: [/wait/i, /^\s*no\s*$/i, /cancel/i],
+    promptMatch: /post\s*(big\s*blind|bb|blind)|wait\s*for\s*(the\s*)?big\s*blind/i,
+    safeButtons: [/post/i, /^\s*yes\s*$/i, /sit\s*in/i, /confirm/i, /^\s*ok\s*$/i],
   },
 ];
 
