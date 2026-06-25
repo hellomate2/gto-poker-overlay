@@ -29,13 +29,17 @@ FEATURE_DIM = 37
 NUM_ACTIONS = 5
 ACTION_MASK_OFFSET = 32  # must match features.ts
 
-H1 = 256
-H2 = 128
-EPOCHS = 40
+# Wider net (was 256/128) — more capacity for the postflop policy. policy.ts
+# reads layer sizes from MODEL.dims, so the TS forward pass needs no change; the
+# committed model.ts just gets bigger. Train longer with more patience to use the
+# extra capacity. L2 bumped slightly to keep the wider net from overfitting.
+H1 = 512
+H2 = 256
+EPOCHS = 80
 BATCH = 512
 LR = 1e-3
-L2 = 1e-5
-PATIENCE = 6
+L2 = 3e-5
+PATIENCE = 12
 SEED = 1234
 
 rng = np.random.default_rng(SEED)
