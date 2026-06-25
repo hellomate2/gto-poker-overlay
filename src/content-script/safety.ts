@@ -62,8 +62,12 @@ export function chooseFallbackAction(
 ): FallbackAction {
   const wantedToPlay = intent === 'raise' || intent === 'bet' || intent === 'call' || intent === 'allin';
   if (wantedToPlay) {
-    if (buttons.check) return 'check'; // continue for free rather than fold
-    if (buttons.call) return 'call';   // we had a hand worth playing — call, don't fold
+    // CALL before CHECK: a live Call button means there IS a bet to call, so a
+    // Check would be ILLEGAL (e.g. the SB preflop owes the blind — dead-checking
+    // there freezes the hand). Only when there's no bet (no call button) do we
+    // check for free. We had a hand worth playing, so fold only as a last resort.
+    if (buttons.call) return 'call';
+    if (buttons.check) return 'check';
     if (buttons.fold) return 'fold';
     return 'none';
   }

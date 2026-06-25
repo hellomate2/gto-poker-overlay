@@ -623,6 +623,10 @@ export class ActionExecutor {
     const form = await this.waitForRaiseForm(900);
     if (!form) {
       if (!this.isHeroTurnLive()) { this.setStatus('bet committed (no form)'); return true; }
+      // The opener click did not produce a sizing form we recognize. Dump the
+      // action area so the exact bet-form markup is recoverable from the console.
+      const area = (document.querySelector(SEL.actionArea) ?? document.body) as HTMLElement;
+      console.log('[GTO Bot] RAISE-FORM DOM (no form detected after RAISE click):', area?.outerHTML?.slice(0, 5000));
       this.setStatus('raise form not found');
       return false;
     }

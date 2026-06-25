@@ -29,8 +29,14 @@ describe('chooseFallbackAction — never fold a hand we meant to play', () => {
     expect(chooseFallbackAction({ ...none, call: true, fold: true }, 'allin')).toBe('call');
   });
 
-  it('a failed aggressive action CHECKS for free when possible (cheaper than calling)', () => {
-    expect(chooseFallbackAction({ ...none, check: true, call: true }, 'raise')).toBe('check');
+  it('a failed aggressive action CHECKS for free only when there is NO bet (no call button)', () => {
+    expect(chooseFallbackAction({ ...none, check: true }, 'raise')).toBe('check');
+  });
+
+  it('prefers CALL over CHECK when a call button exists (a check would be illegal facing a bet)', () => {
+    // The SB-preflop freeze: a Check button may render but checking is illegal
+    // when you owe the blind, so dead-checking froze the hand. Call instead.
+    expect(chooseFallbackAction({ ...none, check: true, call: true }, 'raise')).toBe('call');
   });
 
   it('only folds an intended-aggressive action when neither check nor call exists', () => {
