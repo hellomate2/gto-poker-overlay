@@ -49,6 +49,7 @@ const CONFIRM_POLL_INTERVAL = 100;
 // single-click safe fallback fires well within PokerNow's clock (no extra-time stall).
 const MAX_ACTION_ATTEMPTS = 2;   // whole-action retries (click + confirm)
 const MAX_AMOUNT_ATTEMPTS = 2;   // raise amount enter + read-back retries
+const RAISE_ATTEMPTS = 4;        // multi-method raise attempts before giving up (~0.4s apart)
 
 // Read-back tolerance: PokerNow rounds to whole chips, so anything within
 // 1 chip of the intended (rounded) amount is considered a match.
@@ -609,60 +610,75 @@ export class ActionExecutor {
   // Raise flow — click raise, wait for form, set+verify amount, submit
   // ============================================================
 
+  /**
+   * Make the raise/bet ACTUALLY fire. Throws every method at it and retries hard,
+   * verifying success by whether our turn actually ended (the only ground truth).
+   * Methods: open via real click OR the 'r'/'b' keyboard shortcut; size via the
+   * amount input (React-aware) OR a preset button; commit via Enter on the input
+   * OR a confirm button OR native form submit. Loops ~5x with short gaps. Only
+   * returns false after exhausting all of it (then the caller's intent-aware
+   * fallback keeps the hand moving — but the goal is that we never get there).
+   */
   private async executeRaise(amount?: number): Promise<boolean> {
-    // FRESH LOOKUP: re-query the raise/bet opener (class-or-text robust).
-    const raiseClicked = this.clickActionButton('raise') || this.clickActionButton('bet');
-    if (!raiseClicked) {
-      this.setStatus('no raise/bet button');
-      return false;
-    }
-
-    // Wait briefly for EITHER the sizing form/input to appear OR the turn to end
-    // (some tables commit a quick-bet directly without a form). Short timeout so
-    // we fail fast to the single-click fallback instead of stalling.
-    const form = await this.waitForRaiseForm(900);
-    if (!form) {
-      if (!this.isHeroTurnLive()) { this.setStatus('bet committed (no form)'); return true; }
-      // The opener click did not produce a sizing form we recognize. Dump the
-      // action area so the exact bet-form markup is recoverable from the console.
-      const area = (document.querySelector(SEL.actionArea) ?? document.body) as HTMLElement;
-      console.log('[GTO Bot] RAISE-FORM DOM (no form detected after RAISE click):', area?.outerHTML?.slice(0, 5000));
-      this.setStatus('raise form not found');
-      return false;
-    }
-    await this.sleep(120);
-
-    // 1) Try the exact (clamped) amount via the input.
-    if (amount !== undefined) {
-      const bounds = this.readRaiseBounds();
-      const clamped = clampRaiseAmount(amount, bounds);
-      if (!clamped.invalid && clamped.amount !== null && await this.enterAndVerifyAmount(clamped.amount)) {
-        await this.sleep(80);
-        if (await this.submitRaiseForm()) { this.setStatus(`bet $${clamped.amount}`); return true; }
+    const turnEnded = () => !this.isHeroTurnLive();
+    for (let attempt = 0; attempt < RAISE_ATTEMPTS; attempt++) {
+      // (Re)open the sizing form if it isn't already showing.
+      if (!this.findRaiseForm()) {
+        this.clickActionButton('raise') || this.clickActionButton('bet');
+        if (!(await this.waitForRaiseForm(450))) {
+          // Different method: the keyboard shortcut (PokerNow: R = raise, B = bet).
+          this.pressKey('r');
+          await this.waitForRaiseForm(300);
+          if (!this.findRaiseForm()) { this.pressKey('b'); await this.waitForRaiseForm(300); }
+        }
       }
+      if (turnEnded()) { this.setStatus('raised (committed)'); return true; }
+
+      const form = this.findRaiseForm();
+      if (form) {
+        // Size it: prefer the exact amount via the input; else a preset.
+        if (amount !== undefined) {
+          const clamped = clampRaiseAmount(amount, this.readRaiseBounds());
+          const input = this.findAmountInput();
+          if (input && !clamped.invalid && clamped.amount !== null) {
+            await this.setInputValue(input, String(clamped.amount));
+            await this.sleep(70);
+          } else {
+            await this.clickClosestPreset(amount);
+          }
+        } else {
+          await this.clickClosestPreset(undefined);
+        }
+        // Commit it: try EVERY submit method, then check if the turn ended.
+        this.submitRaiseForm();                                  // confirm button / requestSubmit
+        this.pressKey('Enter', this.findAmountInput() ?? undefined); // Enter submits most forms
+        await this.sleep(180);
+        if (turnEnded()) { this.setStatus(`raised${amount !== undefined ? ` $${amount}` : ''}`); return true; }
+      }
+
+      // Didn't land — wait ~0.4s and try again (constantly re-reading the page).
+      this.setStatus(`raise retry ${attempt + 1}/${RAISE_ATTEMPTS}`);
+      await this.sleep(400);
+      if (turnEnded()) return true;
     }
 
-    // 2) Exact entry failed — click a PRESET closest to the target (always legal).
-    if (await this.clickClosestPreset(amount)) {
-      await this.sleep(100);
-      if (await this.submitRaiseForm()) { this.setStatus('bet via preset'); return true; }
-    }
-
-    // 3) Last resort: submit whatever amount the form currently holds (PokerNow
-    //    pre-fills a legal default), so an open form is never a dead end.
-    if (await this.submitRaiseForm()) { this.setStatus('bet via default amount'); return true; }
-
-    // 4) Give up on the form. Dump the action-area markup so the exact bet-form
-    //    DOM is recoverable from the console, then close it so the single-click
-    //    fallback can act.
-    const area = (this.findRaiseForm()
-      ?? document.querySelector(SEL.actionArea)
-      ?? document.body) as HTMLElement;
-    log.warn('[exec] raise form unusable — DOM dump follows:');
-    console.log('[GTO Bot] RAISE-FORM DOM:', area?.outerHTML?.slice(0, 4000));
+    // Exhausted all methods. Dump the bet-form markup for diagnosis and bail to
+    // the caller's fallback (so the hand still moves rather than freezing).
+    const area = (this.findRaiseForm() ?? document.querySelector(SEL.actionArea) ?? document.body) as HTMLElement;
+    console.log('[GTO Bot] RAISE-FORM DOM (all methods failed):', area?.outerHTML?.slice(0, 5000));
     await this.closeRaiseForm();
-    this.setStatus('raise failed; falling back');
+    this.setStatus('raise failed after all methods');
     return false;
+  }
+
+  /** Dispatch a full key event sequence (keydown/keypress/keyup) to trigger app hotkeys / form submit. */
+  private pressKey(key: string, target?: EventTarget): void {
+    const tgt = target ?? document;
+    const code = key === 'Enter' ? 'Enter' : `Key${key.toUpperCase()}`;
+    const init: KeyboardEventInit = { key, code, bubbles: true, cancelable: true };
+    for (const type of ['keydown', 'keypress', 'keyup'] as const) {
+      try { tgt.dispatchEvent(new KeyboardEvent(type, init)); } catch { /* noop */ }
+    }
   }
 
   /**
