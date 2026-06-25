@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   chooseSafeAction,
   chooseFallbackAction,
+  isPreActionLabel,
   findPromptToDismiss,
   PROMPT_DEFAULTS,
   detectStraddleAmount,
@@ -16,6 +17,19 @@ import {
 // Defensive-robustness pure logic. These mirror exactly what the live executor /
 // scraper feed in, so a passing test here means the live safe path is correct.
 // ============================================================
+
+describe('isPreActionLabel — pre-select buttons mean it is NOT our turn', () => {
+  it('matches PokerNow pre-action labels', () => {
+    for (const t of ['Check or Fold', 'CHECK/FOLD', 'Call Any', 'Fold to Any', 'Call All', 'check or fold']) {
+      expect(isPreActionLabel(t)).toBe(true);
+    }
+  });
+  it('does NOT match real in-turn action labels', () => {
+    for (const t of ['Check', 'Fold', 'Call 10', 'Raise', 'Bet', 'Bet 20', '']) {
+      expect(isPreActionLabel(t)).toBe(false);
+    }
+  });
+});
 
 describe('chooseFallbackAction — never fold a hand we meant to play', () => {
   const none = { check: false, call: false, fold: false, raise: false, bet: false };

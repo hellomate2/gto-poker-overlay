@@ -13,6 +13,21 @@
 import { Player, Position } from '../types/poker';
 
 // ============================================================
+// Turn detection
+// ============================================================
+
+/**
+ * True if a button label is one of PokerNow's PRE-ACTION (pre-select) controls,
+ * which are shown and clickable ONLY while it is the OPPONENT's turn (you queue
+ * an action in advance). Their presence is a definitive "NOT my turn" signal —
+ * counting their enabled state as "my turn" made the bot decide/act out of turn.
+ */
+export function isPreActionLabel(text: string): boolean {
+  return /check\s*(or|\/)\s*fold|fold\s*(to)?\s*any|call\s*any|call\s*all|fold\s*and|^check\/fold$/i
+    .test((text || '').trim());
+}
+
+// ============================================================
 // Safe-action selection
 // ============================================================
 

@@ -1,7 +1,7 @@
 import { ActionType, BotDecision, BotSettings, DEFAULT_SETTINGS, StrategyDistribution } from '../types/poker';
 import { log } from '../core/logger';
 import {
-  AvailableButtons, chooseSafeAction, chooseFallbackAction, findPromptToDismiss, ScrapedButton,
+  AvailableButtons, chooseSafeAction, chooseFallbackAction, findPromptToDismiss, ScrapedButton, isPreActionLabel,
 } from './safety';
 
 // ============================================================
@@ -309,6 +309,12 @@ export class ActionExecutor {
   // ============================================================
 
   private isHeroTurnLive(): boolean {
+    // NEGATIVE signal: a live PRE-ACTION button ("Check or Fold", "Call Any")
+    // means it's the opponent's turn — never act/confirm while one is showing.
+    const preAction = Array.from(document.querySelectorAll('button')).some(
+      (b) => !(b as HTMLButtonElement).disabled && isPreActionLabel(b.textContent || ''),
+    );
+    if (preAction) return false;
     // Primary: "Your Turn" action signal.
     if (document.querySelector(SEL.actionSignal)) return true;
     // Secondary: our seat is the current decision-maker.

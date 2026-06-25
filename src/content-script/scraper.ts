@@ -1,7 +1,7 @@
 import {
   Card, Rank, Suit, GameState, Player, Position, Action, ActionType, Street,
 } from '../types/poker';
-import { detectStraddleFromLog, effectivePreflopBet } from './safety';
+import { detectStraddleFromLog, effectivePreflopBet, isPreActionLabel } from './safety';
 
 // ============================================================
 // PokerNow DOM Scraper
@@ -289,13 +289,18 @@ export class PokerNowScraper {
   }
 
   isMyTurn(): boolean {
-    // Primary: check for action signal text "Your Turn"
-    const signal = document.querySelector(SEL.actionSignal);
-    if (signal) return true;
-    // Secondary: check if our player has the decision-current class
-    const decisionPlayer = document.querySelector('.decision-current.you-player');
-    if (decisionPlayer) return true;
-    // Tertiary: check if action buttons are enabled
+    // NEGATIVE signal first: a live PRE-ACTION button ("Check or Fold", "Call
+    // Any") only shows while it's the OPPONENT's turn. If one is present, it is
+    // definitively NOT our turn — this stops the bot deciding/acting out of turn.
+    const preAction = Array.from(document.querySelectorAll('button')).some(
+      (b) => !(b as HTMLButtonElement).disabled && isPreActionLabel(b.textContent || ''),
+    );
+    if (preAction) return false;
+    // Primary: the live "Your Turn" action signal/timer.
+    if (document.querySelector(SEL.actionSignal)) return true;
+    // Secondary: our seat is the current decision-maker.
+    if (document.querySelector('.decision-current.you-player')) return true;
+    // Tertiary: an actual action button is enabled (now safe — pre-action ruled out).
     const checkBtn = document.querySelector(SEL.checkBtn) as HTMLButtonElement;
     const foldBtn = document.querySelector(SEL.foldBtn) as HTMLButtonElement;
     const callBtn = document.querySelector(SEL.callBtn) as HTMLButtonElement;
