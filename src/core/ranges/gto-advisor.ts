@@ -104,6 +104,27 @@ function detectScenario(state: GameState, headsUp: boolean): ScenarioResult | nu
     }
   }
 
+  // The parsed action log is unreliable (PokerNow only shows recent lines), so
+  // infer the raise count from the LIVE bet size when it implies more action than
+  // we parsed. A current bet of ~2.5bb = an open, ~6bb = a 3-bet, ~13bb = a 4-bet.
+  // Without this, a 3-bet with no parsed history looked like an unopened pot and
+  // the bot "opened" trash like K6o.
+  const bb = state.bigBlind || 1;
+  const cb = state.currentBet || 0;
+  let inferred = 0;
+  if (cb > bb * 1.5) inferred = 1;
+  if (cb >= bb * 4.5) inferred = 2;
+  if (cb >= bb * 11) inferred = 3;
+  if (inferred > raises) {
+    // Fill the missing raiser position from the villain (heads-up: the other
+    // player). vs-3bet keys on the 3-bettor, so set the second raiser too.
+    const villain = state.players.find((p, i) => i !== state.heroIndex && !p.isSittingOut);
+    const vpos = villain?.position || null;
+    raises = inferred;
+    if (!lastRaiserPos) lastRaiserPos = vpos;
+    if (raises >= 2 && !secondRaiserPos) secondRaiserPos = vpos;
+  }
+
   const huTag = headsUp ? 'HU ' : '';
 
   if (raises === 0) {

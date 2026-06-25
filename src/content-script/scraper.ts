@@ -255,12 +255,22 @@ export class PokerNowScraper {
       // always scrapeable), so trust it over the bet-chip read.
       const heroBet = players[heroIndex]?.currentBet || 0;
       const toCallBtn = this.detectToCall();
+      const isOurTurn = this.isMyTurn();
+      // Bulletproof "facing a bet": PokerNow never offers a Check button when you
+      // owe chips, so on our turn with no Check available we ARE facing a bet —
+      // even if the bet chips and Call amount failed to scrape. This stops the
+      // bot from trying to "bet" into a bet.
+      const checkBtnEl = document.querySelector(SEL.checkBtn) as HTMLButtonElement | null;
+      const canCheck = !!(checkBtnEl && !checkBtnEl.disabled);
       let currentBet = Math.max(0, ...players.map(p => p.currentBet));
       if (toCallBtn > 0) currentBet = Math.max(currentBet, heroBet + toCallBtn);
+      if (isOurTurn && !canCheck) {
+        const faced = toCallBtn > 0 ? toCallBtn : Math.max(currentBet - heroBet, bigBlind);
+        currentBet = Math.max(currentBet, heroBet + faced);
+      }
       // Minimum raise-to: facing a bet you must raise to at least double it; when
       // unopened, at least 2bb.
       const minRaise = currentBet > 0 ? currentBet * 2 : bigBlind * 2;
-      const isOurTurn = this.isMyTurn();
       const street = detectStreet(communityCards);
       const actionHistory = this.parseGameLog();
 
