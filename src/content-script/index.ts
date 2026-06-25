@@ -29,7 +29,9 @@ class PokerBot {
   private sessionVpipOpp: number = 0;
   private lastHeroStack: number = 0;
   private startTime: number = Date.now();
-  private static readonly PROCESSING_TIMEOUT = 15000;
+  // Short so any stuck lock self-clears in seconds (no long stale-panel window).
+  // The executor is itself time-boxed, so a real action never needs this long.
+  private static readonly PROCESSING_TIMEOUT = 6000;
 
   constructor() {
     this.settings = { ...DEFAULT_SETTINGS };
