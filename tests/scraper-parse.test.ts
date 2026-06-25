@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseChipValue,
+  parseCallAmount,
   bigBlindFromChips,
   potFromValues,
   resolveCurrentBet,
@@ -46,6 +47,31 @@ describe('parseChipValue — chip-text normalization', () => {
     expect(parseChipValue('')).toBe(0);
     expect(parseChipValue('—')).toBe(0);
     expect(parseChipValue('all in')).toBe(0);
+  });
+});
+
+describe('parseCallAmount — read the "Call N" action button', () => {
+  it('parses a plain call amount', () => {
+    expect(parseCallAmount('Call 80')).toBe(80);
+    expect(parseCallAmount('CALL 1,250')).toBe(1250);
+  });
+
+  it('parses a dollar-stake call ("Call $50") — the regression that read it as 0', () => {
+    // The old /call\s*([\d.,]+)/ regex could not match because '$' sat between
+    // "call " and the digits, so the bot mis-read a faced bet as no bet.
+    expect(parseCallAmount('Call $50')).toBe(50);
+    expect(parseCallAmount('Call $1,250')).toBe(1250);
+    expect(parseCallAmount('Call $0.50')).toBe(0.5);
+  });
+
+  it('expands k/m suffixes on a call button', () => {
+    expect(parseCallAmount('Call 2k')).toBe(2000);
+  });
+
+  it('returns 0 when the button is not a call (check/fold/empty)', () => {
+    expect(parseCallAmount('Check')).toBe(0);
+    expect(parseCallAmount('Fold')).toBe(0);
+    expect(parseCallAmount('')).toBe(0);
   });
 });
 
