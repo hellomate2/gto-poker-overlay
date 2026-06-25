@@ -133,6 +133,29 @@ export class DecisionEngine {
     return Math.round(amount * 100) / 100;
   }
 
+  /** Nearest "nice" step (1/2/5 x 10^k) to x — e.g. niceStep(5)=5, niceStep(25)=20. */
+  private niceStep(x: number): number {
+    if (x <= 0) return 1;
+    const exp = Math.floor(Math.log10(x));
+    const base = Math.pow(10, exp);
+    const f = x / base; // 1..10
+    const m = f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10;
+    return m * base;
+  }
+
+  /**
+   * Round a bet/raise to a natural-looking increment (a quarter of the big blind,
+   * snapped to a nice 1/2/5 step) so the bot bets 165 or 400, not 166 or 402.
+   * Keeps the result at or above `minAmt` (the legal minimum when facing a bet).
+   */
+  private prettyBet(amount: number, bb: number, minAmt: number = 0): number {
+    if (amount <= 0) return 0;
+    const step = this.niceStep(bb / 4);
+    let r = this.roundToStake(Math.round(amount / step) * step, bb);
+    if (minAmt > 0 && r < minAmt) r = this.roundToStake(Math.ceil(minAmt / step) * step, bb);
+    return r;
+  }
+
   private legalizeDecision(decision: BotDecision, state: GameState): BotDecision {
     const hero = state.players[state.heroIndex];
     const heroStack = hero?.stack || 0;
@@ -157,18 +180,20 @@ export class DecisionEngine {
     const clampBet = (amt: number): number => {
       if (amt === Infinity) return Infinity;
       const floored = facingBet ? Math.max(amt, minRaiseTo) : amt;
-      return floored >= maxTo ? Infinity : this.roundToStake(floored, bb);
+      const pretty = this.prettyBet(floored, bb, facingBet ? minRaiseTo : 0);
+      return pretty >= maxTo ? Infinity : pretty;
     };
 
     if ((decision.action === 'raise' || decision.action === 'bet') && decision.amount) {
       let amt = decision.amount;
       if (facingBet) amt = Math.max(amt, minRaiseTo); // never below the min raise
-      if (amt >= maxTo) {
+      const pretty = this.prettyBet(amt, bb, facingBet ? minRaiseTo : 0);
+      if (pretty >= maxTo) {
         decision.action = 'allin';
         decision.amount = maxTo;
         decision.reasoning += ' (all-in: capped to stack)';
       } else {
-        decision.amount = this.roundToStake(amt, bb);
+        decision.amount = pretty; // natural increment (e.g. 165, not 166)
       }
     } else if (decision.action === 'allin') {
       decision.amount = maxTo;
