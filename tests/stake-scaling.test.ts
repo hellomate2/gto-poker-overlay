@@ -128,3 +128,39 @@ describe('facing a bet — never "bet", raise must be at least the minimum', () 
     expect(['fold', 'call']).toContain(d.action);
   });
 })
+
+describe('natural bet increments (no robotic sizes like 166)', () => {
+  function postflopLead(heroCards: [string, string]): GameState {
+    const hero: Player = {
+      name: 'Hero', stack: 1700, position: 'BTN' as Position, isDealer: true,
+      isSittingOut: false, seatIndex: 0, isHero: true, currentBet: 0, hasActed: false,
+    };
+    const villain: Player = {
+      name: 'Villain', stack: 1700, position: 'BB' as Position, isDealer: false,
+      isSittingOut: false, seatIndex: 1, isHero: false, currentBet: 0, hasActed: true,
+    };
+    return {
+      tableId: 't', handNumber: 1, street: 'flop', pot: 333, sidePots: [],
+      heroCards: [card(heroCards[0]), card(heroCards[1])],
+      communityCards: ['Ac', '7d', '2s'].map(card),
+      players: [hero, villain], heroIndex: 0, dealerIndex: 0, activePlayerIndex: 0,
+      currentBet: 0, minRaise: 40, bigBlind: 20, smallBlind: 10,
+      actionHistory: { preflop: [], flop: [], turn: [], river: [] },
+      isOurTurn: true, timestamp: Date.now(),
+    };
+  }
+
+  it('a 10/20 bet lands on a clean multiple of 5, not an odd number', async () => {
+    const d = await new DecisionEngine().decide(postflopLead(['Ah', 'Ad'])); // top set, will bet
+    if (d.action === 'bet' || d.action === 'raise') {
+      expect(d.amount! % 5).toBe(0);
+    }
+  });
+
+  it('a 10/20 preflop open is a clean increment', async () => {
+    const d = await new DecisionEngine().decide(
+      preflopState({ bb: 20, sb: 10, stack: 1000, heroCards: ['Ah', 'Ks'] }),
+    );
+    expect(d.amount! % 5).toBe(0);
+  });
+})
