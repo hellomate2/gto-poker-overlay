@@ -120,7 +120,7 @@ describe('parseInputAmount', () => {
 // ============================================================
 
 describe('spot signature dedupe', () => {
-  const base: SpotSignature = { isOurTurn: true, boardLength: 3, currentBet: 50 };
+  const base: SpotSignature = { isOurTurn: true, boardLength: 3, currentBet: 50, handNumber: 7 };
 
   it('produces a stable key for the same spot', () => {
     expect(spotSignatureKey(base)).toBe(spotSignatureKey({ ...base }));
@@ -140,6 +140,12 @@ describe('spot signature dedupe', () => {
 
   it('distinguishes turn vs not-our-turn', () => {
     expect(sameSpot(base, { ...base, isOurTurn: false })).toBe(false);
+  });
+
+  it('distinguishes different hands (so preflop spots do not collide across hands)', () => {
+    // The bug: every preflop spot was {turn, board:0, bet:20} and got skipped as
+    // "already acted" after hand 1. The hand number must make them distinct.
+    expect(sameSpot(base, { ...base, handNumber: base.handNumber + 1 })).toBe(false);
   });
 
   it('treats a null signature as never-equal (no prior spot)', () => {

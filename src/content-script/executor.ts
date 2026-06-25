@@ -131,11 +131,12 @@ export interface SpotSignature {
   isOurTurn: boolean;
   boardLength: number;
   currentBet: number;
+  handNumber: number; // distinguishes otherwise-identical spots across hands
 }
 
 /** Stable string form of a spot signature for cheap equality comparison. */
 export function spotSignatureKey(sig: SpotSignature): string {
-  return `${sig.isOurTurn ? 1 : 0}|${sig.boardLength}|${sig.currentBet}`;
+  return `${sig.handNumber}|${sig.isOurTurn ? 1 : 0}|${sig.boardLength}|${sig.currentBet}`;
 }
 
 /** True iff two spot signatures refer to the same decision point. */
@@ -182,6 +183,8 @@ export class ActionExecutor {
   private isExecuting: boolean = false;
   // Signature of the last spot we SUCCESSFULLY acted on — guards double-acting.
   private lastActedSignature: string | null = null;
+  // Reliable hand number supplied by the content script (for the spot signature).
+  private currentHandNumber: number = 0;
 
   constructor(settings: BotSettings = DEFAULT_SETTINGS) {
     this.settings = settings;
@@ -191,7 +194,10 @@ export class ActionExecutor {
     this.settings = { ...this.settings, ...settings };
   }
 
-  async execute(decision: BotDecision): Promise<boolean> {
+  async execute(decision: BotDecision, handNumber: number = 0): Promise<boolean> {
+    // Prefer the scraper's reliable hand number for the spot signature so the
+    // no-double-act guard distinguishes hands even if the log isn't parseable.
+    this.currentHandNumber = handNumber;
     if (this.isExecuting) {
       log.debug('Already executing, skipping');
       return false;
@@ -280,7 +286,22 @@ export class ActionExecutor {
       isOurTurn: this.isHeroTurnLive(),
       boardLength,
       currentBet,
+      handNumber: this.currentHandNumber || this.readHandNumber(),
     };
+  }
+
+  /**
+   * Current hand number from the game log ("hand #N"). Without this, every
+   * preflop spot looks identical across hands (same board length + bet) and the
+   * no-double-act guard would skip every hand after the first.
+   */
+  private readHandNumber(): number {
+    const entries = document.querySelectorAll('.messages .message, .log-message, .messages > *');
+    for (const e of Array.from(entries)) {
+      const m = (e.textContent || '').match(/hand #(\d+)/i);
+      if (m) return parseInt(m[1], 10);
+    }
+    return 0;
   }
 
   /**
@@ -301,8 +322,9 @@ export class ActionExecutor {
 
   private parseSignature(key: string | null): SpotSignature | null {
     if (!key) return null;
-    const [turn, board, bet] = key.split('|');
+    const [hand, turn, board, bet] = key.split('|');
     return {
+      handNumber: parseInt(hand, 10) || 0,
       isOurTurn: turn === '1',
       boardLength: parseInt(board, 10) || 0,
       currentBet: parseFloat(bet) || 0,

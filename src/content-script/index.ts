@@ -154,7 +154,7 @@ class PokerBot {
         // Execute if auto-play is enabled
         if (this.settings.autoPlay) {
           console.log('[GTO Bot] Auto-play ON — executing action...');
-          await this.executor.execute(decision);
+          await this.executor.execute(decision, state.handNumber);
         } else {
           console.log('[GTO Bot] Auto-play OFF — advisory only');
         }
