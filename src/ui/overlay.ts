@@ -6,7 +6,7 @@ const OVERLAY_ID = 'gto-bot-overlay';
 const PANEL_ID = 'gto-bot-panel';
 const TOGGLE_ID = 'gto-bot-toggle';
 // Bump on every release so the running build is identifiable on the table.
-const VERSION = 'v0.1.14';
+const VERSION = 'v0.1.15';
 
 interface SessionStats {
   hands: number;

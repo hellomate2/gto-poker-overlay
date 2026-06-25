@@ -164,3 +164,31 @@ describe('natural bet increments (no robotic sizes like 166)', () => {
     expect(d.amount! % 5).toBe(0);
   });
 })
+
+describe('preflop does not reraise trash facing a raise', () => {
+  function vsRaiseState(currentBet: number, heroCards: [string, string]): GameState {
+    // Hero is SB/button having opened; villain (BB) re-raised to currentBet.
+    const hero: Player = {
+      name: 'Hero', stack: 1000, position: 'SB' as Position, isDealer: true,
+      isSittingOut: false, seatIndex: 0, isHero: true, currentBet: 50, hasActed: true,
+    };
+    const villain: Player = {
+      name: 'Villain', stack: 1000, position: 'BB' as Position, isDealer: false,
+      isSittingOut: false, seatIndex: 1, isHero: false, currentBet, hasActed: true,
+    };
+    return {
+      tableId: 't', handNumber: 1, street: 'preflop', pot: 50 + currentBet, sidePots: [],
+      heroCards: [card(heroCards[0]), card(heroCards[1])],
+      communityCards: [], players: [hero, villain], heroIndex: 0, dealerIndex: 0,
+      activePlayerIndex: 0, currentBet, minRaise: currentBet * 2, bigBlind: 20, smallBlind: 10,
+      actionHistory: { preflop: [], flop: [], turn: [], river: [] },
+      isOurTurn: true, timestamp: Date.now(),
+    };
+  }
+
+  it('never 4-bets K6o facing a 3-bet (folds or calls)', async () => {
+    // Empty action history (the real bug): must still treat a 6bb reraise as a 3-bet.
+    const d = await new DecisionEngine().decide(vsRaiseState(125, ['Kh', '6d']));
+    expect(['fold', 'call']).toContain(d.action);
+  });
+})

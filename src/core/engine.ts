@@ -984,61 +984,37 @@ export class DecisionEngine {
       return this.defaultDecision('fold', `Fold ${position}`);
     }
 
-    // Facing a raise
-    if (!facingThreeBet) {
-      const threeBetRange = this.getApplicable3BetRange(state);
-      const threeBetFreq = threeBetRange ? getHandFrequency(threeBetRange, heroCards[0], heroCards[1]) : 0;
+    // Facing a raise (this is the fallback when no GTO chart covers the spot).
+    // Reraises are gated on EQUITY, not a random frequency, so trash like K6o can
+    // never 3-bet/4-bet. The raise SIZE relative to the blind tells us whether
+    // this is a single open (~2-3.5bb) or a 3-bet+ (>=5bb) even when the action
+    // history wasn't parsed reliably — so we stay tight against big reraises.
+    const raiseMult = state.currentBet / Math.max(bb, 1);
+    const bigReraise = facingThreeBet || raiseMult >= 5;
+    const potOdds = toCall / (state.pot + toCall);
 
-      if (threeBetFreq > 0 && Math.random() < threeBetFreq) {
-        const size = state.currentBet * 3;
-        return {
-          action: 'raise', amount: size, confidence: threeBetFreq,
-          reasoning: `3-bet ${position} (${(threeBetFreq * 100).toFixed(0)}%)`,
-          mixedStrategy: { fold: 0, check: 0, call: 0.15, bets: [{ amount: size, probability: 0.85 }] },
-        };
-      }
-
-      // Calling range
-      const potOdds = toCall / (state.pot + toCall);
-      if (equity > potOdds + 0.05 || equity > 0.45) {
-        return {
-          action: 'call', confidence: equity,
-          reasoning: `Call ${toCall} (${(equity * 100).toFixed(0)}% eq)`,
-          mixedStrategy: { fold: 0, check: 0, call: 1, bets: [] },
-        };
-      }
-
-      // Borderline — randomize
-      if (equity > potOdds - 0.04) {
-        if (Math.random() < 0.45) {
-          return {
-            action: 'call', confidence: equity,
-            reasoning: `Borderline call ${toCall} (randomized)`,
-            mixedStrategy: { fold: 0.55, check: 0, call: 0.45, bets: [] },
-          };
-        }
-      }
-
-      return this.defaultDecision('fold', `Fold vs raise (${(equity * 100).toFixed(0)}% eq)`);
-    }
-
-    // Facing 3-bet+
-    if (equity > 0.55) {
-      const size = state.currentBet * 2.5;
+    // Value reraise only with genuinely strong hands.
+    const reraiseThreshold = bigReraise ? 0.60 : 0.55;
+    if (equity >= reraiseThreshold) {
+      const size = bigReraise ? state.currentBet * 2.3 : state.currentBet * 3;
       return {
         action: 'raise', amount: size, confidence: equity,
-        reasoning: `4-bet (${(equity * 100).toFixed(0)}% eq)`,
+        reasoning: `${bigReraise ? '4' : '3'}-bet (${(equity * 100).toFixed(0)}% eq vs raise)`,
         mixedStrategy: { fold: 0, check: 0, call: 0.2, bets: [{ amount: size, probability: 0.8 }] },
-      };
-    } else if (equity > 0.42) {
-      return {
-        action: 'call', confidence: equity,
-        reasoning: `Call 3-bet (${(equity * 100).toFixed(0)}% eq)`,
-        mixedStrategy: { fold: 0.2, check: 0, call: 0.8, bets: [] },
       };
     }
 
-    return this.defaultDecision('fold', `Fold vs 3-bet (${(equity * 100).toFixed(0)}% eq)`);
+    // Otherwise call when equity clears the pot odds with a cushion; else fold.
+    const callFloor = bigReraise ? 0.42 : 0.40;
+    if (equity >= callFloor && equity > potOdds + 0.03) {
+      return {
+        action: 'call', confidence: equity,
+        reasoning: `call ${toCall} (${(equity * 100).toFixed(0)}% eq > ${(potOdds * 100).toFixed(0)}% odds)`,
+        mixedStrategy: { fold: 0, check: 0, call: 1, bets: [] },
+      };
+    }
+
+    return this.defaultDecision('fold', `fold vs raise (${(equity * 100).toFixed(0)}% eq < odds)`);
   }
 
   // ============================================================
