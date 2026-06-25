@@ -71,6 +71,26 @@ function dense(x: Float32Array, W: Float32Array, b: Float32Array, din: number, d
   return out;
 }
 
+/**
+ * Run the raw forward pass (standardize -> dense+ReLU -> dense+ReLU -> dense) on
+ * an already-encoded RAW feature vector and return the UN-masked, pre-softmax
+ * logits. Exposed for the train/serve parity test (tests/ml-parity.test.ts) so
+ * the TS inference can be compared logit-for-logit against the numpy reference.
+ * This is the exact same math predictPostflop() uses internally.
+ */
+export function forwardLogits(raw: Float32Array | number[]): number[] {
+  const m = getModel();
+  const x = new Float32Array(FEATURE_DIM);
+  for (let i = 0; i < FEATURE_DIM; i++) x[i] = (raw[i] - m.mean[i]) / m.std[i];
+  const h1Dim = m.dims.b1[0];
+  const h2Dim = m.dims.b2[0];
+  const outDim = m.dims.b3[0];
+  const a1 = denseRelu(x, m.W1, m.b1, FEATURE_DIM, h1Dim);
+  const a2 = denseRelu(a1, m.W2, m.b2, h1Dim, h2Dim);
+  const logits = dense(a2, m.W3, m.b3, h2Dim, outDim);
+  return Array.from(logits);
+}
+
 export interface PostflopPrediction {
   probs: Record<ActionClass, number>;
   /** argmax legal action class. */
