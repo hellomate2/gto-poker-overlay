@@ -12,7 +12,7 @@ import { getGTOAdvice } from './ranges/gto-advisor';
 import { OpponentTracker } from './exploit/tracker';
 import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
-import { predictPostflop } from './ml/policy';
+import { predictPostflop, predictBetSize } from './ml/policy';
 import { Spot } from './ml/features';
 // NOTE: solvePostflop (the depth-limited CFR study solver) is intentionally NOT
 // imported on the live hot path anymore. It computed equity vs effectively a
@@ -452,12 +452,20 @@ export class DecisionEngine {
     const probs = pred.probs;
     const action = pred.action;
 
-    // Build a StrategyDistribution from the net's masked probabilities. Bet/raise
-    // share the single chosen size from board-texture sizing.
+    // Bet/raise size from the distilled SIZE head (the solver-learned size for
+    // this spot), replacing the flat board-texture heuristic which systematically
+    // UNDER-bet (it used 0.33-0.66 pot; the solver bets ~0.66-0.9+). Falls back to
+    // the texture sizing if the size head is unavailable.
     const boardAnalysis = this.analyzeBoard(board);
     const bb = state.bigBlind || 20;
-    const { size: textureSize } = this.getGTOBetSize(boardAnalysis, pot, street, bb);
-    const betSize = Math.max(bb, textureSize);
+    let betSize: number;
+    try {
+      const frac = predictBetSize(spot).fraction; // pot-fraction from the size head
+      betSize = Math.max(bb, this.roundToStake(pot * frac, bb));
+    } catch {
+      const { size: textureSize } = this.getGTOBetSize(boardAnalysis, pot, street, bb);
+      betSize = Math.max(bb, textureSize);
+    }
     const raiseSize = Math.max(this.roundToStake(state.currentBet * 2.5, bb), state.currentBet + betSize);
 
     const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
