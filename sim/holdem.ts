@@ -47,11 +47,22 @@ export interface ActResult {
   toAmount?: number;
 }
 
+export interface LoggedAction {
+  seat: Seat;
+  street: Street;
+  type: ActionType;
+  voluntary: boolean;
+  /** Global monotonic index across the whole hand, so the runner can reconstruct
+   *  who acted first on a street, who the preflop aggressor was, etc. — the
+   *  sequencing needed for cbet / fold-to-cbet / 3bet spot detection. */
+  order: number;
+}
+
 export interface HandLog {
   /** net chip change for seat 0 (negative = lost). seat1 = -seat0. */
   net0: number;
-  /** per-seat-per-street action type tallies for the seat that acted. */
-  actions: { seat: Seat; street: Street; type: ActionType; voluntary: boolean }[];
+  /** per-seat-per-street action records (in global order). */
+  actions: LoggedAction[];
   wentToShowdown: boolean;
   reachedStreet: Street;
   /** A GameState snapshot at hand end (full actionHistory + positions) so the
@@ -130,6 +141,10 @@ export async function playHand(
 
   const actionHistory: Record<Street, Action[]> = { preflop: [], flop: [], turn: [], river: [] };
   const log: HandLog = { net0: 0, actions: [], wentToShowdown: false, reachedStreet: 'preflop' };
+  let orderCounter = 0;
+  const pushAction = (seat: Seat, st: Street, type: ActionType, voluntary: boolean) => {
+    log.actions.push({ seat, street: st, type, voluntary, order: orderCounter++ });
+  };
 
   // post blinds
   const post = (seat: Seat, amt: number) => {
@@ -241,13 +256,13 @@ export async function playHand(
       if (type === 'fold') {
         folded[toAct] = true;
         actionHistory[street].push({ type: 'fold', playerName: agents[toAct].name });
-        log.actions.push({ seat: toAct, street, type: 'fold', voluntary: true });
+        pushAction(toAct, street, 'fold', true);
         return false;
       }
 
       if (type === 'check') {
         actionHistory[street].push({ type: 'check', playerName: agents[toAct].name });
-        log.actions.push({ seat: toAct, street, type: 'check', voluntary });
+        pushAction(toAct, street, 'check', voluntary);
         toActCount--; toAct = other; continue;
       }
 
@@ -256,7 +271,7 @@ export async function playHand(
         stack[toAct] -= pay; committedStreet[toAct] += pay; committedHand[toAct] += pay;
         if (stack[toAct] === 0) allIn[toAct] = true;
         actionHistory[street].push({ type: 'call', amount: pay, playerName: agents[toAct].name });
-        log.actions.push({ seat: toAct, street, type: 'call', voluntary });
+        pushAction(toAct, street, 'call', voluntary);
         toActCount--; toAct = other; continue;
       }
 
@@ -274,14 +289,14 @@ export async function playHand(
         // Degenerate "raise" that isn't actually more chips -> check or call.
         if (canCheck) {
           actionHistory[street].push({ type: 'check', playerName: agents[toAct].name });
-          log.actions.push({ seat: toAct, street, type: 'check', voluntary });
+          pushAction(toAct, street, 'check', voluntary);
           toActCount--; toAct = other; continue;
         }
         const cp = Math.min(toCall, stack[toAct]);
         stack[toAct] -= cp; committedStreet[toAct] += cp; committedHand[toAct] += cp;
         if (stack[toAct] === 0) allIn[toAct] = true;
         actionHistory[street].push({ type: 'call', amount: cp, playerName: agents[toAct].name });
-        log.actions.push({ seat: toAct, street, type: 'call', voluntary });
+        pushAction(toAct, street, 'call', voluntary);
         toActCount--; toAct = other; continue;
       }
 
@@ -294,7 +309,7 @@ export async function playHand(
       // call is a "bet"; otherwise a "raise".
       const statType: ActionType = canCheck && street !== 'preflop' ? 'bet' : 'raise';
       actionHistory[street].push({ type: type === 'allin' ? 'allin' : 'raise', amount: target, playerName: agents[toAct].name });
-      log.actions.push({ seat: toAct, street, type: statType, voluntary: true });
+      pushAction(toAct, street, statType, true);
       toActCount = 1; // opponent must respond
       toAct = other;
     }

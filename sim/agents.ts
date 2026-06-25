@@ -80,6 +80,11 @@ const ARCHETYPES: Record<string, ArchetypeParams> = {
   // Calling station / fish: plays everything, almost never folds, rarely raises.
   fish: { openTop: 0.50, callTop: 0.30, threeBetTop: 0.85, foldTo3betBelow: 0.30,
           valueBet: 0.70, callDown: 0.30, bluffFreq: 0.05, raiseBluffFreq: 0.0, potFracBet: 0.5 },
+  // Pure calling station: calls almost anything, essentially never folds postflop,
+  // almost never raises. Even weaker fold thresholds than `fish` so "never folds"
+  // is unmistakable in the stats (the canonical "vs station, stop bluffing" target).
+  station: { openTop: 0.52, callTop: 0.18, threeBetTop: 0.92, foldTo3betBelow: 0.16,
+             valueBet: 0.78, callDown: 0.18, bluffFreq: 0.02, raiseBluffFreq: 0.0, potFracBet: 0.5 },
   // Maniac: raises/bets relentlessly regardless of equity.
   maniac: { openTop: 0.30, callTop: 0.20, threeBetTop: 0.40, foldTo3betBelow: 0.20,
             valueBet: 0.40, callDown: 0.35, bluffFreq: 0.80, raiseBluffFreq: 0.40, potFracBet: 0.9 },

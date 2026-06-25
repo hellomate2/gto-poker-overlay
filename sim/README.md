@@ -9,9 +9,14 @@ strategic leaks — instead of guessing.
 
 ```bash
 npm run sim:selftest          # validate the game engine (chip conservation, blinds, symmetry)
-npm run sim                   # default: 2000 hands per opponent
-npm run sim -- 10000 42       # 10,000 hands per opponent, seed 42
+npm run sim                   # default: 100,000 hands per profile, seed 42
+npm run sim -- 10000 42       # 10,000 hands per profile, seed 42
 ```
+
+The report focuses on four profiles: **station / nit / maniac / tag**. (Two extra
+archetypes — `lag`, `fish` — still exist in `agents.ts` for ad-hoc use.)
+
+A run prints per-profile frequencies + flagged leaks and writes **`sim/REPORT.md`**.
 
 Each opponent is played twice:
 
@@ -23,10 +28,23 @@ Each opponent is played twice:
 
 ## What it measures
 
-- **bb/100** win-rate vs each archetype (nit / TAG / LAG / fish / maniac).
-- **SB open %** and **BB defend %** — compared to the solved-chart targets
-  (SB-RFI ≈ 81%, BB-vs-open ≈ 74%).
-- Postflop aggression factor and WTSD.
+This is a **measurement tool**, not a tuning tool. It reports the bot's behavior
+as-is and flags leaks; it does NOT modify the bot or claim the bot is "good".
+
+- **bb/100** win-rate vs each profile, with a 95% confidence half-width from
+  per-hand variance (so "+50 ± 30" is honest about noise).
+- Action frequencies by spot: VPIP, PFR, SB-open, BB-defend, 3bet, fold-to-3bet,
+  flop cbet, fold-to-cbet, river-bet (bluff proxy), WTSD, W$SD, postflop AF.
+- **Flagged leaks** per profile: deviations from exploitatively-correct play
+  (e.g. "vs station: still betting rivers X% — bluffs are -EV"; "vs nit: folds to
+  cbet only Y% — calling down too light"; "vs maniac: over-folds to cbet").
+  If the bot is net-losing vs a profile, that is flagged loudly.
+- SB-open / BB-defend are compared to solved-chart targets (≈81% / ≈74%).
+
+> Caveat: the opponents are deliberately exploitable scripted heuristics, not
+> thinking players. A big positive bb/100 vs them is expected and is NOT evidence
+> the bot beats real opposition. The signal is *where the frequencies deviate
+> from the exploit-max line per profile*.
 
 ## Correctness
 
