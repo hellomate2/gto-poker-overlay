@@ -23,6 +23,14 @@ describe('clampRaiseAmount', () => {
     expect(clampRaiseAmount(1.25, { min: 0.5, max: 50 }).amount).toBe(1.25); // cents preserved
   });
 
+  it('rounds to cents when the input has more than two decimals', () => {
+    // The "preserve decimals" test above passes garbage through because its inputs
+    // already have <=2 decimals; this exercises the actual cents-rounding code.
+    expect(clampRaiseAmount(123.456, { min: 10, max: 1000 }).amount).toBe(123.46);
+    expect(clampRaiseAmount(0.754, { min: 0.5, max: 50 }).amount).toBe(0.75);
+    expect(clampRaiseAmount(0.756, { min: 0.5, max: 50 }).amount).toBe(0.76);
+  });
+
   it('clamps up to min when below the table minimum', () => {
     const r = clampRaiseAmount(5, { min: 40, max: 1000 });
     expect(r.invalid).toBe(false);
