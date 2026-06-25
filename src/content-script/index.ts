@@ -22,6 +22,7 @@ class PokerBot {
   private isProcessing: boolean = false;
   private processingTimestamp: number = 0;
   private lastHandNumber: number = -1;
+  private lastBustDumpHand: number = -2;
   private initialized: boolean = false;
   private sessionHands: number = 0;
   private sessionProfit: number = 0;
@@ -147,7 +148,21 @@ class PokerBot {
       if (this.settings.autoPlay) {
         try { this.executor.dismissBlockingPrompts(); } catch (e) { console.warn('[GTO Bot] prompt-dismiss error', e); }
         // Auto buy-back-in so unattended self-play keeps cycling after a bust.
-        try { this.executor.handleRebuy(); } catch (e) { console.warn('[GTO Bot] rebuy error', e); }
+        let rebought = false;
+        try { rebought = this.executor.handleRebuy(); } catch (e) { console.warn('[GTO Bot] rebuy error', e); }
+        // BUST DIAGNOSTIC: if the hero is busted (0 chips) and we could NOT find a
+        // rebuy/sit-in control, the heads-up table will halt (no opponent). Dump the
+        // visible controls + lobby markup ONCE so the exact rebuy DOM is recoverable
+        // from the console and the rebuy can be matched precisely.
+        const heroStack = state.players[state.heroIndex]?.stack;
+        if (!rebought && heroStack === 0 && this.lastBustDumpHand !== state.handNumber) {
+          this.lastBustDumpHand = state.handNumber;
+          const controls = Array.from(document.querySelectorAll('button, [role="button"], a, input[type="submit"], input[type="button"]'))
+            .map(e => ((e.textContent || (e as HTMLInputElement).value) || '').trim())
+            .filter(Boolean);
+          console.log('[GTO Bot] BUSTED but no rebuy control matched. Visible controls:', JSON.stringify(controls));
+          console.log('[GTO Bot] REBUY-AREA DOM:', (document.querySelector('.table-player.you-player, .you-player, body') as HTMLElement)?.outerHTML?.slice(0, 4000));
+        }
       }
 
       // CLEAN-STATE GUARD: only act when the table is fully, sanely parsed —
