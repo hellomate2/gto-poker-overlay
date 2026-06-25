@@ -1,7 +1,7 @@
 import {
   Card, Rank, Suit, GameState, Player, Position, Action, ActionType, Street,
 } from '../types/poker';
-import { detectStraddleFromLog, effectivePreflopBet, isPreActionLabel } from './safety';
+import { detectStraddleFromLog, effectivePreflopBet, isPreActionLabel, seatInHand } from './safety';
 
 // ============================================================
 // PokerNow DOM Scraper
@@ -371,7 +371,7 @@ export class PokerNowScraper {
         const sitClass = ['sitting-out', 'empty', 'away', 'sitting', 'standing', 'sit-out']
           .some(c => el.classList.contains(c));
         const cardCount = el.querySelectorAll('.table-player-cards .card, .card').length;
-        const isSittingOut = sitClass || !(isHero || cardCount > 0 || currentBet > 0);
+        const isSittingOut = !seatInHand({ isHero, cardCount, currentBet, sittingOutClass: sitClass });
 
         if (isHero) heroIndex = players.length;
         if (isDealer) dealerIndex = players.length;

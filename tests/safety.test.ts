@@ -3,6 +3,7 @@ import {
   chooseSafeAction,
   chooseFallbackAction,
   isPreActionLabel,
+  seatInHand,
   findPromptToDismiss,
   PROMPT_DEFAULTS,
   detectStraddleAmount,
@@ -17,6 +18,24 @@ import {
 // Defensive-robustness pure logic. These mirror exactly what the live executor /
 // scraper feed in, so a passing test here means the live safe path is correct.
 // ============================================================
+
+describe('seatInHand — heads-up detection (the dormant-3rd-seat bug)', () => {
+  const base = { isHero: false, cardCount: 0, currentBet: 0, sittingOutClass: false };
+  it('counts the hero, a seat with cards, or a seat that has wagered', () => {
+    expect(seatInHand({ ...base, isHero: true })).toBe(true);
+    expect(seatInHand({ ...base, cardCount: 2 })).toBe(true);
+    expect(seatInHand({ ...base, currentBet: 10 })).toBe(true);
+  });
+  it('does NOT count a dormant seat (name + stack but no cards, no bet, not hero)', () => {
+    // This is the rotating-table seat that made a 2-player game read as 3-handed
+    // and use tight 6-max ranges -> folded the button ~78%.
+    expect(seatInHand(base)).toBe(false);
+  });
+  it('an explicit sitting-out marker always wins, even with cards', () => {
+    expect(seatInHand({ ...base, cardCount: 2, sittingOutClass: true })).toBe(false);
+    expect(seatInHand({ ...base, isHero: true, sittingOutClass: true })).toBe(false);
+  });
+});
 
 describe('isPreActionLabel — pre-select buttons mean it is NOT our turn', () => {
   it('matches PokerNow pre-action labels', () => {

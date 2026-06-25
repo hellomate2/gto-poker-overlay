@@ -17,6 +17,26 @@ import { Player, Position } from '../types/poker';
 // ============================================================
 
 /**
+ * Whether a seat is genuinely IN THE CURRENT HAND (so it counts toward the active
+ * player count that decides heads-up vs multiway charts). A seat counts if it's
+ * the hero, has hole cards rendered, or has chips wagered. A dormant seat on a
+ * rotating table (a name + stack but not dealt in) has none of these and must NOT
+ * be counted — otherwise a 2-player game is misread as 3-handed and the bot uses
+ * tight 6-max ranges that fold the button far too often. An explicit sitting-out
+ * marker always wins. This is the single highest-EV correctness check, so it is
+ * pure and unit-tested here rather than buried in the DOM scraper.
+ */
+export function seatInHand(opts: {
+  isHero: boolean;
+  cardCount: number;
+  currentBet: number;
+  sittingOutClass: boolean;
+}): boolean {
+  if (opts.sittingOutClass) return false;
+  return opts.isHero || opts.cardCount > 0 || opts.currentBet > 0;
+}
+
+/**
  * True if a button label is one of PokerNow's PRE-ACTION (pre-select) controls,
  * which are shown and clickable ONLY while it is the OPPONENT's turn (you queue
  * an action in advance). Their presence is a definitive "NOT my turn" signal —
