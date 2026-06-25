@@ -63,8 +63,21 @@ export interface Spot {
 //          signal that distinguishes tiny vs huge bets nonlinearly
 // [31]     threeBetPot (0/1)
 // [32..36] legal-action mask (5): fold, check, call, bet, raise
+// --- richer card-derived structure (appended AFTER the mask so the mask offset
+//     stays 32; these capture draws and pair-QUALITY the category+equity miss) ---
+// [37]     flush draw (hero has 4 to a flush, cards still to come) (0/1)
+// [38]     nut flush draw (flush draw holding the ace of that suit) (0/1)
+// [39]     open-ended / double-gutshot straight draw (>=2 hero outs) (0/1)
+// [40]     gutshot straight draw (exactly 1 hero out) (0/1)
+// [41]     combo draw (flush draw + straight draw) (0/1)
+// [42]     two overcards (no pair, both hole ranks above the top board card) (0/1)
+// [43]     overpair (pocket pair higher than the top board card) (0/1)
+// [44]     top pair (a hole card pairs the top board rank) (0/1)
+// [45]     second pair or worse / underpair (0/1)
+// [46]     pair kicker rank / 12 (when holding one pair via a hole card)
+// [47]     # board cards out-ranking hero's pair / 5 (dominated-pair risk)
 const CATEGORY_COUNT = 9; // HIGH_CARD(0) .. STRAIGHT_FLUSH(8)
-export const FEATURE_DIM = 37;
+export const FEATURE_DIM = 48;
 
 // Indices of the 5-way legal-action mask inside the feature vector, exported so
 // the trainer/policy can mask logits to legal actions using the SAME features.
@@ -157,6 +170,95 @@ function deterministicEquity(hole: [CardId, CardId], board: CardId[]): number {
   return total === 0 ? 0.5 : (win + tie * 0.5) / total;
 }
 
+const rankOf = (c: CardId): number => (c / 4) | 0;
+const suitOf = (c: CardId): number => c % 4;
+
+interface HeroExtra {
+  flushDraw: number; nutFlushDraw: number; oesd: number; gutshot: number; comboDraw: number;
+  twoOvercards: number; overpair: number; topPair: number; secondPairPlus: number;
+  pairKicker: number; overcardsToPair: number;
+}
+
+/**
+ * Card-derived draw + pair-quality features (pure function of hole + board).
+ * The made-hand category one-hot (f0..8) and the equity scalar (f9) miss two
+ * strategically decisive things: (1) a strong flush/straight DRAW reads as
+ * "high card" with middling equity, and (2) the PAIR category doesn't say whether
+ * it's an overpair, top pair, or a dominated bottom pair. These play completely
+ * differently (semi-bluff vs value vs pot-control), so we encode them explicitly.
+ */
+function heroExtraFeatures(hole: [CardId, CardId], board: CardId[]): HeroExtra {
+  const z: HeroExtra = {
+    flushDraw: 0, nutFlushDraw: 0, oesd: 0, gutshot: 0, comboDraw: 0,
+    twoOvercards: 0, overpair: 0, topPair: 0, secondPairPlus: 0, pairKicker: 0, overcardsToPair: 0,
+  };
+  if (board.length < 3) return z;
+  const hr = [rankOf(hole[0]), rankOf(hole[1])];
+  const hs = [suitOf(hole[0]), suitOf(hole[1])];
+  const br = board.map(rankOf);
+  const bs = board.map(suitOf);
+  const topBoard = Math.max(...br);
+  const toCome = 5 - board.length;
+  const cat = Math.floor(evaluateHand([hole[0], hole[1], ...board]) / 1_000_000);
+
+  // Flush draw: a suit where hero contributes and hole+board total exactly 4.
+  if (toCome > 0 && cat < HAND_CATEGORY.FLUSH) {
+    for (let s = 0; s < 4; s++) {
+      const holeS = hs.filter(x => x === s).length;
+      const boardS = bs.filter(x => x === s).length;
+      if (holeS >= 1 && holeS + boardS === 4) {
+        z.flushDraw = 1;
+        if (hr.some((r, i) => hs[i] === s && r === 12)) z.nutFlushDraw = 1; // ace of suit
+      }
+    }
+  }
+
+  // Straight-draw outs that USE a hero card (so it's hero's draw, not the board's).
+  if (toCome > 0 && cat < HAND_CATEGORY.STRAIGHT) {
+    const present = new Set<number>([...hr, ...br]);
+    const holeSet = new Set<number>(hr);
+    const has = (r: number) => (r === -1 ? present.has(12) : present.has(r));
+    const holeHas = (r: number) => (r === -1 ? holeSet.has(12) : holeSet.has(r));
+    let outs = 0;
+    for (let o = 0; o < 13; o++) {
+      if (present.has(o)) continue;
+      present.add(o);
+      let found = false;
+      for (let lo = -1; lo <= 8 && !found; lo++) {
+        let ok = true, usesHole = false, usesOut = false;
+        for (let k = 0; k < 5; k++) {
+          const r = lo + k;
+          if (!has(r)) { ok = false; break; }
+          if (r === o) usesOut = true;
+          if (holeHas(r)) usesHole = true;
+        }
+        if (ok && usesOut && usesHole) found = true;
+      }
+      present.delete(o);
+      if (found) outs++;
+    }
+    if (outs >= 2) z.oesd = 1; else if (outs === 1) z.gutshot = 1;
+  }
+  z.comboDraw = z.flushDraw && (z.oesd || z.gutshot) ? 1 : 0;
+
+  // Pair quality.
+  const pocket = hr[0] === hr[1];
+  if (cat === HAND_CATEGORY.PAIR) {
+    if (pocket) {
+      if (hr[0] > topBoard) z.overpair = 1; else z.secondPairPlus = 1;
+    } else {
+      const matched = hr.find(r => br.includes(r));
+      const kicker = hr.find(r => !br.includes(r));
+      if (matched === topBoard) z.topPair = 1; else z.secondPairPlus = 1;
+      if (kicker !== undefined) z.pairKicker = kicker / 12;
+      if (matched !== undefined) z.overcardsToPair = br.filter(r => r > matched).length / 5;
+    }
+  } else if (cat === HAND_CATEGORY.HIGH_CARD && !pocket && Math.min(hr[0], hr[1]) > topBoard) {
+    z.twoOvercards = 1;
+  }
+  return z;
+}
+
 /**
  * Encode a normalized Spot into a fixed-length Float32Array feature vector.
  * Pure & deterministic — identical at training prep and live inference.
@@ -240,6 +342,20 @@ export function encodeSpot(spot: Spot): Float32Array {
   f[ACTION_MASK_OFFSET + 2] = spot.canCall ? 1 : 0;
   f[ACTION_MASK_OFFSET + 3] = spot.canBet ? 1 : 0;
   f[ACTION_MASK_OFFSET + 4] = spot.canRaise ? 1 : 0;
+
+  // --- richer card-derived draw + pair-quality features (37..47) ---
+  const hx = heroExtraFeatures(spot.holeCards, spot.board);
+  f[37] = hx.flushDraw;
+  f[38] = hx.nutFlushDraw;
+  f[39] = hx.oesd;
+  f[40] = hx.gutshot;
+  f[41] = hx.comboDraw;
+  f[42] = hx.twoOvercards;
+  f[43] = hx.overpair;
+  f[44] = hx.topPair;
+  f[45] = hx.secondPairPlus;
+  f[46] = hx.pairKicker;
+  f[47] = hx.overcardsToPair;
 
   return f;
 }

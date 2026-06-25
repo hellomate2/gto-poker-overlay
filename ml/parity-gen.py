@@ -23,13 +23,13 @@ WEIGHTS = os.path.join(HERE, "_weights.json")
 RAW_IN = os.path.join(HERE, "..", "tests", "fixtures", "parity-inputs.json")
 OUT = os.path.join(HERE, "..", "tests", "fixtures", "parity-vectors.json")
 
-FEATURE_DIM = 37
-
-
 def main():
     with open(WEIGHTS) as f:
         m = json.load(f)
     dims = m["dims"]
+    # Derive the feature dim from the model itself (W1 is [in, h1]) so this never
+    # goes stale when the encoder adds features.
+    FEATURE_DIM = dims["W1"][0]
     mean = np.array(m["mean"], dtype=np.float32)
     std = np.array(m["std"], dtype=np.float32)
 

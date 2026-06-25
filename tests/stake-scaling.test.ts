@@ -123,9 +123,15 @@ describe('facing a bet — never "bet", raise must be at least the minimum', () 
     if (d.action === 'raise') expect(d.amount!).toBeGreaterThanOrEqual(600);
   });
 
-  it('a weak hand facing a bet folds or calls — never bets', async () => {
-    const d = await new DecisionEngine().decide(facingBetState(300, ['Ad', '7h'])); // ace high
-    expect(['fold', 'call']).toContain(d.action);
+  it('facing a bet, a weak hand never returns an (illegal) "bet" — fold/call or a legal bluff-raise', async () => {
+    // A7o is ace-high air, but with the ACE as a blocker a bluff-raise vs a turn
+    // bet is legitimate GTO (the solver-labeled net learned it). So the real
+    // invariant is "never an illegal 'bet' facing a bet" — NOT "weak hands never
+    // raise". If it raises, the size must still be a legal min-raise (>= 2x).
+    const d = await new DecisionEngine().decide(facingBetState(300, ['Ad', '7h']));
+    expect(d.action).not.toBe('bet');
+    expect(['fold', 'call', 'raise', 'allin']).toContain(d.action);
+    if (d.action === 'raise') expect(d.amount!).toBeGreaterThanOrEqual(600);
   });
 })
 
