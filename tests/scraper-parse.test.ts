@@ -7,8 +7,45 @@ import {
   resolveCurrentBet,
   assignPositions,
   detectStreet,
+  detectStreetFromLog,
+  laterStreet,
 } from '../src/content-script/scraper';
 import { card } from './helpers';
+
+// ============================================================
+// Street detection: board-count vs game-log cross-check. The bug this guards
+// against: the board fails to scrape (0 cards) on a turn, street reads 'preflop',
+// and the bot tries an "SB Open RFI raise $50" on a 4-card board.
+// ============================================================
+
+describe('detectStreetFromLog', () => {
+  // PokerNow log lines are oldest-first; current hand is after the last marker.
+  const hand = (...lines: string[]) => ['-- starting hand #42 --', ...lines];
+
+  it('returns null when only preflop action exists', () => {
+    expect(detectStreetFromLog(hand('"Dev" raises to 50', '"bot" calls 50'))).toBeNull();
+  });
+  it('detects flop / turn / river from the newest marker', () => {
+    expect(detectStreetFromLog(hand('Flop:  [8d 4s 3d]'))).toBe('flop');
+    expect(detectStreetFromLog(hand('Flop:  [8d 4s 3d]', 'Turn: [8d 4s 3d] [As]'))).toBe('turn');
+    expect(detectStreetFromLog(hand('Flop: [..]', 'Turn: [..]', 'River: [..]'))).toBe('river');
+  });
+  it('ignores street markers from a PRIOR hand (stops at the start marker)', () => {
+    const lines = ['River: [old board]', '-- starting hand #43 --', '"bot" raises to 50'];
+    expect(detectStreetFromLog(lines)).toBeNull();
+  });
+  it('returns null for an empty log', () => {
+    expect(detectStreetFromLog([])).toBeNull();
+  });
+});
+
+describe('laterStreet (board vs log cross-check)', () => {
+  it('takes the more-advanced street', () => {
+    expect(laterStreet('preflop', 'turn')).toBe('turn'); // board blanked, log saved us
+    expect(laterStreet('river', 'flop')).toBe('river');
+    expect(laterStreet('flop', 'flop')).toBe('flop');
+  });
+});
 
 // ============================================================
 // Scraper parsing correctness — the table-reading the bot depends on.

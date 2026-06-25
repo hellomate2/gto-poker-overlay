@@ -65,6 +65,17 @@ export class DecisionEngine {
       return this.defaultDecision('check');
     }
 
+    // SAFETY: it's postflop but the board failed to scrape (fewer than 3 cards).
+    // We cannot evaluate the hand, and we must NOT fall through to preflop logic
+    // (that produced the "SB Open RFI raise" on a turn board). Take a safe action:
+    // check if we can, else fold — never risk chips on an unreadable board.
+    if (state.street !== 'preflop' && state.communityCards.length < 3) {
+      const heroBet = state.players[state.heroIndex]?.currentBet || 0;
+      const facingBet = state.currentBet > heroBet;
+      console.warn(`[GTO Bot] Postflop (${state.street}) but board unreadable (${state.communityCards.length} cards) — safe ${facingBet ? 'fold' : 'check'}`);
+      return this.defaultDecision(facingBet ? 'fold' : 'check');
+    }
+
     const heroCardIds: [number, number] = [
       cardToId(state.heroCards[0]),
       cardToId(state.heroCards[1]),

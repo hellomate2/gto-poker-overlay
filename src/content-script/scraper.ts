@@ -77,6 +77,42 @@ function parseCardElement(el: Element): Card | null {
   return null;
 }
 
+// Board-container selectors, tried in order. PokerNow has shipped a few of these
+// across versions; the first that yields cards wins.
+const BOARD_SELECTORS = [
+  '.table-cards .card',
+  '.community-cards .card',
+  '.table-community-cards .card',
+  '.board-cards .card',
+  '.community .card',
+];
+
+/**
+ * Collect the community (board) cards robustly. Tries each known board container;
+ * if none match (PokerNow changed its markup), falls back to every `.card` that
+ * is NOT inside a player seat — board cards live in the table center, hole cards
+ * live inside `.table-player`. This stops a selector change from silently
+ * blanking the board and making the bot think a postflop spot is preflop.
+ */
+function collectCommunityCards(): Card[] {
+  let els: Element[] = [];
+  for (const sel of BOARD_SELECTORS) {
+    els = Array.from(document.querySelectorAll(sel));
+    if (els.length > 0) break;
+  }
+  if (els.length === 0) {
+    els = Array.from(document.querySelectorAll('.card')).filter(
+      (c) => !c.closest('.table-player'),
+    );
+  }
+  const cards: Card[] = [];
+  for (const el of els) {
+    const card = parseCardElement(el);
+    if (card) cards.push(card);
+  }
+  return cards;
+}
+
 function normalizeRank(r: string): Rank {
   const upper = r.toUpperCase().trim();
   if (upper === '10') return 'T';
@@ -201,6 +237,33 @@ export function detectStreet(communityCards: Card[]): Street {
   }
 }
 
+const STREET_ORDER: Street[] = ['preflop', 'flop', 'turn', 'river'];
+
+/** Return whichever street is further along. */
+export function laterStreet(a: Street, b: Street): Street {
+  return STREET_ORDER.indexOf(a) >= STREET_ORDER.indexOf(b) ? a : b;
+}
+
+/**
+ * Derive the current street from PokerNow's game log as a cross-check for the
+ * board-card count. Log lines are oldest-first; we walk newest->oldest within the
+ * current hand (stopping at the "starting hand" marker) and return the newest
+ * flop/turn/river marker seen. Returns null when no postflop marker exists for
+ * this hand (i.e. genuinely preflop, or the log is unavailable). This is the
+ * safety net: even if the board fails to scrape entirely, the log still tells us
+ * we are postflop, so the bot never mistakes a turn for a fresh preflop open.
+ */
+export function detectStreetFromLog(logLines: string[]): Street | null {
+  for (let i = logLines.length - 1; i >= 0; i--) {
+    const t = (logLines[i] || '').toLowerCase();
+    if (t.includes('starting hand') || t.includes('hand #')) break;
+    if (t.includes('river')) return 'river';
+    if (t.includes('turn')) return 'turn';
+    if (t.includes('flop')) return 'flop';
+  }
+  return null;
+}
+
 export class PokerNowScraper {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private callbacks: GameStateCallback[] = [];
@@ -249,13 +312,8 @@ export class PokerNowScraper {
         if (card) heroCards.push(card);
       });
 
-      // Community cards
-      const communityCardEls = document.querySelectorAll(SEL.communityCards);
-      const communityCards: Card[] = [];
-      communityCardEls.forEach(el => {
-        const card = parseCardElement(el);
-        if (card) communityCards.push(card);
-      });
+      // Community cards — robust to PokerNow markup changes.
+      const communityCards: Card[] = collectCommunityCards();
       // Run-it-twice renders two boards (>5 cards). De-dupe and cap at 5 so
       // street detection and equity stay sane; we're all-in by then anyway.
       if (communityCards.length > 5) {
@@ -343,9 +401,13 @@ export class PokerNowScraper {
       const street0 = detectStreet(communityCards);
       const logLines = Array.from(document.querySelectorAll(SEL.logMessages))
         .map(e => e.textContent || '');
-      const straddle = street0 === 'preflop' ? detectStraddleFromLog(logLines) : 0;
+      // Cross-check the board-card count against the game log. If the board failed
+      // to scrape, the log's flop/turn/river markers still pin the real street, so
+      // a postflop spot can never be misread as a fresh preflop open.
+      const street = laterStreet(street0, detectStreetFromLog(logLines) || 'preflop');
+      const straddle = street === 'preflop' ? detectStraddleFromLog(logLines) : 0;
       const maxPlayerBet = Math.max(0, ...players.map(p => p.currentBet));
-      const facingPreflop = street0 === 'preflop'
+      const facingPreflop = street === 'preflop'
         ? effectivePreflopBet(bigBlind, straddle, maxPlayerBet)
         : maxPlayerBet;
       const currentBet = resolveCurrentBet({
@@ -355,7 +417,6 @@ export class PokerNowScraper {
       // Minimum raise-to: facing a bet you must raise to at least double it; when
       // unopened, at least 2bb.
       const minRaise = currentBet > 0 ? currentBet * 2 : bigBlind * 2;
-      const street = street0;
       const actionHistory = this.parseGameLog();
 
       return {
