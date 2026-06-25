@@ -282,6 +282,19 @@ export class ActionExecutor {
     }
   }
 
+  /**
+   * Clear the "already acted on this spot" marker. Called by the bot loop whenever
+   * it is NOT our turn, so every fresh turn is a new decision. This removes any
+   * dependence on the hand number for de-duping (the log-parsed hand number can
+   * get stuck after several hands, which made a new hand's spot look identical to
+   * the last one we acted on -> skipped -> the bot "stops after N hands").
+   * Within a single continuous turn the marker is still set after acting, so the
+   * 500ms poll never double-acts.
+   */
+  clearActedSignature(): void {
+    this.lastActedSignature = null;
+  }
+
   private sampleAction(decision: BotDecision): { type: ActionType; amount?: number } {
     return sampleActionFromStrategy(
       decision.mixedStrategy,

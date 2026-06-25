@@ -29,9 +29,11 @@ class PokerBot {
   private sessionVpipOpp: number = 0;
   private lastHeroStack: number = 0;
   private startTime: number = Date.now();
-  // Short so any stuck lock self-clears in seconds (no long stale-panel window).
-  // The executor is itself time-boxed, so a real action never needs this long.
-  private static readonly PROCESSING_TIMEOUT = 6000;
+  // Must exceed the executor's worst-case time (the multi-method raise retries
+  // ~0.4s apart can take several seconds). If this fired mid-raise it would
+  // reset the lock and let a second execute() run concurrently and corrupt state
+  // — which is what made it break after a few hands. Only a true hang hits this.
+  private static readonly PROCESSING_TIMEOUT = 12000;
 
   constructor() {
     this.settings = { ...DEFAULT_SETTINGS };
@@ -203,6 +205,9 @@ class PokerBot {
         this.isProcessing = false;
       } else if (!state.isOurTurn) {
         this.hud.clearDecision();
+        // Not our turn -> clear the acted marker so the NEXT turn (new street/hand)
+        // is always a fresh decision, regardless of whether the hand number parsed.
+        this.executor.clearActedSignature();
       }
     } catch (err) {
       console.error('[GTO Bot] Error:', err);
