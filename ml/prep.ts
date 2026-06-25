@@ -18,7 +18,7 @@ import { encodeSpot, Spot, FEATURE_DIM, ACTIONS } from '../src/core/ml/features'
 
 const DATA = `${__dirname}/data`;
 
-interface Parsed {
+export interface Parsed {
   spot: Spot;
   label: number;
 }
@@ -64,7 +64,7 @@ function labelFor(decision: string): number {
  * Robust CSV line splitter for this dataset (quoted fields may contain commas,
  * e.g. the available_moves list). Handles double quotes only.
  */
-function splitCsv(line: string): string[] {
+export function splitCsv(line: string): string[] {
   const out: string[] = [];
   let cur = '';
   let inQ = false;
@@ -85,7 +85,7 @@ function splitCsv(line: string): string[] {
   return out;
 }
 
-function parseRow(cols: string[], header: Record<string, number>): Parsed | null {
+export function parseRow(cols: string[], header: Record<string, number>): Parsed | null {
   const get = (k: string) => cols[header[k]] ?? '';
 
   const evalAt = get('evaluation_at').trim();
@@ -212,8 +212,20 @@ async function prep(split: 'train' | 'test'): Promise<void> {
   console.log(`  class dist [fold,check,call,bet,raise] = ${dist.join(', ')}`);
 }
 
-(async () => {
-  await prep('train');
-  await prep('test');
-  console.log('prep done.');
+// Only run the full prep when executed directly (npx tsx ml/prep.ts), not when
+// imported by tests/fixture builders that reuse parseRow/splitCsv above.
+const isMain = (() => {
+  try {
+    return !!(require.main && require.main.filename === __filename);
+  } catch {
+    return false;
+  }
 })();
+
+if (isMain) {
+  (async () => {
+    await prep('train');
+    await prep('test');
+    console.log('prep done.');
+  })();
+}

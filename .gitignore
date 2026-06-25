@@ -26,3 +26,6 @@ ml/data/
 
 # Internal context handoff (not for the public repo)
 HANDOFF.md
+
+# parity build artifact (decoded committed weights for ml/parity-gen.py)
+ml/_weights.json

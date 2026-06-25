@@ -13,7 +13,9 @@
     "solve:equity": "npx tsx src/solver/preflop/build-equity.ts",
     "eval:bench": "npx tsx src/core/equity/eval-bench.ts",
     "ml:prep": "npx tsx ml/prep.ts",
-    "ml:train": "python3 ml/train.py"
+    "ml:train": "python3 ml/train.py",
+    "ml:verify": "npx tsx ml/verify.ts",
+    "ml:fixtures": "npx tsx ml/build-fixtures.ts && npx tsx ml/build-parity-inputs.ts && npx tsx ml/export-weights.ts && python3 ml/parity-gen.py"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.37",
