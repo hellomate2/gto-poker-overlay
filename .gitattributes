@@ -1,0 +1,7 @@
+# Generated/solved data — keep out of diffs and language stats so retrains and
+# re-solves don't create noisy reviews or skew the repo's language breakdown.
+src/core/ml/model.ts            linguist-generated=true -diff
+src/solver/preflop/equity-matrix.json  linguist-generated=true -diff
+src/core/ranges/headsup-solved.ts      linguist-generated=true -diff
+src/core/ranges/greenline-gto.ts       linguist-generated=true -diff
+src/core/ranges/pekarstas-gto.ts       linguist-generated=true -diff

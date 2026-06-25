@@ -1,4 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Seed the engine's mixed-strategy randomization (semi-bluff/bluff frequencies
+// use Math.random) so these assertions are deterministic. Equity itself is
+// already deterministic, so fixing Math.random doesn't affect hand strength —
+// it just suppresses the random bluff lines, which is what these anti-blunder /
+// value-bet tests are checking.
+beforeEach(() => { vi.spyOn(Math, 'random').mockReturnValue(0.99); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 // The DecisionEngine loads opponent stats from IndexedDB, which doesn't exist in
 // the node test environment. Stub the storage layer so decide() runs with empty
