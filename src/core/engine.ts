@@ -1053,14 +1053,18 @@ export class DecisionEngine {
   // Helpers
   // ============================================================
 
+  /**
+   * Postflop position: the player on the BUTTON (dealer) acts last and is
+   * therefore IN POSITION. Heads-up, the SB *is* the button, so position must be
+   * read from the dealer flag — not from blind labels. (The old code treated the
+   * HU button/SB as out of position, which is backwards and fed the solver model
+   * the wrong position every hand.)
+   */
   private isInPosition(state: GameState): boolean {
     const hero = state.players[state.heroIndex];
-    const posOrder: Record<string, number> = { SB: 0, BB: 1, UTG: 2, MP: 3, CO: 4, BTN: 5 };
-    const heroOrder = posOrder[hero.position] || 0;
-    const villainOrders = state.players
-      .filter((p, i) => i !== state.heroIndex && !p.isSittingOut)
-      .map(p => posOrder[p.position] || 0);
-    return villainOrders.every(v => heroOrder > v);
+    if (state.players.some(p => p.isDealer)) return !!hero.isDealer;
+    // Fallback when no dealer flag is scraped: the dealer seat acts last.
+    return state.heroIndex === state.dealerIndex;
   }
 
   private defaultDecision(action: ActionType, reasoning: string = ''): BotDecision {
