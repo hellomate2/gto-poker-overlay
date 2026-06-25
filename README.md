@@ -9,7 +9,7 @@ It's built as a study tool and a training opponent. It is a strong **approximati
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![Tests](https://img.shields.io/badge/tests-200%2B%20passing-2ecc71)](#verification)
+[![Tests](https://img.shields.io/badge/tests-215%20passing-2ecc71)](#verification)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## Install
