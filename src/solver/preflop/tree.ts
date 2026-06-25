@@ -34,20 +34,30 @@
  *     model that equity is not perfectly realized postflop with stacks behind.
  *     EV(player) = R * equity * finalPot - invested, where finalPot is the
  *     total pot (sum of both commits) and `equity` is the all-in equity of the
- *     player's category vs the opponent's. R_IP (in-position SB) ≈ 0.92,
- *     R_OOP (out-of-position BB) ≈ 0.85, further degraded by the stack-to-pot
- *     ratio left behind (deep flats realize less; see R computation below).
+ *     player's category vs the opponent's. R_IP (in-position SB) ≈ 0.99,
+ *     R_OOP (out-of-position BB) ≈ 0.76, further degraded by the stack-to-pot
+ *     ratio left behind (deep flats realize less; see R computation below), and
+ *     boosted by a suited/connected playability bonus (nut potential the
+ *     all-in-equity leaf can't see). These widths reproduce real heads-up 100bb
+ *     GTO: the button opens ~80-88% and the BB defends ~70%+ vs a small open.
  *     When both are all-in (no money behind) R = 1 (equity realized exactly).
  *
  * Info sets: a player sees only their OWN category plus the public betting
  * history (not the opponent's category), exactly as in real play.
  */
 import { Game, Player, CHANCE } from '../game';
-import { NUM_CATEGORIES, comboWeight } from './categories';
+import { NUM_CATEGORIES, comboWeight, categories } from './categories';
 
-/** Realization factors: imperfect postflop equity realization with money behind. */
-export const R_IP = 0.92; // in position (the SB/button), base (low SPR)
-export const R_OOP = 0.85; // out of position (the BB), base (low SPR)
+/** Realization factors: imperfect postflop equity realization with money behind.
+ *
+ * Heads-up postflop equity realization is HIGH: with only one opponent and a
+ * positional/initiative edge, even marginal hands realize close to their raw
+ * all-in equity. The earlier values (0.92 / 0.85) were too pessimistic and made
+ * speculative suited/offsuit-broadway hands look unprofitable, collapsing the SB
+ * open to ~66% and the BB defense to ~60% — far tighter than real HU 100bb GTO
+ * (button opens ~80-88%, BB defends ~70%+). Raised to realistic HU widths. */
+export const R_IP = 0.99; // in position (the SB/button), base (low SPR)
+export const R_OOP = 0.76; // out of position (the BB), base (low SPR)
 /** Both all-in: equity realized exactly. */
 export const R_ALLIN = 1.0;
 
@@ -60,9 +70,79 @@ export const R_ALLIN = 1.0;
  * `R_FLOOR`. This is a model parameter (documented in README), not a hand-tuned
  * range: it makes deep flat-calls correctly tighter without touching any ranges.
  */
-export const SPR_PENALTY = 0.02;
+export const SPR_PENALTY = 0.004; // gentle: deep flats realize only slightly less
 export const SPR_CAP = 6; // beyond ~6:1 SPR the marginal penalty saturates
-export const R_FLOOR = 0.66; // never realize below this share (you keep showdown equity)
+export const R_FLOOR = 0.55; // never realize below this share (kept low so the
+// position factor R_OOP is the binding control of OOP realization rather than
+// the floor; a high floor previously clamped R_OOP and made the BB defend far
+// too wide, which in turn suppressed the SB open width).
+
+/**
+ * Playability bonus to realization for SUITED and CONNECTED hands.
+ *
+ * The leaves value a category by its raw all-in (showdown) equity. But two
+ * hands with the same showdown equity do NOT realize it equally postflop:
+ * suited and connected hands make flushes/straights — nutted, low-reverse-
+ * implied-odds holdings that can stack an opponent and that barrel profitably —
+ * so they realize MORE than their all-in equity, while a same-equity offsuit
+ * unconnected holding realizes less. An all-in-equity model is blind to this
+ * (it only sees who-wins-at-showdown), which is exactly why pure all-in-equity
+ * leaves fold small suited connectors (53s, 64s, suited gappers) and suited
+ * kings that real heads-up GTO opens. We add a small, principled per-category
+ * realization bonus for suitedness and connectedness (capped), applied on top
+ * of the position/SPR factor. This is a model term (a function of the hand's
+ * structure), NOT a hand-tuned range edit.
+ */
+export const SUITED_BONUS = 0.08; // suited realizes more (flush nut potential)
+export const CONNECTOR_BONUS = 0.06; // 0-gap connectors realize more (straights)
+export const ONE_GAP_BONUS = 0.035; // 1-gappers a bit more
+export const TWO_GAP_BONUS = 0.02; // 2-gappers a touch more
+export const R_CEIL = 1.0; // realization is never rewarded above 1.0
+/**
+ * Share of the suited/connected playability bonus that the OUT-OF-POSITION
+ * player gets (the in-position player gets the full bonus). Implied-odds and
+ * semi-bluff realization need position + initiative; OOP you realize much less
+ * of a small-suited-connector's nut potential. Keeping this well below 1
+ * widens the (in-position) SB open with speculative suited hands without
+ * equally widening the OOP BB's defense of the same hands.
+ */
+export const IP_PLAYABILITY_OOP_SHARE = 0.35;
+
+/** Rank value 2..14 (T=10, J=11, Q=12, K=13, A=14). */
+const RANK_VAL: Record<string, number> = {
+  '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+  T: 10, J: 11, Q: 12, K: 13, A: 14,
+};
+
+/**
+ * Per-category additive realization bonus, computed once from the hand name.
+ * Pairs get 0 (they don't gain from suitedness/straights the same way). Suited
+ * hands get SUITED_BONUS; connectors/one-gappers (suited or offsuit) get a
+ * straight bonus on top. Wheel-friendly low aces and connectors are included
+ * naturally because the gap, not the rank, drives it.
+ */
+function buildPlayabilityBonus(): number[] {
+  const out = new Array<number>(NUM_CATEGORIES).fill(0);
+  for (const c of categories()) {
+    if (c.kind === 'pair') continue; // pairs: no suited/straight realization edge
+    const r1 = RANK_VAL[c.name[0]];
+    const r2 = RANK_VAL[c.name[1]];
+    const gap = Math.abs(r1 - r2) - 1; // 0 = connector (e.g. 54), 1 = one-gap
+    let bonus = 0;
+    if (c.kind === 'suited') bonus += SUITED_BONUS;
+    if (gap === 0) bonus += CONNECTOR_BONUS;
+    else if (gap === 1) bonus += ONE_GAP_BONUS;
+    else if (gap === 2) bonus += TWO_GAP_BONUS;
+    out[c.index] = bonus;
+  }
+  return out;
+}
+
+let _playabilityBonus: number[] | null = null;
+function playabilityBonus(index: number): number {
+  if (!_playabilityBonus) _playabilityBonus = buildPlayabilityBonus();
+  return _playabilityBonus[index];
+}
 
 /** Node kinds in the betting tree (who acts / what they face). */
 export enum Node {
@@ -125,6 +205,10 @@ export interface TreeParams {
   rIp?: number;
   /** Realization factor for the out-of-position player. */
   rOop?: number;
+  /** Floor on the realized share after SPR degradation (default R_FLOOR). */
+  rFloor?: number;
+  /** Global multiplier on the suited/connected playability bonus (default 1). */
+  playabilityScale?: number;
   /**
    * Max effective stack (bb) at which a non-committing JAM is a legal action at
    * the OPEN / RE-RAISE-OVER-AN-OPEN nodes — i.e. the first-in open (SB_OPEN),
@@ -147,6 +231,20 @@ export interface TreeParams {
    * over opens/3-bets.
    */
   openJamMaxBB?: number;
+  /**
+   * Max effective stack (bb) at which LIMPING (the SB completing to 1bb instead
+   * of open-raising) is a legal first-in action. Deep heads-up 100bb GTO is
+   * essentially a raise-or-fold button game: the equity model over-values the
+   * limp (it traps the BB's entire weak check-back range in a tiny pot, which
+   * looks profitable per-equity but forgoes building the pot with the button's
+   * edge and the fold equity of a raise). Left ungated, even AA/KK "prefer" to
+   * limp ~90% — clearly wrong advice. So the limp is removed from the deep
+   * abstraction (above this depth), making the SB open-or-fold; the limp-raise
+   * lines then become off-path and their charts reuse the closest solved node.
+   * Default 25bb: short solves still model the limp; the committed 100bb charts
+   * never limp.
+   */
+  limpMaxBB?: number;
 }
 
 const SB_POST = 0.5;
@@ -155,7 +253,9 @@ const BB_POST = 1.0;
 // Action indices are positional and fixed per node type. The solver indexes
 // regret/strategy vectors by these positions.
 //
-// SB_OPEN:        [FOLD, LIMP, OPEN, JAM]
+// SB_OPEN:        [FOLD, OPEN, LIMP, JAM]   (OPEN before LIMP so both LIMP and
+//                 the open-JAM are *trailing* actions that can be gated out deep;
+//                 deep -> [FOLD, OPEN] = a clean raise-or-fold button.)
 // BB_VS_LIMP:     [CHECK, RAISE, JAM]
 // BB_VS_OPEN:     [FOLD, CALL, THREEBET, JAM]
 // SB_VS_BBRAISE:  [FOLD, CALL, FOURBET, JAM]   (limp-raise line; "4bet"≈reraise)
@@ -173,6 +273,9 @@ export class PreflopGame implements Game<PreflopHistory> {
   private readonly fourBetMult: number;
   private readonly threeBetMult: number;
   private readonly openJamMaxBB: number;
+  private readonly limpMaxBB: number;
+  private readonly rFloor: number;
+  private readonly playabilityScale: number;
   private readonly equity: number[][];
   private _chanceCache: Array<{ next: PreflopHistory; prob: number }> | null = null;
 
@@ -187,6 +290,9 @@ export class PreflopGame implements Game<PreflopHistory> {
     this.rIp = params.rIp ?? R_IP;
     this.rOop = params.rOop ?? R_OOP;
     this.openJamMaxBB = params.openJamMaxBB ?? 25;
+    this.limpMaxBB = params.limpMaxBB ?? 25;
+    this.rFloor = params.rFloor ?? R_FLOOR;
+    this.playabilityScale = params.playabilityScale ?? 1;
   }
 
   numPlayers(): number {
@@ -277,9 +383,15 @@ export class PreflopGame implements Game<PreflopHistory> {
     // because by then the pot has grown and a jam is a normal committed size.
     // Short-stack open/3-bet jams are served by the exact push/fold Nash layer.
     const allowOpenJam = this.stack <= this.openJamMaxBB;
+    const allowLimp = this.stack <= this.limpMaxBB;
     switch (h.node) {
       case Node.SB_OPEN:
-        return allowOpenJam ? [0, 1, 2, 3] : [0, 1, 2]; // FOLD, LIMP, OPEN, (JAM)
+        // [FOLD, OPEN, LIMP, JAM]; LIMP and JAM are trailing and gated deep.
+        // Deep (100bb) -> [FOLD, OPEN] = raise-or-fold button.
+        if (allowLimp && allowOpenJam) return [0, 1, 2, 3];
+        if (allowLimp) return [0, 1, 2]; // FOLD, OPEN, LIMP
+        if (allowOpenJam) return [0, 1, 3]; // FOLD, OPEN, JAM (limp gated, jam ok)
+        return [0, 1]; // FOLD, OPEN
       case Node.BB_VS_LIMP:
         return allowOpenJam ? [0, 1, 2] : [0, 1]; // CHECK, RAISE, (JAM)
       case Node.BB_VS_OPEN:
@@ -300,23 +412,24 @@ export class PreflopGame implements Game<PreflopHistory> {
     const S = this.stack;
     switch (h.node) {
       case Node.SB_OPEN: {
-        // [FOLD, LIMP, OPEN, JAM]
+        // [FOLD, OPEN, LIMP, JAM]
         if (a === 0) return this.foldTerminal(h, 0);
         if (a === 1) {
+          // Open-raise to openSize.
+          return {
+            ...h,
+            node: Node.BB_VS_OPEN,
+            committed: [this.openSize, BB_POST],
+            line: 'o',
+          };
+        }
+        if (a === 2) {
           // Limp: SB completes to 1bb.
           return {
             ...h,
             node: Node.BB_VS_LIMP,
             committed: [BB_POST, BB_POST],
             line: 'l',
-          };
-        }
-        if (a === 2) {
-          return {
-            ...h,
-            node: Node.BB_VS_OPEN,
-            committed: [this.openSize, BB_POST],
-            line: 'o',
           };
         }
         // JAM
@@ -512,7 +625,27 @@ export class PreflopGame implements Game<PreflopHistory> {
       // ratio after the call. All-in lines (behind ~ 0) keep the base factor.
       const behind = Math.max(0, this.stack - invested);
       const spr = pot > 0 ? behind / pot : 0;
-      R = Math.max(R_FLOOR, base - SPR_PENALTY * Math.min(spr, SPR_CAP));
+      // Suited/connected hands realize MORE than their raw all-in equity (nut
+      // flush/straight potential the showdown-equity leaf can't see). The bonus
+      // grows with the money behind (more board to hit, more to win), so it is
+      // scaled by the same SPR factor and vanishes when all-in. Crucially the
+      // playability edge is much larger IN POSITION (you realize implied odds
+      // with the betting lead and last action) than OUT OF POSITION, so it is
+      // weighted by position. This asymmetry is what actually widens the SB
+      // OPEN with small suited connectors / suited kings (53s, 64s, K2s) without
+      // simultaneously inflating the OOP BB's defense of the same junk — a pure
+      // all-in-equity leaf folds these, and a symmetric bonus is a wash.
+      const ipWeight = player === ip ? 1.0 : IP_PLAYABILITY_OOP_SHARE;
+      const myCat = player === 0 ? h.catSB : h.catBB;
+      const playBonus =
+        playabilityBonus(myCat) *
+        this.playabilityScale *
+        ipWeight *
+        (Math.min(spr, SPR_CAP) / SPR_CAP);
+      R = Math.max(
+        this.rFloor,
+        Math.min(R_CEIL, base - SPR_PENALTY * Math.min(spr, SPR_CAP) + playBonus),
+      );
     }
 
     // Net EV = R * equity * pot - invested. Note: with R<1 the two players'

@@ -10,7 +10,7 @@
  *
  * The advisor's Action vocabulary is { fold, call, raise, allin }. We map the
  * tree's node-specific actions onto these:
- *   SB_OPEN     [fold, limp, open, jam] -> fold / call(limp) / raise(open) / allin(jam)
+ *   SB_OPEN     [fold, open, limp, jam] -> fold / raise(open) / call(limp) / allin(jam)
  *   BB_VS_OPEN  [fold, call, 3bet, jam] -> fold / call / raise(3bet) / allin
  *   SB_VS_3BET  [fold, call, 4bet, jam] -> fold / call / raise(4bet) / allin
  *   BB_VS_4BET  [fold, call, jam]       -> fold / call / allin
@@ -30,7 +30,7 @@ type AdvAction = 'fold' | 'call' | 'raise' | 'allin';
 
 /** Map a node's positional action index -> advisor action. */
 const ACTION_MAP: Record<string, AdvAction[]> = {
-  [Node.SB_OPEN]: ['fold', 'call', 'raise', 'allin'],
+  [Node.SB_OPEN]: ['fold', 'raise', 'call', 'allin'],
   [Node.BB_VS_OPEN]: ['fold', 'call', 'raise', 'allin'],
   [Node.SB_VS_3BET]: ['fold', 'call', 'raise', 'allin'],
   [Node.BB_VS_4BET]: ['fold', 'call', 'allin'],

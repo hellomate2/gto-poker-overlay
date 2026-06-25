@@ -102,18 +102,30 @@ describe('heads-up preflop CFR — convergence', () => {
 });
 
 describe('heads-up preflop CFR — sanity', () => {
-  it('AA always continues at SB open (never folds)', () => {
-    const s = strat(deep.cfr, Node.SB_OPEN, '', 0, nameToIndex('AA'), 3);
+  it('AA always opens at SB open (never folds, never limps — pure raise)', () => {
+    // SB_OPEN deep = [FOLD, OPEN] (limp and open-jam gated): raise-or-fold.
+    const s = strat(deep.cfr, Node.SB_OPEN, '', 0, nameToIndex('AA'), 2);
     expect(s[0]).toBeLessThan(0.02); // fold prob ~0
+    expect(s[1], 'AA open freq').toBeGreaterThan(0.95); // pure open
   });
 
   it('72o is essentially a pure fold at the SB open (100bb)', () => {
-    // SB_OPEN actions deep (open-jam gated) = [FOLD, LIMP, OPEN]. 72o is folded
-    // the large majority of the time; the small remainder is a min-open.
-    const s = strat(deep.cfr, Node.SB_OPEN, '', 0, nameToIndex('72o'), 3);
+    // SB_OPEN deep = [FOLD, OPEN]. 72o is folded the large majority of the time;
+    // the small remainder is a min-open (balance/frequency).
+    const s = strat(deep.cfr, Node.SB_OPEN, '', 0, nameToIndex('72o'), 2);
     expect(s[0], '72o fold freq').toBeGreaterThan(0.8); // mostly folded
     const nonFold = 1 - s[0];
     expect(nonFold, '72o non-fold freq small').toBeLessThan(0.2);
+  });
+
+  it('the SB opens the speculative/broadway hands real HU GTO opens', () => {
+    // Hands the OLD too-tight solve folded: offsuit broadways, suited connectors
+    // and gappers, and suited kings must all be opens (raise freq > 0) now.
+    for (const h of ['J9o', 'K9o', 'Q9o', 'T8o', '86s', '53s', '64s', '54s', 'K2s']) {
+      const s = strat(deep.cfr, Node.SB_OPEN, '', 0, nameToIndex(h), 2);
+      const openFreq = s[1];
+      expect(openFreq, `${h} SB open (raise) freq`).toBeGreaterThan(0.5);
+    }
   });
 
   it('72o is a SB open-jam when very short (exact push/fold Nash layer)', () => {
@@ -125,15 +137,26 @@ describe('heads-up preflop CFR — sanity', () => {
     expect(shoveRange(10).has('72o'), '72o does not jam at 10bb').toBe(false);
   });
 
-  it('SB opens a wide range (well over half of hands) at 100bb', () => {
-    // The full solve settles in the low-to-mid 60s% (combo-weighted); the SB
-    // button opens far wider than a 6-max position. Require comfortably wide.
-    expect(sbOpenPct(deep.cfr)).toBeGreaterThan(58);
+  it('SB opens a realistic-HU-wide range (78-90%) at 100bb', () => {
+    // Real heads-up 100bb GTO opens the button ~80-88% (combo-weighted). The
+    // solve settles in this band; require it within [78, 90].
+    const w = sbOpenPct(deep.cfr);
+    expect(w, 'SB-RFI non-fold width').toBeGreaterThanOrEqual(78);
+    expect(w, 'SB-RFI non-fold width').toBeLessThanOrEqual(90);
   });
 
-  it('BB defends a large fraction vs the SB open', () => {
-    // HU BB defends roughly half or more vs a 2.5bb open.
-    expect(bbDefendPct(deep.cfr)).toBeGreaterThan(45);
+  it('BB defends a large fraction (>=68%) vs the SB open', () => {
+    // HU BB defends ~70%+ vs a small (2.5bb) open.
+    expect(bbDefendPct(deep.cfr)).toBeGreaterThanOrEqual(68);
+  });
+
+  it('BB defends 53s and a few K-x / Q-x vs the SB open (not pure fold)', () => {
+    const prof = averageStrategyProfile(deep.cfr.store);
+    for (const h of ['53s', 'K9o', 'Q9o', 'K2s', 'J9o']) {
+      const s = prof.get(`1|${nameToIndex(h)}|${Node.BB_VS_OPEN}|o`, 3);
+      const defend = 1 - s[0];
+      expect(defend, `${h} BB defend (non-fold)`).toBeGreaterThan(0.05);
+    }
   });
 
   it('short-stack jam ranges are monotonic with depth (wider when shorter)', () => {
@@ -186,16 +209,16 @@ describe('heads-up preflop CFR — sanity', () => {
   });
 });
 
-describe('heads-up preflop CFR — deep jam gating (no open/3bet-jam at 100bb)', () => {
-  // At 100bb the JAM action is gated OUT of the open / re-raise-over-an-open
-  // nodes (SB_OPEN, BB_VS_OPEN, SB_VS_3BET, the limp-raise lines), so premiums
-  // 3-bet/4-bet to a SIZE instead of open-shoving. The only deep JAM lives at
-  // BB_VS_4BET (the 5-bet response) and VS_JAM (calling a jam).
+describe('heads-up preflop CFR — deep gating (no limp, no open/3bet-jam at 100bb)', () => {
+  // At 100bb both the LIMP and the JAM are gated OUT of the open / re-raise-over-
+  // an-open nodes, so the SB plays a clean raise-or-fold button and premiums
+  // 3-bet/4-bet to a SIZE instead of open-shoving or limping. The only deep JAM
+  // lives at BB_VS_4BET (the 5-bet response) and VS_JAM (calling a jam).
 
-  it('the deep abstraction removes JAM at the open / re-raise nodes', () => {
+  it('the deep abstraction removes LIMP and JAM at the open / re-raise nodes', () => {
     const game = deep.game;
-    // SB_OPEN: [FOLD, LIMP, OPEN] (no JAM).
-    expect(game.actions({ node: Node.SB_OPEN } as any)).toEqual([0, 1, 2]);
+    // SB_OPEN: [FOLD, OPEN] (no LIMP, no JAM) — raise-or-fold button.
+    expect(game.actions({ node: Node.SB_OPEN } as any)).toEqual([0, 1]);
     // BB_VS_OPEN: [FOLD, CALL, THREEBET] (no JAM).
     expect(game.actions({ node: Node.BB_VS_OPEN } as any)).toEqual([0, 1, 2]);
     // SB_VS_3BET: [FOLD, CALL, FOURBET] (no JAM).
@@ -204,8 +227,9 @@ describe('heads-up preflop CFR — deep jam gating (no open/3bet-jam at 100bb)',
     expect(game.actions({ node: Node.BB_VS_4BET } as any)).toEqual([0, 1, 2]);
   });
 
-  it('a SHORT solve still allows the open/3bet jam (gating is depth-parameterized)', () => {
+  it('a SHORT solve still allows the limp and the open/3bet jam (depth-parameterized)', () => {
     const shortGame = new PreflopGame(EQ, { stack: 12 });
+    // SB_OPEN short: [FOLD, OPEN, LIMP, JAM].
     expect(shortGame.actions({ node: Node.SB_OPEN } as any)).toEqual([0, 1, 2, 3]);
     expect(shortGame.actions({ node: Node.BB_VS_OPEN } as any)).toEqual([0, 1, 2, 3]);
     expect(shortGame.actions({ node: Node.SB_VS_3BET } as any)).toEqual([0, 1, 2, 3]);
@@ -225,8 +249,10 @@ describe('heads-up preflop CFR — deep jam gating (no open/3bet-jam at 100bb)',
     }
   });
 
-  it('SB-vs-3bet premiums 4-bet to a size with ~0 all-in (do NOT jam)', () => {
-    for (const h of ['AA', 'KK', 'AKo']) {
+  it('SB-vs-3bet top premiums 4-bet to a size with ~0 all-in (do NOT jam)', () => {
+    // AA/KK/AKs carry the 4-bet (raise-to-size) the large majority of the time;
+    // the deep node has no JAM slot so the all-in freq is structurally ~0.
+    for (const h of ['AA', 'KK', 'AKs']) {
       const s = strat(deep.cfr, Node.SB_VS_3BET, 'o3', 0, nameToIndex(h), 3);
       const fourBet = s[2];
       const fold = s[0];
@@ -236,11 +262,21 @@ describe('heads-up preflop CFR — deep jam gating (no open/3bet-jam at 100bb)',
     }
   });
 
+  it('SB-vs-3bet AKo continues (never folds; mixes call/4-bet, never jams)', () => {
+    // AKo is a continue but not a mandatory 4-bet deep: it flats 3-bets a lot.
+    // The point is it never FOLDS and never jams (no JAM slot exists).
+    const s = strat(deep.cfr, Node.SB_VS_3BET, 'o3', 0, nameToIndex('AKo'), 3);
+    expect(s[0], 'AKo fold vs 3bet').toBeLessThan(0.1); // never fold
+    expect(1 - s[0], 'AKo continue vs 3bet').toBeGreaterThan(0.9);
+    expect(s.length, 'AKo SB_VS_3BET width').toBe(3);
+  });
+
   it('72o does not jam in any deep chart (no open/3bet shove)', () => {
-    // SB_OPEN, BB_VS_OPEN, SB_VS_3BET all lack a JAM slot deep, so 72o cannot
-    // shove. (Short-stack 72o jams are served by the push/fold Nash layer.)
+    // SB_OPEN is [FOLD, OPEN] deep (limp+jam gated); BB_VS_OPEN, SB_VS_3BET lack
+    // a JAM slot deep, so 72o cannot shove. (Short-stack 72o jams are served by
+    // the push/fold Nash layer.)
     const i72 = nameToIndex('72o');
-    expect(strat(deep.cfr, Node.SB_OPEN, '', 0, i72, 3).length).toBe(3);
+    expect(strat(deep.cfr, Node.SB_OPEN, '', 0, i72, 2).length).toBe(2);
     expect(strat(deep.cfr, Node.BB_VS_OPEN, 'o', 1, i72, 3).length).toBe(3);
     expect(strat(deep.cfr, Node.SB_VS_3BET, 'o3', 0, i72, 3).length).toBe(3);
   });
@@ -248,9 +284,9 @@ describe('heads-up preflop CFR — deep jam gating (no open/3bet-jam at 100bb)',
   it('the info-set space covers all 169 categories at the SB open', () => {
     const prof = averageStrategyProfile(deep.cfr.store);
     for (let cat = 0; cat < NUM_CATEGORIES; cat++) {
-      // SB_OPEN has 3 actions deep (open-jam gated): FOLD, LIMP, OPEN.
-      const s = prof.get(`0|${cat}|${Node.SB_OPEN}|`, 3);
-      expect(s.length).toBe(3);
+      // SB_OPEN has 2 actions deep (limp + open-jam gated): FOLD, OPEN.
+      const s = prof.get(`0|${cat}|${Node.SB_OPEN}|`, 2);
+      expect(s.length).toBe(2);
       let sum = 0;
       for (const p of s) {
         expect(p).toBeGreaterThanOrEqual(-1e-12);

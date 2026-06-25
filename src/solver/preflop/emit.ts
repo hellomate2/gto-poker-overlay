@@ -49,8 +49,9 @@ export function serializeCharts(charts: SolvedCharts, meta: SolveMeta): string {
 //
 // This is a real Nash solve (counterfactual regret minimization, CFR+) over a
 // heads-up preflop betting abstraction with all-in-equity leaves and
-// realization factors (in-position 0.92, out-of-position 0.85). It is EXACT for
-// push/fold and a strong approximation deep; see src/solver/preflop/README.md.
+// realization factors (in-position ~0.99, out-of-position ~0.76) plus a
+// suited/connected playability bonus. It is EXACT for push/fold and a strong
+// approximation deep; see src/solver/preflop/README.md.
 //
 // Solve metadata (${meta.stack}bb effective):
 //   iterations:      ${meta.iterations}
