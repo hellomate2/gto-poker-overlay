@@ -17,7 +17,7 @@ const PUSHFOLD_MAX_BB = 10;
 // ~30-100bb vs a 3-bet jam is a tight premium decision — NOT the wide "peel a
 // small 3-bet" range from the vs-3bet chart. Without this, the bot read a 48bb
 // jam as a normal 3-bet and "called" with hands like T9s — a stack-off punt.
-const DEEP_JAM_CALL = new Set([
+export const DEEP_JAM_CALL = new Set([
   'AA', 'KK', 'QQ', 'JJ', 'TT', '99',
   'AKs', 'AKo', 'AQs', 'AQo', 'AJs', 'KQs',
 ]);

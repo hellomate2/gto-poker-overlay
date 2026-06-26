@@ -8,7 +8,8 @@ import { equityVsRange } from './equity/range-equity';
 import { evaluateHand, HAND_CATEGORY } from './equity/hand-eval';
 import { villainContinuingRange } from './postflop-strategy';
 import { RFI_RANGES, THREE_BET_RANGES, getHandFrequency } from './ranges/preflop';
-import { getGTOAdvice } from './ranges/gto-advisor';
+import { getGTOAdvice, DEEP_JAM_CALL } from './ranges/gto-advisor';
+import { evaluateSoundness } from './soundness';
 import { OpponentTracker } from './exploit/tracker';
 import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
@@ -27,6 +28,21 @@ import { Spot } from './ml/features';
 // ============================================================
 
 type BoardTexture = 'dry' | 'semi_wet' | 'wet' | 'very_wet' | 'monotone' | 'paired_dry' | 'paired_wet';
+
+// The range a villain is assumed to be putting a LOT of money in with preflop
+// (a 3-bet/4-bet/jam): value-leaning, ~top 20%. Used by the soundness gate to
+// measure whether hero has the equity to call off a big preflop bet. Deliberately
+// not razor-precise — the solved charts handle the exact preflop decision; this is
+// the backstop that stops weak hands stacking off on any non-chart path.
+const PREFLOP_VALUE_RANGE = new Set<string>([
+  'AA', 'KK', 'QQ', 'JJ', 'TT', '99', '88', '77', '66', '55',
+  'AKs', 'AQs', 'AJs', 'ATs', 'A9s', 'A8s', 'A7s', 'A6s', 'A5s', 'A4s', 'A3s', 'A2s',
+  'AKo', 'AQo', 'AJo', 'ATo', 'A9o',
+  'KQs', 'KJs', 'KTs', 'K9s', 'KQo', 'KJo', 'KTo',
+  'QJs', 'QTs', 'Q9s', 'QJo', 'QTo',
+  'JTs', 'J9s', 'JTo',
+  'T9s', 'T8s', '98s', '87s', '76s', '65s', '54s',
+]);
 
 interface BoardAnalysis {
   texture: BoardTexture;
@@ -105,6 +121,10 @@ export class DecisionEngine {
     // Apply exploit adjustments postflop only; preflop stays pure GTO so the
     // sampled equilibrium action isn't overridden.
     const villain = state.street !== 'preflop' ? this.identifyVillain(state) : null;
+    // A confident read that villain bets light (maniac/LAG) justifies calling
+    // wider than the price floor would otherwise allow — the soundness gate
+    // defers to it so it doesn't clip profitable bluff-catches.
+    let trustExploitRead = false;
     if (villain) {
       const villainProfile = this.profiler.profile(villain);
       // Only deviate from the (proven-strong) GTO baseline once we have a SOLID
@@ -118,11 +138,17 @@ export class DecisionEngine {
         );
         decision.action = this.pickBestAction(decision.mixedStrategy);
         decision.amount = this.pickBetAmount(decision.mixedStrategy, state);
+        trustExploitRead = villainProfile.type === 'maniac' || villainProfile.type === 'lag';
       }
     }
 
     // Sanity checks
     decision = this.sanityCheck(decision, state, equity);
+
+    // SOUNDNESS GATE — the final "would a good player actually do this?" law.
+    // Vetoes punts (calling/stacking off without the equity to justify the price)
+    // on EVERY path, grounded in equity vs the realistic range. See soundness.ts.
+    decision = this.applySoundnessGate(decision, state, equity, trustExploitRead);
 
     // Legalize sizing: never bet/raise more than you actually have.
     decision = this.legalizeDecision(decision, state);
@@ -1261,6 +1287,87 @@ export class DecisionEngine {
     }
 
     return decision;
+  }
+
+  /**
+   * The SOUNDNESS GATE (see soundness.ts). Computes equity vs a REALISTIC range
+   * plus the commitment metrics, then lets soundness.ts veto any punt. Only
+   * inspects calls and (preflop) all-ins — the actions that can be a stack-off
+   * mistake — and only ever folds. Runs on every path, so the chart, the net, and
+   * the heuristic fallbacks all inherit the same protection.
+   */
+  private applySoundnessGate(decision: BotDecision, state: GameState, equity: number, trustExploitRead = false): BotDecision {
+    const hero = state.players[state.heroIndex];
+    if (!hero || !state.heroCards || state.heroCards.length < 2) return decision;
+    if (decision.action !== 'call' && decision.action !== 'allin') return decision;
+
+    const heroCards: [number, number] = [cardToId(state.heroCards[0]), cardToId(state.heroCards[1])];
+    const boardIds = state.communityCards.map(c => cardToId(c));
+    const postflop = boardIds.length >= 3;
+    const street = state.street as 'preflop' | 'flop' | 'turn' | 'river';
+
+    const bb = state.bigBlind || 1;
+    const heroBet = hero.currentBet || 0;
+    const toCall = Math.max(0, (state.currentBet || 0) - heroBet);
+    const facingBet = toCall > 0;
+    const pot = state.pot || 0;
+    const potOdds = facingBet ? toCall / (pot + toCall) : 0;
+    const stack = hero.stack || 0;
+    // Fraction of the stack at risk: an all-in risks it all; a call risks toCall.
+    const commit = decision.action === 'allin'
+      ? 1
+      : stack > 0 ? Math.min(1, toCall / stack) : 0;
+
+    // Committed-aware effective stack in bb (matches heroEffectiveStackBB).
+    const heroTotal = stack + heroBet;
+    const oppTotals = state.players
+      .filter((p, idx) => idx !== state.heroIndex && !p.isSittingOut)
+      .map(p => (p.stack || 0) + (p.currentBet || 0));
+    const effStackBB = Math.min(heroTotal, oppTotals.length ? Math.max(...oppTotals) : heroTotal) / bb;
+
+    const isPremium = DEEP_JAM_CALL.has(handGroupName(heroCards[0], heroCards[1]));
+
+    // Hero equity vs a realistic range (not vs random).
+    let eqVsRange: number;
+    if (postflop) {
+      const activeVillains = state.players.filter((p, idx) => idx !== state.heroIndex && !p.isSittingOut).length;
+      const range = villainContinuingRange(heroCards, boardIds, { aggression: facingBet, multiway: activeVillains > 1 });
+      eqVsRange = range.length > 0 ? equityVsRange(heroCards, boardIds, range, 2000).equity : equity;
+    } else if (facingBet && commit >= 0.25) {
+      // Big preflop bet: measure vs an assumed value/stack-off range.
+      const combos = this.preflopValueCombos(heroCards);
+      eqVsRange = combos.length > 0 ? equityVsRange(heroCards, [], combos, 1500).equity : equity;
+    } else {
+      eqVsRange = equity; // cheap preflop spots keep the chart's action
+    }
+
+    const result = evaluateSoundness({
+      action: decision.action, street, facingBet, potOdds, commit, effStackBB, isPremium, eqVsRange, trustExploitRead,
+    });
+    if (result.override && result.action === 'fold') {
+      console.log(`[GTO Bot] SOUNDNESS veto: ${result.reason}`);
+      return {
+        action: 'fold',
+        confidence: decision.confidence,
+        reasoning: `${decision.reasoning} | ${result.reason}`,
+        mixedStrategy: { fold: 1, check: 0, call: 0, bets: [] },
+      };
+    }
+    return decision;
+  }
+
+  /** Expand PREFLOP_VALUE_RANGE into concrete combos, excluding hero's cards. */
+  private preflopValueCombos(dead: [number, number]): [number, number][] {
+    const blocked = new Set<number>(dead);
+    const out: [number, number][] = [];
+    for (let a = 0; a < 52; a++) {
+      if (blocked.has(a)) continue;
+      for (let b = a + 1; b < 52; b++) {
+        if (blocked.has(b)) continue;
+        if (PREFLOP_VALUE_RANGE.has(handGroupName(a, b))) out.push([a, b]);
+      }
+    }
+    return out;
   }
 
   // ============================================================
