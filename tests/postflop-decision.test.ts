@@ -94,18 +94,24 @@ function isValueBet(reasoning: string, action: string): boolean {
 // heads-up.
 // ============================================================
 describe('live heads-up postflop decision (distilled net path)', () => {
-  it('routes heads-up postflop to the net path (reasoning says "net ...")', async () => {
+  it('routes heads-up postflop FACING A BET to the net path (reasoning says "net ...")', async () => {
+    // Facing a bet is the net's domain (the lead/bet-or-check decision is now
+    // handled by the sound c-bet policy instead). Top set won't fold, so the net
+    // produces the action and its "net ..." reasoning.
     const d = await new DecisionEngine().decide(buildState({
-      heroCards: ['Ah', 'Ad'], community: ['Ac', '7d', '2s'], pot: 100, currentBet: 0, street: 'flop',
+      heroCards: ['Ah', 'Ad'], community: ['Ac', '7d', '2s'], pot: 100, currentBet: 50, heroBet: 0, street: 'flop',
     }));
-    // Guards the routing assumption this whole section depends on.
     expect(d.reasoning.toLowerCase()).toContain('net');
   });
 
-  it('bets/raises the nuts (top set on a dry board, checked to hero)', async () => {
+  it('bets the nuts when checked to (top set, dry board) — lead policy', async () => {
+    // The lead decision is now probabilistic; force the lead sample so the test is
+    // deterministic, and confirm the nuts bet a real size (never check-gives-up).
+    vi.spyOn(Math, 'random').mockReturnValue(0);
     const d = await new DecisionEngine().decide(buildState({
       heroCards: ['Ah', 'Ad'], community: ['Ac', '7d', '2s'], pot: 100, currentBet: 0, street: 'flop',
     }));
+    vi.restoreAllMocks();
     expect(['bet', 'raise']).toContain(d.action);
     expect(d.amount).toBeGreaterThan(0);
   });

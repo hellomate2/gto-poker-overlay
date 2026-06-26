@@ -1,22 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Seed Math.random so the mixed-strategy sampling (the small checking tail of
-// the c-bet nudge, and the heuristic bluff frequencies) is deterministic. The
-// nudge itself is deterministic given the board/hand; this only fixes the rare
-// RNG-driven lines so these assertions are stable.
-beforeEach(() => { vi.spyOn(Math, 'random').mockReturnValue(0.01); });
+// Median RNG (0.5) so a single decide() reflects the lead policy's frequency:
+// freq>0.5 -> bets, freq<0.5 -> checks. Frequency tests below sweep RNG instead.
+beforeEach(() => { vi.spyOn(Math, 'random').mockReturnValue(0.5); });
 afterEach(() => { vi.restoreAllMocks(); });
 
-// DecisionEngine reads opponent stats from IndexedDB, which doesn't exist under
-// node. Stub the storage layer so decide() runs with empty opponent data — these
-// c-bet spots don't depend on villain stats.
 vi.mock('../src/storage/db', async () => {
   const actual = await vi.importActual<typeof import('../src/storage/db')>('../src/storage/db');
-  return {
-    ...actual,
-    getPlayerStats: async () => null,
-    savePlayerStats: async () => {},
-  };
+  return { ...actual, getPlayerStats: async () => null, savePlayerStats: async () => {} };
 });
 
 import { DecisionEngine } from '../src/core/engine';
@@ -24,168 +15,109 @@ import { GameState, Player, Position, Street, Card } from '../src/types/poker';
 import { card } from './helpers';
 
 // ============================================================
-// C-BET NUDGE (decidePostflopNet IP-PFR-checked-to leak fix).
+// LEAD / C-BET POLICY (decidePostflopNet, not-facing-a-bet spot).
 //
-// As the IN-POSITION preflop aggressor with the action checked to it, the
-// distilled net under-c-bets heads-up and checks back made hands that should bet
-// for value/protection. The nudge in decidePostflopNet converts the net's
-// 'check' into a board-texture-sized c-bet for qualifying hands, while
-// preserving the anti-blunder guards (no betting into a flush board it can't
-// beat; pure air / marginal pairs on wet boards keep checking).
-//
-// These tests drive the REAL decide() (which routes heads-up postflop to the
-// net path) on constructed IP, checked-to spots.
+// The net's bet-or-check decision was inverted (it checked as the aggressor and
+// donked air as the caller). The lead policy (cbet.ts) replaces it: the
+// aggressor c-bets, the caller checks to the raiser and leads only strong. These
+// spots have NO preflop history, so the c-bettor role falls back to POSITION
+// (the button is the aggressor); hero on the button = c-bettor, hero in the BB =
+// caller.
 // ============================================================
 
 function mkPlayer(name: string, position: Position, isHero = false, stack = 1000): Player {
-  return {
-    name, stack, position,
-    // Hero is the BUTTON (heads-up button = preflop aggressor, in position).
-    isDealer: position === 'BTN',
-    isSittingOut: false,
-    seatIndex: position === 'BTN' ? 0 : 1,
-    isHero,
-    currentBet: 0,
-    hasActed: false,
-  };
+  return { name, stack, position, isDealer: position === 'BTN', isSittingOut: false,
+    seatIndex: position === 'BTN' ? 0 : 1, isHero, currentBet: 0, hasActed: false };
 }
 
 interface Opts {
-  heroCards: [string, string];
-  community: string[];
-  pot: number;
-  currentBet?: number; // highest bet this street (0 == checked to hero)
-  heroBet?: number;
-  street?: Street;
-  heroIsDealer?: boolean; // default true (IP); set false to test OOP
+  heroCards: [string, string]; community: string[]; pot: number;
+  currentBet?: number; heroBet?: number; street?: Street; heroIsDealer?: boolean;
 }
 
 function buildState(o: Opts): GameState {
   const heroDealer = o.heroIsDealer ?? true;
   const hero = mkPlayer('Hero', heroDealer ? 'BTN' : 'BB', true);
-  hero.isDealer = heroDealer;
-  hero.currentBet = o.heroBet ?? 0;
+  hero.isDealer = heroDealer; hero.currentBet = o.heroBet ?? 0;
   const villain = mkPlayer('Villain', heroDealer ? 'BB' : 'BTN', false);
-  villain.isDealer = !heroDealer;
-  villain.currentBet = o.currentBet ?? 0;
-  const community: Card[] = o.community.map(card);
+  villain.isDealer = !heroDealer; villain.currentBet = o.currentBet ?? 0;
   return {
-    tableId: 't', handNumber: 1, street: o.street ?? 'flop',
-    pot: o.pot, sidePots: [],
-    heroCards: [card(o.heroCards[0]), card(o.heroCards[1])],
-    communityCards: community,
-    players: [hero, villain],
-    heroIndex: 0, dealerIndex: heroDealer ? 0 : 1, activePlayerIndex: 0,
-    currentBet: o.currentBet ?? 0,
-    minRaise: 20, bigBlind: 20, smallBlind: 10,
-    actionHistory: { preflop: [], flop: [], turn: [], river: [] },
-    isOurTurn: true, timestamp: Date.now(),
+    tableId: 't', handNumber: 1, street: o.street ?? 'flop', pot: o.pot, sidePots: [],
+    heroCards: [card(o.heroCards[0]), card(o.heroCards[1])], communityCards: o.community.map(card),
+    players: [hero, villain], heroIndex: 0, dealerIndex: heroDealer ? 0 : 1, activePlayerIndex: 0,
+    currentBet: o.currentBet ?? 0, minRaise: 20, bigBlind: 20, smallBlind: 10,
+    actionHistory: { preflop: [], flop: [], turn: [], river: [] }, isOurTurn: true, timestamp: Date.now(),
   };
 }
 
 const isBet = (a: string) => a === 'bet' || a === 'raise';
 
-describe('postflop c-bet nudge (IP preflop aggressor, checked to)', () => {
-  it('c-bets top pair on a dry board IP (net would check) — does NOT check back', async () => {
-    const engine = new DecisionEngine();
-    // JT on Jc6d2s: dry, hero flops top pair. The raw net checks this back
-    // (~0.75 check) — the exact leak. The nudge must convert it to a c-bet.
-    const state = buildState({
-      heroCards: ['Js', 'Th'],
-      community: ['Jc', '6d', '2s'],
-      pot: 100, currentBet: 0, street: 'flop',
-    });
-    const d = await engine.decide(state);
+describe('lead/c-bet policy (in-position aggressor, checked to)', () => {
+  it('c-bets top pair on a dry board IP (the net would check) — does NOT check back', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Js', 'Th'], community: ['Jc', '6d', '2s'], pot: 100, currentBet: 0,
+    }));
     expect(isBet(d.action)).toBe(true);
-    expect(d.action).not.toBe('check');
     expect(d.amount).toBeGreaterThan(0);
-    expect(d.reasoning).toMatch(/cbet-nudge/);
+    expect(d.reasoning).toMatch(/lead-policy/);
   });
 
   it('c-bets top-pair-top-kicker on a dry board IP', async () => {
-    const engine = new DecisionEngine();
-    const state = buildState({
-      heroCards: ['As', 'Kd'],
-      community: ['Ah', '7d', '2c'], // TPTK, dry
-      pot: 100, currentBet: 0, street: 'flop',
-    });
-    const d = await engine.decide(state);
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['As', 'Kd'], community: ['Ah', '7d', '2c'], pot: 100, currentBet: 0,
+    }));
     expect(isBet(d.action)).toBe(true);
     expect(d.amount).toBeGreaterThan(0);
   });
 
-  it('keeps checking pure air on a wet board IP — does not spew', async () => {
-    const engine = new DecisionEngine();
-    // 7-6o on AhKh3d: no pair, no real made hand. The nudge requires >= one
-    // pair, so air keeps the net's behavior (check here).
-    const state = buildState({
-      heroCards: ['7c', '6s'],
-      community: ['Ah', 'Kh', '3d'],
-      pot: 100, currentBet: 0, street: 'flop',
-    });
-    const d = await engine.decide(state);
+  it('mostly checks pure air IP (does not spew at median frequency)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['7c', '6s'], community: ['Ah', 'Kh', '3d'], pot: 100, currentBet: 0,
+    }));
     expect(d.action).toBe('check');
-    expect(d.reasoning).not.toMatch(/cbet-nudge/);
   });
 
   it('does NOT bet a made hand into a monotone board without the flush (anti-blunder preserved)', async () => {
-    const engine = new DecisionEngine();
-    // KQ on Kh7h2h: top pair but a monotone heart board and hero holds NO heart.
-    // The dangerous-flush-board guard must suppress the nudge -> check.
-    const state = buildState({
-      heroCards: ['Ks', 'Qd'],
-      community: ['Kh', '7h', '2h'],
-      pot: 100, currentBet: 0, street: 'flop',
-    });
-    const d = await engine.decide(state);
-    expect(d.action).toBe('check');
-    expect(isBet(d.action)).toBe(false);
-    expect(d.reasoning).not.toMatch(/cbet-nudge/);
-  });
-
-  it('does NOT nudge a marginal lone pair on a monotone board (pot control)', async () => {
-    const engine = new DecisionEngine();
-    // QJ on Qh7h2h: lone pair on a monotone board (hero has the Qh, so it is NOT
-    // a "dangerous flush board" by the no-flush rule, but still a marginal pair
-    // on a monotone texture -> texture suppression keeps it checking).
-    const state = buildState({
-      heroCards: ['Qd', 'Js'],
-      community: ['Qh', '7h', '2h'],
-      pot: 100, currentBet: 0, street: 'flop',
-    });
-    const d = await engine.decide(state);
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Ks', 'Qd'], community: ['Kh', '7h', '2h'], pot: 100, currentBet: 0,
+    }));
     expect(d.action).toBe('check');
   });
 
-  it('leaves OOP behavior to the net (no IP c-bet nudge out of position)', async () => {
-    const engine = new DecisionEngine();
-    // Same JT-on-dry top-pair spot but hero is OOP (not the button). The nudge
-    // is IP-only, so it must NOT fire here — the decision is left entirely to the
-    // net (whatever the net chose for the OOP spot, unmodified by the nudge).
-    const state = buildState({
-      heroCards: ['Js', 'Th'],
-      community: ['Jc', '6d', '2s'],
-      pot: 100, currentBet: 0, street: 'flop',
-      heroIsDealer: false,
-    });
-    const d = await engine.decide(state);
-    // The IP c-bet nudge must not have fired.
-    expect(d.reasoning).not.toMatch(/cbet-nudge/);
-    // The reasoning is a plain net decision (the OOP path is untouched).
-    expect(d.reasoning).toMatch(/^net /);
+  it('checks a marginal lone pair on a monotone board (pot control)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Qd', 'Js'], community: ['Qh', '7h', '2h'], pot: 100, currentBet: 0,
+    }));
+    expect(d.action).toBe('check');
   });
 
-  it('does not bet when facing a bet (nudge is for the checked-to spot only)', async () => {
-    const engine = new DecisionEngine();
-    // Top pair IP but villain has bet into hero: the nudge requires NOT facing a
-    // bet, so it must not fire as a (first-in) bet. Decision is call/raise/fold.
-    const state = buildState({
-      heroCards: ['Js', 'Th'],
-      community: ['Jc', '6d', '2s'],
-      pot: 100, currentBet: 40, heroBet: 0, street: 'flop',
-    });
-    const d = await engine.decide(state);
-    expect(d.reasoning).not.toMatch(/cbet-nudge/);
-    expect(d.action).not.toBe('bet');
+  it('does NOT donk as the OOP caller with top pair (checks to the raiser)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Js', 'Th'], community: ['Jc', '6d', '2s'], pot: 100, currentBet: 0, heroIsDealer: false,
+    }));
+    expect(d.action).toBe('check');
+    expect(d.reasoning).toMatch(/check to raiser/);
+  });
+
+  it('does not lead when facing a bet (lead policy is for the checked-to spot)', async () => {
+    const d = await new DecisionEngine().decide(buildState({
+      heroCards: ['Js', 'Th'], community: ['Jc', '6d', '2s'], pot: 100, currentBet: 40, heroBet: 0,
+    }));
+    expect(d.action).not.toBe('bet'); // facing a bet -> call/raise/fold via the net
+  });
+
+  it('FREQUENCY: c-bets top pair IP a clear majority; donks air OOP rarely', async () => {
+    const eng = new DecisionEngine();
+    let ipBets = 0, oopDonks = 0;
+    const N = 40;
+    for (let k = 0; k < N; k++) {
+      vi.spyOn(Math, 'random').mockReturnValue((k + 0.5) / N); // sweep 0..1
+      const ip = await eng.decide(buildState({ heroCards: ['Js', 'Th'], community: ['Jc', '6d', '2s'], pot: 100, currentBet: 0 }));
+      const oop = await eng.decide(buildState({ heroCards: ['8c', '5s'], community: ['Qd', '2d', 'Jh'], pot: 100, currentBet: 0, heroIsDealer: false }));
+      if (isBet(ip.action)) ipBets++;
+      if (isBet(oop.action)) oopDonks++;
+    }
+    expect(ipBets / N).toBeGreaterThan(0.5);   // aggressor c-bets top pair a lot
+    expect(oopDonks / N).toBeLessThan(0.15);   // caller almost never donks air (the leak, fixed)
   });
 });

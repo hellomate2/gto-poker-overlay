@@ -10,6 +10,7 @@ import { villainContinuingRange } from './postflop-strategy';
 import { RFI_RANGES, THREE_BET_RANGES, getHandFrequency } from './ranges/preflop';
 import { getGTOAdvice, DEEP_JAM_CALL } from './ranges/gto-advisor';
 import { evaluateSoundness } from './soundness';
+import { leadBetProbability } from './cbet';
 import { OpponentTracker } from './exploit/tracker';
 import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
@@ -419,7 +420,7 @@ export class DecisionEngine {
       return this.decidePostflopRanged(state, heroCards);
     }
     try {
-      const netDecision = this.decidePostflopNet(state, heroCards);
+      const netDecision = this.decidePostflopNet(state, heroCards, _equityVsRandom);
       if (netDecision) return netDecision;
     } catch (e) {
       console.warn('[GTO Bot] postflop net failed, using ranged fallback', e);
@@ -441,7 +442,7 @@ export class DecisionEngine {
    * legalizeDecision (called later) caps any size to the hero's stack.
    * Returns null if the spot can't be built (e.g. fewer than 3 board cards).
    */
-  private decidePostflopNet(state: GameState, heroCards: [number, number]): BotDecision | null {
+  private decidePostflopNet(state: GameState, heroCards: [number, number], equityVsRandom = 0.5): BotDecision | null {
     const board = state.communityCards;
     if (board.length < 3) return null;
     const street = state.street;
@@ -566,52 +567,45 @@ export class DecisionEngine {
     }
 
     // ----------------------------------------------------------------
-    // C-BET NUDGE (IP-PFR-checked-to leak fix).
+    // LEAD / C-BET POLICY (replaces trusting the net's bet-vs-check).
     //
-    // The distilled net was trained on 6-max data and systematically UNDER
-    // c-bets heads-up: as the in-position preflop aggressor with the action
-    // checked to it, it returns 'check' with hands that should bet for
-    // value/protection (top pair, top-pair-top-kicker, sets, etc.). When the
-    // net checks such a hand IN POSITION and NOT facing a bet, convert it to a
-    // board-texture-sized c-bet at high frequency.
-    //
-    // This is a NUDGE, not always-bet. It only fires when ALL hold:
-    //   (1) not facing a bet (checked to / first to act),
-    //   (2) hero is IN POSITION (the specific leaking spot; OOP left as-is),
-    //   (3) the net's chosen action is 'check' (we never downgrade a net bet),
-    //   (4) hero has a real made hand worth betting for value/protection:
-    //         heroCat >= PAIR  (at least one pair).
-    // It is SUPPRESSED when:
-    //   (a) the dangerous-flush-board guard applies (monotone / 4-flush board on
-    //       which hero can't beat a flush) — never bet there,
-    //   (b) the board is very wet / monotone AND hero holds only a marginal
-    //       one pair — pot-control, keep checking,
-    //   (c) hero has pure air / a draw (heroCat < PAIR) — keep the net's
-    //       behavior (check, or bluff at the net's own frequency).
+    // The net is reliable FACING A BET, but the "first to act, bet or check"
+    // lead decision is rare in its training data (~6%) and it extrapolates badly
+    // — keying on isPreflopAggressor with INVERTED polarity (it CHECKED as the
+    // aggressor = no c-bet, and DONKED as the caller = led air OOP). That is the
+    // visible leak: leading into the raiser with nothing, never c-betting. So
+    // when NOT facing a bet we ignore the net's bet/check and apply a sound,
+    // standard policy: who raised preflop + made-hand strength + equity vs range
+    // + texture. See cbet.ts. Facing a bet, the net (+ pot-odds floor) is kept.
     // ----------------------------------------------------------------
-    const CBET_FREQ = 0.85;                  // c-bet frequency for a qualifying value/protection hand
-    const CBET_MIN_CAT = HAND_CATEGORY.PAIR; // need >= one pair to value/protection c-bet
-    let cbetNudged = false;
-    if (
-      finalAction === 'check' &&        // (3) net wants to check
-      !facingBet &&                     // (1) checked to hero / first to act
-      isIP &&                           // (2) hero is the IP preflop-aggressor spot
-      !dangerousFlushBoard &&           // (a) not a flush board we can't beat
-      heroCat >= CBET_MIN_CAT           // (4)/(c) at least one pair (not air/draw)
-    ) {
-      // (b) Marginal lone pair on a very wet / monotone texture: keep checking
-      // for pot control. Stronger made hands (two pair+, sets, etc.) still
-      // c-bet for value/protection.
-      const veryWetOrMono =
-        boardAnalysis.texture === 'very_wet' || boardAnalysis.isMonotone;
-      const marginalPair = heroCat === HAND_CATEGORY.PAIR;
-      const suppressForTexture = veryWetOrMono && marginalPair;
-      if (!suppressForTexture) {
-        finalAction = 'bet';
-        cbetNudged = true;
+    if (!facingBet) {
+      // Who took the preflop initiative? Prefer the recorded preflop aggressor;
+      // if no preflop raise was scraped, fall back to position (the IP player is
+      // the aggressor far more often heads-up). This drives c-bet vs check-to-the-
+      // raiser. Uses the cheap equity-vs-random already computed (no Monte Carlo).
+      const pfHasRaise = (state.actionHistory.preflop || []).some(a => a.type === 'raise' || a.type === 'allin');
+      const isAggressor = pfHasRaise ? isPreflopAggressor : isIP;
+      const veryWetOrMono = boardAnalysis.texture === 'very_wet' || boardAnalysis.isMonotone;
+      const pBet = leadBetProbability({
+        isAggressor, isIP, heroCat, equity: equityVsRandom, veryWetOrMono, dangerousFlush: dangerousFlushBoard,
+      });
+      const role = isAggressor ? 'c-bet' : 'lead';
+      if (Math.random() < pBet) {
+        return {
+          action: 'bet', amount: betSize, confidence: equityVsRandom,
+          reasoning: `${role} ${betSize} (${boardAnalysis.texture}, ${pct(equityVsRandom)} eq, p${pct(pBet)}) [lead-policy]`,
+          mixedStrategy: { fold: 0, check: 1 - pBet, call: 0, bets: [{ amount: betSize, probability: pBet }] },
+        };
       }
+      return {
+        action: 'check', amount: undefined, confidence: 1 - equityVsRandom,
+        reasoning: `check (${isAggressor ? 'no c-bet' : 'check to raiser'}, ${boardAnalysis.texture}, p${pct(pBet)}) [lead-policy]`,
+        mixedStrategy: { fold: 0, check: 1, call: 0, bets: [] },
+      };
     }
 
+    const cbetNudged = false;     // c-bet handled by the lead policy above (facingBet only past here)
+    const CBET_FREQ = 0;          // retained for the unused reasoning branch below
     const guarded = flushGuarded; // the flush guard downgraded the net's action
     const sizeForBets = finalAction === 'raise' || facingBet ? raiseSize : betSize;
     let mixedStrategy: StrategyDistribution;
