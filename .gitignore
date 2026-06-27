@@ -36,3 +36,6 @@ ml/_weights.json
 *.backup.ts
 src/solver/_experiment*.ts
 src/solver/preflop/_rfi.ts
+# Probe / one-off analysis scripts (not part of the build or test suite)
+sim/probe-*.ts
+src/solver/preflop/probe-*.ts

@@ -85,6 +85,18 @@ describe('PlayerProfiler classification', () => {
   it('classifies a 50/40 hyper-aggressive player as a maniac', () => {
     expect(classify({ hands: 60, vpipPct: 50, pfrPct: 40, af: 4 })).toBe('maniac');
   });
+
+  it('AF: a pure-aggression player (bets/raises, ZERO calls) is seen as aggressive, not passive', () => {
+    // Regression: af used `callCount>0 ? ratio : 0`, so a maniac who never flat-calls
+    // got AF=0 and was mislabeled a nit/station — flipping the exploit backwards.
+    const aggressor: PlayerStats = {
+      ...statsFor({ name: 'M', hands: 80, vpipPct: 55, pfrPct: 45, af: 0 }),
+      betCount: 12, raiseCount: 8, callCount: 0, // bets/raises a ton, never flat-calls
+    };
+    const p = new PlayerProfiler(trackerWith(aggressor)).profile('M');
+    expect(p.stats.aggressionFactor).toBeGreaterThan(5); // was 0 (looked maximally passive)
+    expect(p.type).toBe('maniac'); // was mislabeled nit/calling_station
+  });
 });
 
 describe('PlayerProfiler confidence & sample size', () => {
@@ -227,12 +239,24 @@ describe('PlayerProfiler classify() fallback branches', () => {
 // ============================================================
 
 describe('computeDisplayStats guards (via profile)', () => {
-  it('callCount=0 yields aggressionFactor 0 (no divide-by-zero)', () => {
+  it('callCount=0 WITH aggression yields a HIGH (finite) aggressionFactor, not passive', () => {
+    // bets 5x, never flat-calls -> maximally aggressive. The old code returned 0
+    // here (no divide-by-zero, but it made a maniac look passive). Must be high+finite.
     const base = statsFor({ name: 'Z', hands: 60, vpipPct: 30, pfrPct: 10, af: 1 });
     const profiler = new PlayerProfiler(
       trackerWith({ ...base, callCount: 0, betCount: 5, raiseCount: 0 }),
     );
-    expect(profiler.profile('Z').stats.aggressionFactor).toBe(0);
+    const af = profiler.profile('Z').stats.aggressionFactor;
+    expect(Number.isFinite(af)).toBe(true); // no divide-by-zero / Infinity
+    expect(af).toBeGreaterThan(5);
+  });
+
+  it('callCount=0 with NO aggression (only posted/folded) stays 0', () => {
+    const base = statsFor({ name: 'Z2', hands: 60, vpipPct: 30, pfrPct: 10, af: 1 });
+    const profiler = new PlayerProfiler(
+      trackerWith({ ...base, callCount: 0, betCount: 0, raiseCount: 0 }),
+    );
+    expect(profiler.profile('Z2').stats.aggressionFactor).toBe(0);
   });
 
   it('handsPlayed=0 is treated as untracked: unknown, confidence 0', () => {
