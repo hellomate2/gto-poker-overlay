@@ -14,7 +14,7 @@ import { leadBetProbability } from './cbet';
 import { OpponentTracker } from './exploit/tracker';
 import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
-import { predictPostflop, predictBetSize } from './ml/policy';
+import { predictPostflop } from './ml/policy';
 import { Spot } from './ml/features';
 // NOTE: solvePostflop (the depth-limited CFR study solver) is intentionally NOT
 // imported on the live hot path anymore. It computed equity vs effectively a
@@ -362,6 +362,34 @@ export class DecisionEngine {
     }
   }
 
+  /**
+   * Bet/raise size (chips), varied like a competent player. Texture sets the base
+   * (dry/range boards small ~33%, wet/dynamic big ~67-75%); the RIVER is polarized
+   * — value (two pair+) and bluffs bet big, thin one-pair bets stay small. This
+   * replaces the distilled size head, which was degenerate (~0.66 pot everywhere).
+   */
+  private chooseBetSize(board: BoardAnalysis, pot: number, street: Street, bb: number, heroCat: number): number {
+    // Heads-up sizing: ranges are wide, so bets run bigger than 6-max. Vary by
+    // TEXTURE (dynamic boards bigger, to charge draws), and POLARIZE the river
+    // (value + bluffs big, thin one-pair small). Bigger on average than the old
+    // flat 0.66, with real spread — replaces the degenerate size head (~0.66 flat).
+    let frac: number;
+    switch (board.texture) {
+      case 'dry': case 'paired_dry': frac = 0.60; break;  // static / range board
+      case 'monotone': frac = 0.55; break;
+      case 'semi_wet': frac = 0.66; break;
+      case 'wet': frac = 0.75; break;
+      case 'very_wet': case 'paired_wet': frac = 0.85; break;
+      default: frac = 0.66;
+    }
+    if (street === 'river') {
+      if (heroCat >= HAND_CATEGORY.TWO_PAIR) frac = 0.90;       // value — bet big / overbet-ish
+      else if (heroCat === HAND_CATEGORY.PAIR) frac = 0.50;     // thin / showdown — small
+      else frac = 0.80;                                          // bluff — polar, like value
+    }
+    return Math.max(bb, this.roundToStake(pot * frac, bb));
+  }
+
   // ============================================================
   // Geometric Bet Sizing
   // ============================================================
@@ -501,14 +529,15 @@ export class DecisionEngine {
     // the texture sizing if the size head is unavailable.
     const boardAnalysis = this.analyzeBoard(board);
     const bb = state.bigBlind || 20;
-    let betSize: number;
-    try {
-      const frac = predictBetSize(spot).fraction; // pot-fraction from the size head
-      betSize = Math.max(bb, this.roundToStake(pot * frac, bb));
-    } catch {
-      const { size: textureSize } = this.getGTOBetSize(boardAnalysis, pot, street, bb);
-      betSize = Math.max(bb, textureSize);
-    }
+    const heroCat = Math.floor(
+      evaluateHand([heroCards[0], heroCards[1], ...board.map(c => cardToId(c))]) / 1_000_000,
+    );
+    // Varied sizing by board texture + street + hand strength. The learned size
+    // head was degenerate (returned ~0.66 pot for EVERY spot — dry, wet, river,
+    // all the same), so the bot bet a flat 65% everywhere. chooseBetSize uses the
+    // texture sizer (dry/range boards small, wet/dynamic big) and polarizes the
+    // river (value + bluffs bigger, thin pairs smaller).
+    const betSize = this.chooseBetSize(boardAnalysis, pot, street, bb, heroCat);
     const raiseSize = Math.max(this.roundToStake(state.currentBet * 2.5, bb), state.currentBet + betSize);
 
     const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
@@ -518,9 +547,6 @@ export class DecisionEngine {
     // into a monotone / 4-flush board where hero holds no flush. The net is
     // solver-trained, but this hard rule prevents the catastrophic
     // value-bet-into-an-obvious-flush blunder even if the net is wrong here.
-    const heroCat = Math.floor(
-      evaluateHand([heroCards[0], heroCards[1], ...board.map(c => cardToId(c))]) / 1_000_000,
-    );
     const dangerousFlushBoard = this.isDangerousFlushBoard(heroCards, board);
     let finalAction = action;
     if ((action === 'bet' || action === 'raise') && dangerousFlushBoard && heroCat < HAND_CATEGORY.FLUSH) {
