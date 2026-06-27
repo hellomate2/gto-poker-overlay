@@ -60,13 +60,15 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
  * the solver.
  */
 export function evaluateSoundness(i: SoundnessInput): SoundnessResult {
-  // RULE 1 — PRICE / COMMITMENT FLOOR ON CALLS.
+  // RULE 1 — PRICE / COMMITMENT FLOOR ON CALLS (postflop).
   // Never call when our equity vs the range that is actually betting can't beat
   // the price. The required margin grows with how much of the stack we're putting
   // in: peeling 3bb on the flop needs a hair of edge; stacking off 80bb needs a
   // real one. This is the universal anti-punt rule — it stops calling a river jam
-  // with king-high AND calling off preflop with a weak holding, on every path.
-  if (i.action === 'call' && i.facingBet && !i.trustExploitRead) {
+  // with king-high. POSTFLOP ONLY: preflop calls are governed by the solved
+  // charts (and RULE 2 below for deep all-ins); applying a pot-odds-vs-random
+  // floor preflop would wrongly fold sound chart-defends if the pot is read low.
+  if (i.action === 'call' && i.facingBet && i.street !== 'preflop' && !i.trustExploitRead) {
     const margin = 0.01 + 0.06 * clamp01(i.commit);
     // Never fold a hand that's clearly ahead of the range (>=60%), regardless of
     // price — that would only ever be a mistake.

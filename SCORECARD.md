@@ -11,7 +11,7 @@ improve release over release. Scale:
 > **not** proof it beats real humans. They track relative progress and leaks, not
 > absolute skill. The rating is a judgment call, explained below.
 
-## Current rating: **66 / 100**
+## Current rating: **67 / 100**
 
 A legitimately solid study bot: it works end-to-end on PokerNow, plays
 near-equilibrium preflop, avoids the big postflop blunders, and clearly beats
@@ -38,6 +38,7 @@ solver would out-play it on later streets — which is what keeps it out of the
 
 | Version | Date | Tests | Rating | Postflop net (test acc) | Notable |
 |---|---|---:|---:|---|---|
+| v0.1.41 | 2026-06-26 | 479 | **67** | + street-aware barreling (polarized river) | **Plays the later streets like a reg.** A behavioral audit found the bot OVER-barreled: turn ~63% and river ~63% bet (firing one-pair into the river). The lead policy is now street-aware (`cbet.ts`): flop c-bet ~56%, turn ~52%, river **36%** — polarized to value + bluffs, and it **checks one-pair on the river** (showdown value) instead of spewing. Also made the soundness pot-odds floor **postflop-only**, so a low/misread preflop pot can never make it over-fold sound chart-defends (a real "high-freq folding" risk). |
 | v0.1.40 | 2026-06-26 | 477 | **66** | + lead/c-bet policy (fixes inverted donk/c-bet) | **Fixes a real spewing leak from live hands**: the distilled net's bet-or-check was *inverted* — it CHECKED as the preflop aggressor (no c-bet) and DONKED air OOP as the caller (leading into the raiser with nothing, then folding). The lead spot is only ~6% of the net's training data, so it extrapolated badly. Now the bet-or-check decision uses a sound policy (`cbet.ts`): who took the initiative + position + made-hand + texture; the net is kept FACING a bet (its strength). Donk-air-OOP dropped from 67%→~0%; c-bet freq restored. Sim GTO 127→**143**, exploit 154→**163** bb/100. Pure unit-tested (`tests/cbet.test.ts`). |
 | v0.1.39 | 2026-06-26 | 467 | **64** | + SOUNDNESS GATE (universal anti-punt law) | **The big one**: one principled gate (`soundness.ts`) every decision passes through before it fires — grounded in equity vs the *realistic* range + how much of the stack is at risk. It folds any call or deep stack-off that can't beat the price, on EVERY path (solved charts, the net, the heuristics), replacing the scattered hand-coded guards. **Read-aware**: defers to a confident bluff-heavy read (maniac/LAG) so it doesn't clip profitable bluff-catches → sim exploit line 150→**154** bb/100; GTO line a touch tighter (sound vs unknowns). Pure unit-tested (`tests/soundness.test.ts`). |
 | v0.1.31 | 2026-06-25 | 452 | **63** | + no deep preflop JAMS (size 3-bets instead) | **Other half of the punt fix**: the solved charts carry polarized "all-in" cells (incl. bluffs like A3o/A6o), and the engine shoved them — jamming ~50bb preflop with a weak ace. Now an "all-in" from the chart only jams when SHORT (≤25bb, push/fold); when deep it's converted to a SIZED 3-bet/4-bet. So weak aces 3-bet to ~7.5bb (or fold), never shove 50bb. Regression tests: tests/preflop-jam-sizing.test.ts. |

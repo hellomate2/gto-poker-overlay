@@ -587,7 +587,8 @@ export class DecisionEngine {
       const isAggressor = pfHasRaise ? isPreflopAggressor : isIP;
       const veryWetOrMono = boardAnalysis.texture === 'very_wet' || boardAnalysis.isMonotone;
       const pBet = leadBetProbability({
-        isAggressor, isIP, heroCat, equity: equityVsRandom, veryWetOrMono, dangerousFlush: dangerousFlushBoard,
+        isAggressor, isIP, heroCat, equity: equityVsRandom,
+        street: street as 'flop' | 'turn' | 'river', veryWetOrMono, dangerousFlush: dangerousFlushBoard,
       });
       const role = isAggressor ? 'c-bet' : 'lead';
       if (Math.random() < pBet) {

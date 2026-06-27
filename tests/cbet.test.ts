@@ -4,7 +4,7 @@ import { HAND_CATEGORY } from '../src/core/equity/hand-eval';
 
 const base: LeadInput = {
   isAggressor: true, isIP: true, heroCat: HAND_CATEGORY.HIGH_CARD,
-  equity: 0.4, veryWetOrMono: false, dangerousFlush: false,
+  equity: 0.4, street: 'flop', veryWetOrMono: false, dangerousFlush: false,
 };
 const L = (o: Partial<LeadInput>) => leadBetProbability({ ...base, ...o });
 
@@ -39,6 +39,20 @@ describe('lead/c-bet policy (fixes the inverted net)', () => {
 
   it('pure air on a wet board mostly checks (low freq)', () => {
     expect(L({ heroCat: HAND_CATEGORY.HIGH_CARD, equity: 0.32, veryWetOrMono: true })).toBeLessThan(0.25);
+  });
+
+  it('polarizes the river: bets value, but mostly CHECKS one pair (showdown value)', () => {
+    const valueRiver = L({ heroCat: HAND_CATEGORY.TWO_PAIR, street: 'river' });
+    const pairRiver = L({ heroCat: HAND_CATEGORY.PAIR, street: 'river' });
+    const pairFlop = L({ heroCat: HAND_CATEGORY.PAIR, street: 'flop' });
+    expect(valueRiver).toBeGreaterThan(0.7);   // still value-bets the river
+    expect(pairRiver).toBeLessThan(0.3);        // one pair on the river mostly checks
+    expect(pairRiver).toBeLessThan(pairFlop);   // and far less than a flop protection c-bet
+  });
+
+  it('barrels the turn less than the flop with a marginal pair', () => {
+    expect(L({ heroCat: HAND_CATEGORY.PAIR, street: 'turn' }))
+      .toBeLessThan(L({ heroCat: HAND_CATEGORY.PAIR, street: 'flop' }));
   });
 
   it('never bets into a flush it cannot beat; a made flush still can', () => {
