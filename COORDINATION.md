@@ -1,6 +1,6 @@
 # Multi-session coordination
 
-Two Claude Code sessions sometimes work this repo at the same time, sharing one
+Two concurrent coding sessions sometimes work this repo at the same time, sharing one
 working tree. To avoid clobbering each other's uncommitted work, we hold to lanes
 and a few hard rules.
 
