@@ -256,7 +256,13 @@ export class ActionExecutor {
       // we try to act (run-it-twice, show/muck, away nudge, etc.).
       this.dismissBlockingPrompts();
 
-      const action = this.sampleAction(decision);
+      // Play the action the engine DECIDED and the overlay SHOWED. Do NOT
+      // re-sample from the distribution here: the engine already did its mixing at
+      // decision time (chart sampling / lead-policy / argmax), so re-rolling a
+      // second random action made the executed move differ from the displayed
+      // recommendation and could pick a bad action out of a messy distribution.
+      // The mixedStrategy is for display only.
+      const action: { type: ActionType; amount?: number } = { type: decision.action, amount: decision.amount };
       this.setStatus(`try ${action.type}${action.amount ? ` $${action.amount}` : ''}`);
 
       let success = await this.executeWithRetry(action.type, action.amount);
@@ -307,14 +313,6 @@ export class ActionExecutor {
    */
   clearActedSignature(): void {
     this.lastActedSignature = null;
-  }
-
-  private sampleAction(decision: BotDecision): { type: ActionType; amount?: number } {
-    return sampleActionFromStrategy(
-      decision.mixedStrategy,
-      Math.random(),
-      { action: decision.action, amount: decision.amount },
-    );
   }
 
   // ============================================================
@@ -693,8 +691,29 @@ export class ActionExecutor {
           if (input && !clamped.invalid && clamped.amount !== null) {
             await this.setInputValue(input, String(clamped.amount));
             await this.sleep(70);
+            // VERIFY THE INPUT TOOK. PokerNow's amount box is a React-controlled
+            // input; setting .value can fail to update its state, leaving the box
+            // at the table MINIMUM. Submitting then min-bets (e.g. 20 into a 1000
+            // pot with the nuts). If the read-back doesn't match, fix it with a
+            // preset near the intended size instead of submitting the minimum.
+            const readBack = parseInputAmount(this.findAmountInput()?.value);
+            const tol = Math.max(AMOUNT_TOLERANCE, clamped.amount * 0.02);
+            if (!amountMatches(clamped.amount, readBack, tol)) {
+              await this.clickClosestPreset(amount);
+              await this.sleep(60);
+            }
           } else {
             await this.clickClosestPreset(amount);
+          }
+          // FINAL MIN-BET GUARD: never submit a raise whose box shows far below
+          // intent. A misread sizing box defaults to the minimum; betting it is a
+          // worse mistake than just calling/checking. Bail so the caller's
+          // intent-aware fallback takes a safe line instead of min-betting.
+          const liveAmt = parseInputAmount(this.findAmountInput()?.value);
+          if (Number.isFinite(liveAmt) && liveAmt > 0 && liveAmt < amount * 0.5 && liveAmt < amount - 1) {
+            this.setStatus(`raise size misread (${liveAmt} vs $${amount}) — bail to safe line`);
+            await this.closeRaiseForm();
+            return false;
           }
         } else {
           await this.clickClosestPreset(undefined);
