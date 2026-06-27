@@ -635,18 +635,35 @@ export class ActionExecutor {
         return false;
 
       case 'bet':
-      case 'raise':
+      case 'raise': {
+        // CRITICAL: when villain is already all-in (or the table otherwise offers
+        // no raise/bet button — only CALL/FOLD), "raise" is impossible. Committing
+        // chips here means CALL. Do it IMMEDIATELY instead of burning ~2s of retries
+        // on a raise form that will never appear — that delay goes stale and the
+        // fallback then FOLDS (the QQ-folds-to-a-shove / "spazz" disaster).
+        const ab = this.readAvailableButtons();
+        if (!ab.raise && !ab.bet && ab.call) {
+          if (this.clickActionButton('call')) { this.setStatus('call (no raise available — facing all-in)'); return true; }
+        }
         if (await this.executeRaise(amount)) return true;
         // Raise failed/disabled — try call, then check as fallback.
         if (this.clickActionButton('call')) return true;
         if (this.clickActionButton('check')) return true;
         return false;
+      }
 
-      case 'allin':
+      case 'allin': {
+        // Same guard: facing a shove there is no "All In" button — the CALL button
+        // IS the all-in call. Call directly rather than failing executeAllIn -> fold.
+        const ab = this.readAvailableButtons();
+        if (!ab.raise && !ab.bet && ab.call) {
+          if (this.clickActionButton('call')) { this.setStatus('call all-in (commit)'); return true; }
+        }
         if (await this.executeAllIn()) return true;
         if (this.clickActionButton('call')) return true;
         if (this.clickActionButton('check')) return true;
         return false;
+      }
 
       default:
         log.warn(`Unknown action: ${action}`);

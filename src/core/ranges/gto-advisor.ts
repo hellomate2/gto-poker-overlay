@@ -105,6 +105,18 @@ function normalizeCell(cell: Cell): { weight: number; actions: Record<string, nu
   return { weight: cell.weight, actions: cell.actions as Record<string, number> };
 }
 
+/**
+ * A solved cell is "noisy" when 3+ actions carry near-equal frequency (e.g.
+ * call 33 / raise 33 / allin 33) — that's a non-converged / low-frequency node, not
+ * a real mixed strategy. Sampling it produces random spew (3-betting / jamming trash
+ * like 53o). Detect it so the caller can collapse it to a sound fold facing a raise.
+ */
+function isNoisyCell(cell: Cell): boolean {
+  const freqs = Object.values(normalizeCell(cell).actions).filter(f => f > 5);
+  if (freqs.length < 3) return false;
+  return Math.max(...freqs) - Math.min(...freqs) < 15;
+}
+
 const POSITION_ORDER: Position[] = ['UTG', 'MP', 'CO', 'BTN', 'SB', 'BB'];
 
 function posIndex(pos: Position): number {
@@ -286,6 +298,22 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
 
   if (!cell) {
     // Not in chart = fold
+    return {
+      scenario: scenarioResult.label,
+      hand: handName,
+      actions: [{ action: 'Fold', frequency: 100 }],
+      inRange: false,
+      rangeWeight: 0,
+    };
+  }
+
+  // DEGENERATE-CELL GUARD. Some solved cells facing a raise are near-uniform across
+  // 3+ actions (e.g. 53o vs a 3-bet = call 33 / raise 33 / allin 33) — solver noise,
+  // not a real mixed strategy. With the fold remainder padded in, that displays as
+  // the "25% / 25% / 25% / 25%" mush and the bot then SAMPLES it at random (3-betting
+  // / jamming 53o). A trash hand facing aggression should simply FOLD. Collapse any
+  // such noisy cell to a fold when we're facing a raise (never touch RFI opens).
+  if (scenarioResult.scenario !== 'RFI' && isNoisyCell(cell)) {
     return {
       scenario: scenarioResult.label,
       hand: handName,

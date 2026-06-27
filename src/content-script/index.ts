@@ -35,6 +35,13 @@ class PokerBot {
   // reset the lock and let a second execute() run concurrently and corrupt state
   // — which is what made it break after a few hands. Only a true hang hits this.
   private static readonly PROCESSING_TIMEOUT = 12000;
+  // Settle window: how long to let the table finish animating before we read the
+  // spot for real, and the gap between stability re-reads. Deciding only on a
+  // STABLE read (not the first half-rendered frame of our turn) is what keeps the
+  // bot from "acting in half a second" on a misread board/bet.
+  private static readonly SETTLE_MS = 650;
+  private static readonly SETTLE_STABLE_GAP_MS = 250;
+  private static readonly SETTLE_MAX_REREADS = 5;
 
   constructor() {
     this.settings = { ...DEFAULT_SETTINGS };
@@ -67,6 +74,39 @@ class PokerBot {
     this.scraper.start();
 
     console.log('[GTO Bot] ===== Bot is LIVE =====');
+  }
+
+  /**
+   * Wait for the table to finish animating, then re-scrape until the betting spot
+   * is STABLE across two consecutive reads (or we run out of patience). Returns the
+   * freshest stable GameState so the engine decides on a COMPLETE table read rather
+   * than the first half-rendered frame of our turn. Bails early (returns the read)
+   * if it's no longer our turn.
+   */
+  private async settleAndReread(): Promise<GameState | null> {
+    await this.sleep(PokerBot.SETTLE_MS);
+    let prev = this.scraper.scrape();
+    for (let i = 0; i < PokerBot.SETTLE_MAX_REREADS; i++) {
+      if (!prev || !prev.isOurTurn) return prev;           // turn ended — let the loop re-handle
+      await this.sleep(PokerBot.SETTLE_STABLE_GAP_MS);
+      const cur = this.scraper.scrape();
+      if (!cur || !cur.isOurTurn) return cur;
+      if (this.sameSpot(prev, cur)) return cur;            // two matching reads = settled
+      prev = cur;                                          // still animating — keep reading
+    }
+    return prev;                                           // never fully stabilized; use the latest
+  }
+
+  /** Two reads describe the same betting spot (nothing animating between them). */
+  private sameSpot(a: GameState, b: GameState): boolean {
+    return a.street === b.street
+      && a.communityCards.length === b.communityCards.length
+      && Math.abs((a.currentBet || 0) - (b.currentBet || 0)) < 1
+      && Math.abs((a.pot || 0) - (b.pot || 0)) < 1;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async onGameStateUpdate(state: GameState): Promise<void> {
@@ -183,12 +223,27 @@ class PokerBot {
         console.log(`[GTO Bot] OUR TURN — ${state.heroCards[0].rank}${state.heroCards[0].suit} ${state.heroCards[1].rank}${state.heroCards[1].suit} | Street: ${state.street} | Pot: ${state.pot}`);
 
         try {
+          // SETTLE & RE-READ before deciding. When our turn first registers the
+          // table is often still animating (villain's bet sliding in, cards dealing,
+          // the pot/board updating). Deciding on that half-rendered snapshot is what
+          // made the bot act wrong in ~0.5s. Pause, then re-scrape until the spot is
+          // STABLE across two reads, and decide on THAT — read everything first.
+          this.hud.showExecStatus('reading the table…');
+          const settled = await this.settleAndReread();
+          if (!settled || !settled.heroCards || !settled.isOurTurn) {
+            // Turn ended or state vanished while settling — let the next poll handle it.
+            this.isProcessing = false;
+            return;
+          }
+          const heroCards = settled.heroCards; // narrowed non-null by the guard above
+          state = settled;
+
           const decision = await this.engine.decide(state);
 
           // Equity for display
           const heroCardIds: [number, number] = [
-            cardToId(state.heroCards[0]),
-            cardToId(state.heroCards[1]),
+            cardToId(heroCards[0]),
+            cardToId(heroCards[1]),
           ];
           const boardIds = state.communityCards.map(c => cardToId(c));
           const equity = quickEquity(heroCardIds, boardIds);
