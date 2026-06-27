@@ -103,3 +103,6 @@ describe('soundness gate — RULE 3: do not stack off as the aggressor with air'
     expect(evaluateSoundness(S({ action: 'allin', street: 'preflop', facingBet: false, commit: 1, eqVsRange: 0.20 })).override).toBe(false);
   });
 });
+
+// (A turn "give up hopeless air" rule was prototyped and rejected by the behavioral
+// audit — it pushed turn-barrel below the GTO band. See the note in soundness.ts.)

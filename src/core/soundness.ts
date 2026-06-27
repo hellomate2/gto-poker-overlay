@@ -119,6 +119,13 @@ export function evaluateSoundness(i: SoundnessInput): SoundnessResult {
     };
   }
 
+  // NOTE: a turn "give up hopeless air" rule (curriculum #46) was prototyped here
+  // and REJECTED by the behavioral audit — at any threshold that fired meaningfully
+  // it pushed turn-barrel frequency below the GTO band (54% -> 31%), making the bot
+  // exploitably passive. The turn barreling is already sound; the real spew was the
+  // river STACK-OFF, which RULE 3 handles. Encoding more curriculum rules must clear
+  // the same audit bar (sim/audit-play.ts) before it ships.
+
   return { override: false };
 }
 
