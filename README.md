@@ -9,7 +9,7 @@ It's built as a study tool and a training opponent. It is a strong **approximati
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![Tests](https://img.shields.io/badge/tests-452%20passing-2ecc71)](#verification)
+[![Tests](https://img.shields.io/badge/tests-479%20passing-2ecc71)](#verification)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## Install
@@ -46,14 +46,14 @@ Then **Load unpacked** the `dist/` folder.
 - **Exploits:** per-opponent tracking and bounded exploitative adjustments (postflop).
 
 ## Verification
-Correctness is checked by a test suite (413 tests, all passing), including:
+Correctness is checked by a test suite (479 tests, all passing), including:
 - The hand evaluator enumerated over **all 2,598,960 five-card hands**, asserting the category counts match the textbook distribution exactly and that there are 7,462 distinct hand-strength classes.
 - The CFR engine reaching the known Kuhn-poker game value of **-1/18** and driving exploitability toward zero.
 - The distilled postflop net reproducing its **~83% test-set agreement** with the solver (above the published 8B-LLM benchmark).
 - Preflop coverage: every hand × every heads-up scenario returns a defined, in-range action (no gaps).
 
 ```bash
-npm test            # full suite (413 tests)
+npm test            # full suite (479 tests)
 npm run solve:preflop   # re-solve the heads-up preflop equilibrium
 npm run eval:bench      # hand-evaluator throughput
 npm run sim:selftest    # validate the simulation engine (chip conservation, blinds, symmetry)
@@ -90,7 +90,7 @@ src/
   ui/                overlay HUD + popup
   trainer/           standalone GTO trainer
 sim/                 heads-up NLHE bot-vs-archetype simulation harness
-tests/               413 tests
+tests/               479 tests
 ```
 
 ## Disclaimer

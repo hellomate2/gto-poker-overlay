@@ -29,3 +29,10 @@ HANDOFF.md
 
 # parity build artifact (decoded committed weights for ml/parity-gen.py)
 ml/_weights.json
+
+# Loop / agent scratch artifacts (not source)
+.loop/
+*.backup
+*.backup.ts
+src/solver/_experiment*.ts
+src/solver/preflop/_rfi.ts
