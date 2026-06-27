@@ -820,6 +820,12 @@ export class ActionExecutor {
     for (const b of presets) {
       this.dispatchReactClick(b);
       await this.sleep(40);
+      // DEFENSIVE: a preset is supposed to only SET the sizing box, but if a UI
+      // treats it as an instant commit, our turn ends here. Stop immediately —
+      // clicking the remaining presets would be measuring a form that no longer
+      // exists, and the bet is already in. (Guards the "bet 20 then the real
+      // amount" symptom: never keep firing presets after one committed.)
+      if (!this.isHeroTurnLive()) { this.setStatus('bet committed via preset'); return true; }
       const v = parseInputAmount(this.findAmountInput()?.value);
       if (Number.isFinite(v)) {
         const d = Math.abs(v - amount);
