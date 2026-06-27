@@ -99,6 +99,26 @@ export function evaluateSoundness(i: SoundnessInput): SoundnessResult {
     };
   }
 
+  // RULE 3 — DON'T STACK OFF AS THE AGGRESSOR WITH A WEAK HAND (postflop).
+  // Betting/raising/jamming a large fraction of the stack with low equity vs the
+  // range that will actually call is a punt: triple-barreling nine-high, jamming a
+  // crushed pair into a player who called three streets. Normal-sized bluffs and
+  // c-bets commit little and pass; this only vetoes committing the STACK with no
+  // value behind it. Override to CHECK when we can (not facing a bet), else FOLD.
+  if (
+    (i.action === 'bet' || i.action === 'raise' || i.action === 'allin') &&
+    i.street !== 'preflop' &&
+    i.commit >= 0.5 &&
+    i.eqVsRange < 0.45
+  ) {
+    const safe: ActionType = i.facingBet ? 'fold' : 'check';
+    return {
+      override: true,
+      action: safe,
+      reason: `${safe}: committing ${pct(i.commit)} of stack as the aggressor with only ${pct(i.eqVsRange)} eq vs range [soundness]`,
+    };
+  }
+
   return { override: false };
 }
 

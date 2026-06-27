@@ -67,10 +67,39 @@ describe('soundness gate — RULE 2: no deep preflop stack-off with trash', () =
   });
 });
 
-describe('soundness gate — never adds aggression', () => {
+describe('soundness gate — never adds aggression (low-commit actions untouched)', () => {
   for (const action of ['bet', 'raise', 'check', 'fold'] as const) {
-    it(`leaves '${action}' untouched`, () => {
-      expect(evaluateSoundness(S({ action, eqVsRange: 0.01, potOdds: 0.9 })).override).toBe(false);
+    it(`leaves a low-commit '${action}' untouched`, () => {
+      expect(evaluateSoundness(S({ action, commit: 0.2, eqVsRange: 0.01, potOdds: 0.9 })).override).toBe(false);
     });
   }
+});
+
+describe('soundness gate — RULE 3: do not stack off as the aggressor with air', () => {
+  // The exact hand-6 punt: triple-barrel nine-high, then jam the river with a
+  // crushed pair. The gate must turn a stack-committing air bet into check/fold.
+  it('vetoes JAMMING the river with a crushed hand (commit ~1, ~12% eq) -> CHECK', () => {
+    const r = evaluateSoundness(S({ action: 'allin', facingBet: false, commit: 1, eqVsRange: 0.12 }));
+    expect(r.override).toBe(true);
+    expect(r.action).toBe('check');
+  });
+  it('vetoes a big over-bet barrel with air -> CHECK', () => {
+    const r = evaluateSoundness(S({ action: 'bet', facingBet: false, commit: 0.7, eqVsRange: 0.20 }));
+    expect(r.override).toBe(true);
+    expect(r.action).toBe('check');
+  });
+  it('a stack-commit shove that FACES a bet folds (cannot check)', () => {
+    const r = evaluateSoundness(S({ action: 'raise', facingBet: true, commit: 0.8, eqVsRange: 0.20 }));
+    expect(r.override).toBe(true);
+    expect(r.action).toBe('fold');
+  });
+  it('KEEPS a value stack-off (commit ~1, 70% eq vs range)', () => {
+    expect(evaluateSoundness(S({ action: 'allin', facingBet: false, commit: 1, eqVsRange: 0.70 })).override).toBe(false);
+  });
+  it('KEEPS a normal-sized c-bet / bluff (low commit) even with low eq', () => {
+    expect(evaluateSoundness(S({ action: 'bet', facingBet: false, commit: 0.25, eqVsRange: 0.20 })).override).toBe(false);
+  });
+  it('does NOT touch preflop aggression (RULE 3 is postflop-only)', () => {
+    expect(evaluateSoundness(S({ action: 'allin', street: 'preflop', facingBet: false, commit: 1, eqVsRange: 0.20 })).override).toBe(false);
+  });
 });

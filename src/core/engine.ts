@@ -1312,15 +1312,17 @@ export class DecisionEngine {
 
   /**
    * The SOUNDNESS GATE (see soundness.ts). Computes equity vs a REALISTIC range
-   * plus the commitment metrics, then lets soundness.ts veto any punt. Only
-   * inspects calls and (preflop) all-ins — the actions that can be a stack-off
-   * mistake — and only ever folds. Runs on every path, so the chart, the net, and
-   * the heuristic fallbacks all inherit the same protection.
+   * plus the commitment metrics, then lets soundness.ts veto any punt. Inspects
+   * every chip-committing action — calls, deep call-offs, and aggressive stack-offs
+   * (betting/jamming air) — and overrides to a safer action (check or fold). Runs on
+   * every path, so the chart, the net, and the heuristic fallbacks all inherit it.
    */
   private applySoundnessGate(decision: BotDecision, state: GameState, equity: number, trustExploitRead = false): BotDecision {
     const hero = state.players[state.heroIndex];
     if (!hero || !state.heroCards || state.heroCards.length < 2) return decision;
-    if (decision.action !== 'call' && decision.action !== 'allin') return decision;
+    // Inspect every chip-committing action: bad CALLS / deep CALL-OFFS (rules 1-2)
+    // AND aggressive STACK-OFFS where the bot bets/jams air (rule 3).
+    if (!['call', 'allin', 'bet', 'raise'].includes(decision.action)) return decision;
 
     const heroCards: [number, number] = [cardToId(state.heroCards[0]), cardToId(state.heroCards[1])];
     const boardIds = state.communityCards.map(c => cardToId(c));
@@ -1334,10 +1336,18 @@ export class DecisionEngine {
     const pot = state.pot || 0;
     const potOdds = facingBet ? toCall / (pot + toCall) : 0;
     const stack = hero.stack || 0;
-    // Fraction of the stack at risk: an all-in risks it all; a call risks toCall.
-    const commit = decision.action === 'allin'
-      ? 1
-      : stack > 0 ? Math.min(1, toCall / stack) : 0;
+    // Fraction of the stack at risk: an all-in risks it all; a call risks toCall;
+    // a bet/raise risks the additional chips it puts in (amount-to minus what's
+    // already in front).
+    let commit: number;
+    if (decision.action === 'allin') {
+      commit = 1;
+    } else if (decision.action === 'call') {
+      commit = stack > 0 ? Math.min(1, toCall / stack) : 0;
+    } else {
+      const additional = Math.max(0, (decision.amount || 0) - heroBet);
+      commit = stack > 0 ? Math.min(1, additional / stack) : 0;
+    }
 
     // Committed-aware effective stack in bb (matches heroEffectiveStackBB).
     const heroTotal = stack + heroBet;
@@ -1365,13 +1375,16 @@ export class DecisionEngine {
     const result = evaluateSoundness({
       action: decision.action, street, facingBet, potOdds, commit, effStackBB, isPremium, eqVsRange, trustExploitRead,
     });
-    if (result.override && result.action === 'fold') {
+    if (result.override && (result.action === 'fold' || result.action === 'check')) {
       console.log(`[GTO Bot] SOUNDNESS veto: ${result.reason}`);
+      const safe = result.action;
       return {
-        action: 'fold',
+        action: safe,
         confidence: decision.confidence,
         reasoning: `${decision.reasoning} | ${result.reason}`,
-        mixedStrategy: { fold: 1, check: 0, call: 0, bets: [] },
+        mixedStrategy: safe === 'check'
+          ? { fold: 0, check: 1, call: 0, bets: [] }
+          : { fold: 1, check: 0, call: 0, bets: [] },
       };
     }
     return decision;
