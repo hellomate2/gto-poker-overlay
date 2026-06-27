@@ -86,7 +86,7 @@ export function evaluateSoundness(i: SoundnessInput): SoundnessResult {
   // a weak hand jamming or calling a jam that deep is a punt. (First-in opens are
   // not touched — only stack-offs that face a bet.)
   if (
-    i.action === 'allin' &&
+    (i.action === 'allin' || (i.action === 'call' && i.commit >= 0.8)) &&
     i.street === 'preflop' &&
     i.facingBet &&
     i.effStackBB > 25 &&
@@ -95,7 +95,7 @@ export function evaluateSoundness(i: SoundnessInput): SoundnessResult {
     return {
       override: true,
       action: 'fold',
-      reason: `fold: non-premium all-in stack-off at ${i.effStackBB.toFixed(0)}bb deep [soundness]`,
+      reason: `fold: non-premium ${i.action === 'call' ? 'call-off' : 'all-in'} stack-off at ${i.effStackBB.toFixed(0)}bb deep [soundness]`,
     };
   }
 

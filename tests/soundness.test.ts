@@ -65,6 +65,24 @@ describe('soundness gate — RULE 2: no deep preflop stack-off with trash', () =
   it('does NOT touch a first-in open-jam (not facing a bet)', () => {
     expect(jam({ effStackBB: 48, isPremium: false, facingBet: false }).override).toBe(false);
   });
+
+  // The hole the engine bug exposed: villain is already all-in, so HERO'S action is
+  // a CALL (not 'allin'). RULE 2 must still catch a deep non-premium call-off.
+  const callOff = (o: Partial<SoundnessInput>) =>
+    evaluateSoundness(S({ action: 'call', street: 'preflop', facingBet: true, commit: 0.95, ...o }));
+
+  it('FOLDS a deep non-premium preflop CALL-off of a jam (commit ~1, 48bb)', () => {
+    expect(callOff({ effStackBB: 48, isPremium: false }).override).toBe(true);
+  });
+  it('KEEPS a premium deep call-off (AA-class)', () => {
+    expect(callOff({ effStackBB: 48, isPremium: true }).override).toBe(false);
+  });
+  it('does NOT touch a SMALL preflop call (defending a 3-bet, commit < 0.8)', () => {
+    expect(callOff({ effStackBB: 48, isPremium: false, commit: 0.3 }).override).toBe(false);
+  });
+  it('KEEPS a short-stack call-off (12bb), even non-premium', () => {
+    expect(callOff({ effStackBB: 12, isPremium: false }).override).toBe(false);
+  });
 });
 
 describe('soundness gate — never adds aggression (low-commit actions untouched)', () => {

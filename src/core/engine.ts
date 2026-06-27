@@ -1300,7 +1300,14 @@ export class DecisionEngine {
     // call with a hand that only looks strong vs a random holding.
     if (decision.action === 'fold' && equity >= 0.65) {
       const potOdds = facingBet ? toCall / (state.pot + toCall) : 0;
-      const callIsPlus = postflop ? eqRange() > potOdds + 0.02 : true;
+      // Preflop: only un-fold CHEAP spots. A big preflop call is a stack-off, and
+      // equity-vs-RANDOM (99 is ~72% vs random) cannot justify calling a jam vs a
+      // tight jamming range — un-folding there is the deep call-off punt (77 calling
+      // a 100bb shove "because it's strong"). Postflop: un-fold only when calling
+      // actually beats the price vs the realistic continuing range.
+      const heroStack = state.players[state.heroIndex]?.stack || 0;
+      const callCommit = heroStack > 0 ? toCall / heroStack : 1;
+      const callIsPlus = postflop ? eqRange() > potOdds + 0.02 : callCommit < 0.25;
       if (callIsPlus) {
         decision.action = 'call';
         decision.reasoning += ' [too strong to fold]';

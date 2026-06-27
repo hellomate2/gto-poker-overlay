@@ -22,6 +22,15 @@ export const DEEP_JAM_CALL = new Set([
   'AKs', 'AKo', 'AQs', 'AQo', 'AJs', 'KQs',
 ]);
 
+// VERY DEEP (50bb+) preflop all-in: stacking off 50-100bb is a premium-only
+// decision. Nobody balanced open/4-bet jams 50bb+, so by default (no read) we
+// assume a value-heavy jam and call only with the premium core. The wider
+// DEEP_JAM_CALL above is correct for a 25-40bb 4-bet jam (where the jamming range
+// is much wider), NOT for a 100bb stack-off where TT/99/AQ/KQs are crushed.
+export const DEEP_JAM_CALL_50PLUS = new Set([
+  'AA', 'KK', 'QQ', 'JJ', 'AKs', 'AKo',
+]);
+
 /**
  * Look up a preflop chart by key. When the table is heads-up (exactly two
  * active players) the SOLVED heads-up charts (headsup-solved.ts, a real CFR+
@@ -226,10 +235,14 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
 
     if (nearJam) {
       // <=25bb: exact Nash call range (calling wide is correct short).
-      // >25bb: tight premium stack-off range (T9s etc. must FOLD a deep jam).
+      // 25-50bb: wider 4-bet-jam stack-off range (T9s folds, but TT/AQ/KQs call).
+      // >50bb: premium core only — a 100bb preflop jam is a value-heavy spot and
+      // TT/99/AQ/KQs are crushed (the deep call-off punt).
       const inCall = effStackBB <= 25
         ? callRange(effStackBB).has(handName)
-        : DEEP_JAM_CALL.has(handName);
+        : effStackBB <= 50
+          ? DEEP_JAM_CALL.has(handName)
+          : DEEP_JAM_CALL_50PLUS.has(handName);
       return {
         scenario: `Facing all-in — call/fold (${effStackBB.toFixed(0)}bb eff)`,
         hand: handName,
