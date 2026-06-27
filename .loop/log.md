@@ -19,3 +19,6 @@ Goal: winning, good-playing heads-up bot. Iterating: audit -> fix biggest leak -
 
 ## Iteration 3 — net retrain (in progress)
 - Heuristic low-hanging fruit exhausted; bot plays sound poker everywhere. Remaining real lever = the distilled net (used facing a bet). Retraining to try to beat 84.5% held-out.
+
+## Iteration 3 — net retrain (REVERTED; net at ceiling)
+- Tried 768x384, 130 epochs: train 88.0%, val 85.3%, TEST 84.95% vs current 84.5%. +0.45% TEST is noise; train-test gap = overfitting. Reverted (lean model is better: smaller bundle, same generalization). CONCLUSION: the distilled net is at its data ceiling (~85%); architecture tweaks don't help, AND its facing-bet errors are already caught by the soundness gate. Net is not the lever.
