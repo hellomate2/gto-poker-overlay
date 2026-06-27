@@ -9,6 +9,7 @@ import {
   detectStreet,
   detectStreetFromLog,
   laterStreet,
+  smallBlindPosterFromLog,
 } from '../src/content-script/scraper';
 import { card } from './helpers';
 
@@ -41,6 +42,29 @@ describe('detectStreetFromLog', () => {
     expect(detectStreetFromLog(hand('"River" raises to 50', 'nice turn buddy', '"Flop" calls 50'))).toBeNull();
     // a real deal line still wins over chatter
     expect(detectStreetFromLog(hand('"River" raises to 50', 'Flop:  [8d 4s 3d]'))).toBe('flop');
+  });
+});
+
+describe('smallBlindPosterFromLog — the reliable position anchor (the SB = button HU)', () => {
+  const hand = (...lines: string[]) => ['-- starting hand #5 --', ...lines];
+  it('identifies the SB poster from the log', () => {
+    expect(smallBlindPosterFromLog(hand('"dev" posts a small blind of 10', '"bot" posts a big blind of 20'))).toBe('dev');
+  });
+  it('still identifies the SB AFTER it open-raises (the bug the old bet-size heuristic had)', () => {
+    // The SB now has the BIGGER bet (50 > 20), which fooled "smaller bet = SB".
+    // The blind-post line is immune to later raises.
+    expect(smallBlindPosterFromLog(hand(
+      '"bot" posts a small blind of 10', '"dev" posts a big blind of 20',
+      '"bot" raises to 50',
+    ))).toBe('bot');
+  });
+  it('scopes to the current hand (ignores a prior hand\'s SB post)', () => {
+    expect(smallBlindPosterFromLog([
+      '"dev" posts a small blind of 10', '-- starting hand #6 --', '"bot" posts a small blind of 10',
+    ])).toBe('bot');
+  });
+  it('returns null when no small-blind post is present', () => {
+    expect(smallBlindPosterFromLog(['"dev" calls 50'])).toBeNull();
   });
 });
 

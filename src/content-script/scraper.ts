@@ -253,6 +253,24 @@ export function laterStreet(a: Street, b: Street): Street {
  * safety net: even if the board fails to scrape entirely, the log still tells us
  * we are postflop, so the bot never mistakes a turn for a fresh preflop open.
  */
+/**
+ * Name of the small-blind poster THIS hand, parsed from the game log (e.g.
+ * '"dev" posts a small blind of 10'). Heads-up the SB is the button/dealer, so this
+ * is the reliable position anchor. Scoped to after the last "starting hand" marker.
+ * Returns null if not found. Pure for unit-testing.
+ */
+export function smallBlindPosterFromLog(logLines: string[]): string | null {
+  let start = 0;
+  for (let i = logLines.length - 1; i >= 0; i--) {
+    if (/starting hand|hand #/i.test(logLines[i] || '')) { start = i; break; }
+  }
+  for (let i = start; i < logLines.length; i++) {
+    const m = (logLines[i] || '').match(/"([^"]+)"\s+posts?\s+(?:a\s+)?small\s*blind/i);
+    if (m) return m[1].trim();
+  }
+  return null;
+}
+
 export function detectStreetFromLog(logLines: string[]): Street | null {
   for (let i = logLines.length - 1; i >= 0; i--) {
     const t = (logLines[i] || '');
@@ -387,16 +405,17 @@ export class PokerNowScraper {
 
       // Positions
       const activePlayers = players.filter(p => !p.isSittingOut);
-      // Dealer button: prefer the scraped chip. If it wasn't found, INFER it rather
-      // than blindly defaulting to seat 0 (which flips SB/BB and IP/OOP for the whole
-      // hand). Heads-up, the button posts the small blind, so the active player with
-      // the smaller positive preflop bet is the dealer.
+      // Dealer button: prefer the scraped chip. If it wasn't found (the "D" badge is
+      // often NOT a DOM child of the seat), determine the button from the GAME LOG's
+      // small-blind post — the SB is the button heads-up, and the log is reliable
+      // regardless of later raises. (The old "smaller current bet = SB" heuristic was
+      // WRONG once the SB opens — the SB then has the BIGGER bet — and it silently
+      // SWAPPED SB/BB, which mislabeled the spot and produced garbage decisions.)
       if (dealerIndex === -1) {
-        if (activePlayers.length === 2) {
-          const posters = activePlayers.filter(p => p.currentBet > 0).sort((a, b) => a.currentBet - b.currentBet);
-          if (posters.length >= 1) { posters[0].isDealer = true; dealerIndex = players.indexOf(posters[0]); }
-        }
-        if (dealerIndex === -1) dealerIndex = 0; // last resort
+        const sbName = this.detectSmallBlindPoster();
+        const sb = sbName ? players.find(p => p.name === sbName && !p.isSittingOut) : undefined;
+        if (sb) { sb.isDealer = true; dealerIndex = players.indexOf(sb); }
+        if (dealerIndex === -1) dealerIndex = 0; // last resort (logged below)
       }
       const activeDealer = Math.max(0, activePlayers.findIndex(p => p.isDealer));
       const positions = assignPositions(activePlayers.length, activeDealer);
@@ -514,6 +533,17 @@ export class PokerNowScraper {
       this.handCounter++;
     }
     return this.handCounter;
+  }
+
+  /**
+   * Who posted the small blind THIS hand, from the game log (e.g. '"dev" posts a
+   * small blind of 10'). Heads-up the small blind is the button/dealer, so this is
+   * the reliable position anchor when the dealer chip isn't a scrapeable DOM child.
+   * Scoped to the current hand (after the last "starting hand" marker).
+   */
+  private detectSmallBlindPoster(): string | null {
+    const lines = Array.from(document.querySelectorAll(SEL.logMessages)).map(e => e.textContent || '');
+    return smallBlindPosterFromLog(lines);
   }
 
   /** Amount the hero must call, read from the "Call N" action button (0 if none). */
