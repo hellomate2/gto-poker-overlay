@@ -22,3 +22,14 @@ Goal: winning, good-playing heads-up bot. Iterating: audit -> fix biggest leak -
 
 ## Iteration 3 — net retrain (REVERTED; net at ceiling)
 - Tried 768x384, 130 epochs: train 88.0%, val 85.3%, TEST 84.95% vs current 84.5%. +0.45% TEST is noise; train-test gap = overfitting. Reverted (lean model is better: smaller bundle, same generalization). CONCLUSION: the distilled net is at its data ceiling (~85%); architecture tweaks don't help, AND its facing-bet errors are already caught by the soundness gate. Net is not the lever.
+
+## Loop status — productive conclusion (honest)
+Shipped this loop: real bet-sizing variety (v0.1.43). Validated: all core frequencies in GTO range; net at data ceiling.
+HIGH-CONFIDENCE levers are now EXHAUSTED:
+- preflop charts: solver-correct (validated) ; c-bet/barrel: fixed (street-aware) ; sizing: fixed (varied) ;
+  punts: gated ; executor: fixed (plays decided action) ; net: at data ceiling.
+MEASUREMENT CEILING reached: the only opponents are crude exploitable bots (bot crushes them) or self-play (~0).
+There is no opponent stronger than the bot to measure against, so subtle "good-poker" tweaks (bluff 4bets,
+semi-bluff check-raises) CANNOT be validated — shipping them = guessing, and loosening the anti-punt gate to add
+fancy plays would risk the exact spewing the user hated. So I am NOT churning low-confidence changes.
+Real remaining lever = multi-street postflop solving (a substantial build, not a tweak). Paused auto-loop pending user direction.
