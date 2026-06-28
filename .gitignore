@@ -39,3 +39,6 @@ src/solver/preflop/_rfi.ts
 # Probe / one-off analysis scripts (not part of the build or test suite)
 sim/probe-*.ts
 src/solver/preflop/probe-*.ts
+
+# generated simulation report
+sim/REPORT.md
