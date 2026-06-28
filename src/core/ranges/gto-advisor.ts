@@ -5,6 +5,7 @@ import { charts as pekarstasCharts } from './pekarstas-gto';
 import { charts as headsupCharts } from './headsup-gto';
 import { charts as headsupSolvedCharts } from './headsup-solved';
 import { shoveRange, callRange } from './pushfold-nash';
+import { preflopChartAction, PreflopScenario as PFScenario } from './preflop-charts';
 
 // Effective-stack threshold (in big blinds) at or below which the short-stack
 // push/fold Nash recommendation is surfaced. Pure jam/fold is only correct very
@@ -291,83 +292,25 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
     };
   }
 
-  const chart = lookupChart(scenarioResult.chartKey, headsUp);
-  if (!chart) return null;
-
-  const cell = chart[handName];
-
-  if (!cell) {
-    // Not in chart = fold
-    return {
-      scenario: scenarioResult.label,
-      hand: handName,
-      actions: [{ action: 'Fold', frequency: 100 }],
-      inRange: false,
-      rangeWeight: 0,
-    };
-  }
-
-  // DEGENERATE-CELL GUARD. Some solved cells facing a raise are near-uniform across
-  // 3+ actions (e.g. 53o vs a 3-bet = call 33 / raise 33 / allin 33) — solver noise,
-  // not a real mixed strategy. With the fold remainder padded in, that displays as
-  // the "25% / 25% / 25% / 25%" mush and the bot then SAMPLES it at random (3-betting
-  // / jamming 53o). A trash hand facing aggression should simply FOLD. Collapse any
-  // such noisy cell to a fold when we're facing a raise (never touch RFI opens).
-  if (scenarioResult.scenario !== 'RFI' && isNoisyCell(cell)) {
-    return {
-      scenario: scenarioResult.label,
-      hand: handName,
-      actions: [{ action: 'Fold', frequency: 100 }],
-      inRange: false,
-      rangeWeight: 0,
-    };
-  }
-
-  const normalized = normalizeCell(cell);
-  const actions: { action: string; frequency: number }[] = [];
-
-  const actionLabels: Record<string, string> = {
+  // DETERMINISTIC PREFLOP ENGINE. The action now comes from clean, complete HU GTO
+  // range charts (preflop-charts.ts) instead of the under-converged CFR solve, whose
+  // ~33% degenerate "33/33/33" cells produced the 25/25/25/25 mush and random trash
+  // 3-bets/jams. detectScenario still CLASSIFIES the spot (RFI / vs-open / vs-3bet /
+  // vs-4bet) and labels it; we just take the action from the engine. Every hand
+  // resolves to one sane action — no noise, no missing cells, works 100% of the time.
+  const eng = preflopChartAction(handName, scenarioResult.scenario as PFScenario);
+  const label: Record<string, string> = {
     raise: scenarioResult.scenario === 'RFI' ? 'Raise' : scenarioResult.scenario === 'vs-open' ? '3-Bet' : '4-Bet',
     call: 'Call',
-    fold: 'Fold',
     allin: 'All-In',
+    fold: 'Fold',
   };
-
-  // Add actions that have frequency > 0
-  for (const [action, freq] of Object.entries(normalized.actions)) {
-    if (freq && freq > 0) {
-      actions.push({
-        action: actionLabels[action] || action,
-        frequency: freq,
-      });
-    }
-  }
-
-  // If weight < 100, add fold for the remaining portion
-  if (normalized.weight < 100) {
-    const foldFreq = 100 - normalized.weight;
-    const existingFold = actions.find(a => a.action === 'Fold');
-    if (existingFold) {
-      existingFold.frequency += foldFreq;
-    } else {
-      actions.push({ action: 'Fold', frequency: foldFreq });
-    }
-    // Scale the non-fold actions
-    for (const a of actions) {
-      if (a.action !== 'Fold') {
-        a.frequency = (a.frequency * normalized.weight) / 100;
-      }
-    }
-  }
-
-  // Sort by frequency descending
-  actions.sort((a, b) => b.frequency - a.frequency);
-
+  const inRange = eng.action !== 'fold';
   return {
     scenario: scenarioResult.label,
     hand: handName,
-    actions,
-    inRange: normalized.weight > 0,
-    rangeWeight: normalized.weight,
+    actions: [{ action: label[eng.action], frequency: 100 }],
+    inRange,
+    rangeWeight: inRange ? 100 : 0,
   };
 }
