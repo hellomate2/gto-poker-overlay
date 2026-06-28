@@ -126,11 +126,14 @@ export function equityVsRange(
 }
 
 /**
- * Quick equity estimate using fewer simulations (for real-time use)
+ * Quick equity estimate (for real-time use). 4000 sims, not 1000: this feeds the
+ * "too strong to fold" 0.65 threshold and the overlay equity. At 1000 the standard
+ * error is ~1.6% — enough noise to flip a boundary hand between polls. It runs once
+ * per decision (not a hot loop), so the extra few ms is free.
  */
 export function quickEquity(
   heroCards: [CardId, CardId],
   board: CardId[],
 ): number {
-  return equityVsRandom(heroCards, board, 1000).equity;
+  return equityVsRandom(heroCards, board, 4000).equity;
 }
