@@ -105,10 +105,17 @@ export function evaluateSoundness(i: SoundnessInput): SoundnessResult {
   // crushed pair into a player who called three streets. Normal-sized bluffs and
   // c-bets commit little and pass; this only vetoes committing the STACK with no
   // value behind it. Override to CHECK when we can (not facing a bet), else FOLD.
+  //
+  // Threshold calibration: a standard polarized river bluff (~0.75 pot) commits
+  // ~0.5 of the remaining stack in a normal 3-barrel pot — that's sound poker, not
+  // a punt. At 0.5 this rule vetoed EVERY river bluff (audit: river bet 40%→25%,
+  // below the GTO band → value-only river = opponents can over-fold). 0.65 keeps
+  // the jam/overbet-with-air protection (the actual punt) while letting normal
+  // polar bluffs through; the behavioral audit is the gate for this number.
   if (
     (i.action === 'bet' || i.action === 'raise' || i.action === 'allin') &&
     i.street !== 'preflop' &&
-    i.commit >= 0.5 &&
+    i.commit >= 0.65 &&
     i.eqVsRange < 0.45
   ) {
     const safe: ActionType = i.facingBet ? 'fold' : 'check';

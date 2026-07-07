@@ -292,12 +292,45 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
     };
   }
 
-  // DETERMINISTIC PREFLOP ENGINE. The action now comes from clean, complete HU GTO
-  // range charts (preflop-charts.ts) instead of the under-converged CFR solve, whose
-  // ~33% degenerate "33/33/33" cells produced the 25/25/25/25 mush and random trash
-  // 3-bets/jams. detectScenario still CLASSIFIES the spot (RFI / vs-open / vs-3bet /
-  // vs-4bet) and labels it; we just take the action from the engine. Every hand
-  // resolves to one sane action — no noise, no missing cells, works 100% of the time.
+  // MULTIWAY (3+ players): the HU engine's ranges are far too wide for 6-max
+  // positions (a 78% HU button open is spew from UTG). Consume the hand-tuned
+  // 6-max chart packs (greenline/pekarstas — these never had the CFR degeneracy)
+  // directly: cell weight scales in-range vs fold, noisy cells collapse to fold
+  // facing a raise.
+  if (!headsUp) {
+    const chart = lookupChart(scenarioResult.chartKey, false);
+    const cell = chart?.[handName];
+    if (!cell) {
+      return {
+        scenario: scenarioResult.label, hand: handName,
+        actions: [{ action: 'Fold', frequency: 100 }], inRange: false, rangeWeight: 0,
+      };
+    }
+    if (isNoisyCell(cell) && scenarioResult.scenario !== 'RFI') {
+      return {
+        scenario: scenarioResult.label, hand: handName,
+        actions: [{ action: 'Fold', frequency: 100 }], inRange: false, rangeWeight: 0,
+      };
+    }
+    const norm = normalizeCell(cell);
+    const w = norm.weight / 100;
+    const acts = Object.entries(norm.actions)
+      .map(([a, f]) => ({ action: a[0].toUpperCase() + a.slice(1), frequency: f * w }))
+      .filter(a => a.frequency > 0);
+    if (w < 1) acts.push({ action: 'Fold', frequency: (1 - w) * 100 });
+    acts.sort((a, b) => b.frequency - a.frequency);
+    return {
+      scenario: scenarioResult.label, hand: handName,
+      actions: acts, inRange: w > 0, rangeWeight: norm.weight,
+    };
+  }
+
+  // HEADS-UP: DETERMINISTIC PREFLOP ENGINE. The action comes from clean, complete
+  // HU GTO range charts (preflop-charts.ts) instead of the under-converged CFR
+  // solve, whose ~33% degenerate "33/33/33" cells produced the 25/25/25/25 mush and
+  // random trash 3-bets/jams. detectScenario still CLASSIFIES the spot (RFI /
+  // vs-open / vs-3bet / vs-4bet) and labels it; we take the action from the engine.
+  // Every hand resolves to one sane action — no noise, no missing cells.
   const eng = preflopChartAction(handName, scenarioResult.scenario as PFScenario);
   const label: Record<string, string> = {
     raise: scenarioResult.scenario === 'RFI' ? 'Raise' : scenarioResult.scenario === 'vs-open' ? '3-Bet' : '4-Bet',
