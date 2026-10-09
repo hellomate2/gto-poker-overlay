@@ -9,6 +9,8 @@
 //   bp train  [opts]              hold'em blueprint training with logs,
 //                                 checkpoints, snapshots, resume
 //   bp h2h    --a X --b Y         head-to-head in the abstract game
+//   bp br     --target F          approximate best response (exploitability
+//                                 lower bound inside the abstraction)
 //   bp export --ckpt F --out G    write the compact policy file for TS
 //   bp show   --ckpt F            print the preflop opening strategy
 //
@@ -209,14 +211,15 @@ double preflop_l1(const BettingTree& tree, const std::vector<float>& a, const st
 }
 
 template <class T>
-std::vector<float> policy_table(const T& tr, const BettingTree& tree) {
+std::vector<float> policy_table(const T& tr, const BettingTree& tree, bool current = false) {
   std::vector<float> pol(tree.num_slots, 0.f);
   for (const Node& n : tree.nodes) {
     if (n.type != DECISION) continue;
     for (int b = 0; b < tree.buckets[n.street]; b++) {
       uint64_t base = n.slot + uint64_t(b) * n.nact;
       double p[MAX_ACTIONS];
-      tr.average(base, n.nact, p);
+      if (current) tr.current(base, n.nact, p);
+      else tr.average(base, n.nact, p);
       for (int a = 0; a < n.nact; a++) pol[base + a] = float(p[a]);
     }
   }
@@ -524,11 +527,11 @@ Agent make_agent(const std::string& spec, Holdem& h) {
   return ag;
 }
 
-int cmd_h2h(const Args& a) {
-  auto h = setup_holdem(a, true);
-  Agent A = make_agent(a.get("a"), *h), B = make_agent(a.get("b", "checkcall"), *h);
-  int64_t hands = a.geti("hands", 200000);
-  int threads = int(a.geti("threads", 4));
+struct H2HResult {
+  double mbb, ci95;
+};
+
+H2HResult play_h2h(Holdem* h, const Agent& A, const Agent& B, int64_t hands, int threads, uint64_t seed) {
   HoldemSampler smp{&h->abs};
   // Duplicate format: every deal is played twice with seats swapped, so card
   // luck cancels; the sample unit is the seat-averaged result of one deal.
@@ -536,7 +539,7 @@ int cmd_h2h(const Args& a) {
   std::vector<std::thread> pool;
   for (int t = 0; t < threads; t++)
     pool.emplace_back([&, t] {
-      Rng rng(uint64_t(a.geti("seed", 99)) * 1000 + t);
+      Rng rng(seed * 1000 + uint64_t(t));
       Deal d;
       int64_t n = hands / threads + (t < hands % threads ? 1 : 0);
       for (int64_t i = 0; i < n; i++) {
@@ -562,8 +565,71 @@ int cmd_h2h(const Args& a) {
   double mean = S / hands, var = Q / hands - mean * mean;
   double ci = 1.96 * std::sqrt(var / hands);
   // chips -> milli-big-blinds: 1 chip = 1/100 BB = 10 mbb
+  return {mean * 10, ci * 10};
+}
+
+int cmd_h2h(const Args& a) {
+  auto h = setup_holdem(a, true);
+  Agent A = make_agent(a.get("a"), *h), B = make_agent(a.get("b", "checkcall"), *h);
+  int64_t hands = a.geti("hands", 200000);
+  H2HResult r = play_h2h(h.get(), A, B, hands, int(a.geti("threads", 4)), uint64_t(a.geti("seed", 99)));
   std::printf("h2h %s vs %s: %+.1f mbb/hand  (95%% CI +/- %.1f, %lld duplicate deals = %lld hands)\n",
-              A.name.c_str(), B.name.c_str(), mean * 10, ci * 10, (long long)hands, (long long)hands * 2);
+              A.name.c_str(), B.name.c_str(), r.mbb, r.ci95, (long long)hands, (long long)hands * 2);
+  return 0;
+}
+
+// ---- approximate best response ------------------------------------------------------
+// Freeze the target policy, train an exploiter with the same MCCFR code where
+// the opponent's nodes always play the target (Trainer::fixed), then score the
+// exploiter against the target in duplicate head-to-head. The result lower-
+// bounds the target's exploitability in the abstract game: a true best
+// response would also see the full card information, not just buckets, and
+// would be exact rather than sampled.
+int cmd_br(const Args& a) {
+  auto h = setup_holdem(a, true);
+  Agent target = make_agent(a.get("target"), *h);
+  McfrConfig m = holdem_mcfr(a);
+  Trainer<HoldemSampler> ex(h->tree, HoldemSampler{&h->abs}, m);
+  ex.fixed = &target.pol;
+  double minutes = a.getf("minutes", 3);
+  double t0 = now_sec();
+  int64_t chunk = 1000 * m.threads;
+  while (now_sec() - t0 < minutes * 60) {
+    double c0 = now_sec();
+    ex.run(ex.iter + chunk, minutes * 60 - (c0 - t0), chunk, nullptr);
+    double cdt = now_sec() - c0;
+    if (cdt > 0) chunk = std::max<int64_t>(m.threads, int64_t(double(chunk) * 2.0 / cdt));
+  }
+  std::printf("exploiter trained %lld iterations in %.0fs against %s\n", (long long)ex.iter, now_sec() - t0,
+              target.name.c_str());
+  int64_t hands = a.geti("hands", 300000);
+  // In best-response mode nothing is averaged (the opponent's nodes are
+  // frozen), so the exploiter is read off its regrets: the current
+  // regret-matching strategy, and the greedy policy that puts all mass on the
+  // highest-regret action (a pure best-response estimate).
+  for (int greedy = 0; greedy < 2; greedy++) {
+    Agent E;
+    E.kind = AG_POLICY;
+    E.name = greedy ? "exploiter(greedy)" : "exploiter(current)";
+    E.pol = policy_table(ex, h->tree, true);
+    if (greedy) {
+      for (const Node& n : h->tree.nodes) {
+        if (n.type != DECISION) continue;
+        for (int b = 0; b < h->tree.buckets[n.street]; b++) {
+          uint64_t base = n.slot + uint64_t(b) * n.nact;
+          int best = 0;
+          for (int x = 1; x < n.nact; x++)
+            if (ex.R[base + x] > ex.R[base + best]) best = x;
+          if (ex.R[base + best] <= 0) continue;  // untouched infoset: keep uniform
+          for (int x = 0; x < n.nact; x++) E.pol[base + x] = x == best ? 1.f : 0.f;
+        }
+      }
+    }
+    H2HResult r = play_h2h(h.get(), E, target, hands, m.threads, uint64_t(a.geti("seed", 99)));
+    std::printf("%s vs %s: %+.1f mbb/hand (95%% CI +/- %.1f, %lld duplicate deals)\n", E.name.c_str(),
+                target.name.c_str(), r.mbb, r.ci95, (long long)hands);
+  }
+  if (a.has("out") && !ex.save(a.get("out"), h->hash)) die("cannot save exploiter");
   return 0;
 }
 
@@ -652,7 +718,7 @@ int cmd_show(const Args& a) {
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|export|show> [--options]\n"
+    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show> [--options]\n"
                          "see blueprint/README.md\n");
     return 2;
   }
@@ -664,6 +730,7 @@ int main(int argc, char** argv) {
   if (cmd == "bench") return cmd_bench(a);
   if (cmd == "train") return cmd_train(a);
   if (cmd == "h2h") return cmd_h2h(a);
+  if (cmd == "br") return cmd_br(a);
   if (cmd == "export") return cmd_export(a);
   if (cmd == "show") return cmd_show(a);
   die("unknown command " + cmd);

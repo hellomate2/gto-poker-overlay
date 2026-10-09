@@ -83,6 +83,12 @@ class Trainer {
   double weight = 0;        // effective iteration count after discounting
   std::atomic<uint64_t> visits{0};
   std::atomic<uint64_t> explored{0}, pruned{0};  // traverser actions (pruning stats)
+  // Best-response mode. When set, the traverser's opponent plays this fixed
+  // policy (normalized probabilities per slot) instead of its current
+  // strategy, and nothing is averaged at its nodes. Regrets at the
+  // traverser's nodes then converge to a best response to that policy
+  // within the abstraction (used by `bp br` to measure exploitability).
+  const std::vector<float>* fixed = nullptr;
 
   Trainer(const BettingTree& t, const Sampler& s, const McfrConfig& c)
       : tree(t), sampler(s), cfg(c), R(t.num_slots, 0), S(t.num_slots, 0.0) {}
@@ -178,6 +184,19 @@ class Trainer {
         astore(Rr + a, int32_t(nv));
       }
       return v;
+    }
+    if (fixed) {
+      const float* fp = &(*fixed)[base];
+      double r = rng.uniform(), acc = 0;
+      int pick = na - 1;
+      for (int a = 0; a < na; a++) {
+        acc += fp[a];
+        if (r < acc) {
+          pick = a;
+          break;
+        }
+      }
+      return traverse(n.child + pick, p, d, rng, prune, cnt);
     }
     double* Sr = &S[base];
     for (int a = 0; a < na; a++) astore(Sr + a, aload(Sr + a) + sigma[a]);
