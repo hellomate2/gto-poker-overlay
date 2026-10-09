@@ -73,7 +73,9 @@ python3 cost.py estimate --bench ../runs/bench/latest/bench.csv --price 3.414 --
 ```
 
 It uses the measured visits per second at the largest thread count, so the result
-is `81,406,148 infosets x 160,000 visits / measured visits/s`. It needs no f or e.
+is `85,778,056 infosets x 160,000 visits / measured visits/s` on the current tree
+(PLAN.md 5.2's 81,406,148 is the pre-M0 tree; `cost.py plan-check` keeps that value
+so it can reproduce PLAN.md's own rows). It needs no f or e.
 
 Worked check on the blueprint README's own measurements (`m3-readme-bench.csv`, copied
 from the throughput table in `blueprint/README.md`: medium 200-bucket tree, 45,221 it/s and
@@ -85,12 +87,13 @@ threads       iter/s     visits/s  speedup      e visits/iter
       1       45,221       13.10M     1.00  1.000       289.7
       4      166,468       46.20M     3.53  0.882       277.5
 $ python3 cost.py estimate --bench m3-readme-bench.csv
-training wall = 78.31 h
-PLAN.md cross-check: M3 thread-hours = 313 (PLAN.md 5.2 R1: 313)
+visits = 85,778,056 infosets x 160,000 = 1.372e+13
+training wall = 82.52 h
+PLAN.md cross-check: M3 thread-hours = 330 (PLAN.md 5.2 R1: 313)
 ```
 
-So R1 is 313 M3 thread-hours (78 hours on the laptop's 4 threads), which is why it
-goes to a rented box.
+So R1 is 330 M3 thread-hours on the post-M0 tree (82.5 hours on the laptop's 4
+threads; PLAN.md's 313 was the pre-M0 tree), which is why it goes to a rented box.
 
 Before you have a bench from the target box, `--cores N --e E` projects from the
 1-thread row instead: per-thread speed x cores x e. With the M3 row, 192 cores and
@@ -98,9 +101,9 @@ PLAN.md 5.1's c7a.48xlarge spot price of $3.414/h:
 
 ```
 $ python3 cost.py estimate --bench m3-readme-bench.csv --cores 192 --e 0.85 --price 3.414 --margin 0.2
-training wall = 1.69 h ...   cost at $3.4140/h = $5.78   with a 20% margin: $6.93
+training wall = 1.78 h ...   cost at $3.4140/h = $6.09   with a 20% margin: $7.31
 $ python3 cost.py estimate --bench m3-readme-bench.csv --cores 192 --e 0.5 --price 3.414 --margin 0.2
-training wall = 2.88 h ...   cost at $3.4140/h = $9.82   with a 20% margin: $11.79
+training wall = 3.03 h ...   cost at $3.4140/h = $10.35   with a 20% margin: $12.42
 ```
 
 These come out a little under PLAN.md's optimistic row (1.9 h, $7) because the
@@ -127,7 +130,8 @@ Steps and labels follow the AWS docs for a Spot request from the launch wizard
       quota is only 64).
    4. Key pair: the one from step 2.
    5. Network settings: allow SSH traffic from "My IP" only.
-   6. Configure storage: 100 GiB gp3 root volume. R1's tables are 2.6 GB (`bp tree`),
+   6. Configure storage: 100 GiB gp3 root volume. R1's tables are 2.8 GB (`bp tree`
+      on the post-M0 tree; 0.95 GB with `bp scale train`, see "Memory" below),
       each checkpoint and snapshot is one table's size, and `train.sh` keeps about 8
       snapshots plus one at the end of each round, so roughly 30 GB with room to spare.
    7. Advanced details, Purchasing option: tick "Request Spot Instances", then
@@ -277,7 +281,7 @@ physical cores, flagged unverified there) at $1.6398/h spot in us-central1. Note
   (https://docs.cloud.google.com/compute/docs/instances/spot). Choose STOP and the
   120 s notice if offered. After the soft-off the shutdown period is best effort and
   lasts up to 30 s (same page). The watcher sees `preempted` within 5 s and `bp`
-  writes its checkpoint first (2.6 GB for R1, `bp tree`), but if 30 s is not enough
+  writes its checkpoint first (2.8 GB for R1, `bp tree`), but if 30 s is not enough
   the run resumes from the last 15-minute checkpoint, since the write goes to a
   temporary file and is renamed only when complete. A stopped Spot VM stays
   TERMINATED until you start it again; the systemd unit then resumes the run.

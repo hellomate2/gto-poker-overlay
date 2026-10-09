@@ -593,7 +593,28 @@ Agent make_agent(const std::string& spec, Holdem& h) {
   if (spec == "checkcall") ag.kind = AG_CHECKCALL;
   else if (spec == "random") ag.kind = AG_RANDOM;
   else if (spec == "maniac") ag.kind = AG_MANIAC;
-  else {
+  else if (checkpoint_magic(spec) == "GPOCKPT2") {
+    // PLAN.md M3: compact checkpoint from bp scale train. Policy = running
+    // average on its average streets, snapshot average from snapavg.f32 in the
+    // same directory when present, else the current strategy.
+    ag.kind = AG_POLICY;
+    uint32_t as = 1;
+    if (FILE* f = std::fopen(spec.c_str(), "rb")) {
+      if (std::fseek(f, 16, SEEK_SET) != 0 || std::fread(&as, 4, 1, f) != 1) as = 1;
+      std::fclose(f);
+    }
+    McfrConfig m;
+    CompactTrainer<HoldemSampler> tr(h.tree, HoldemSampler{&h.abs}, m, int(as), true);
+    if (!tr.load(spec, h.hash)) die("cannot load compact checkpoint " + spec + ": " + tr.last_error);
+    SnapshotAverage snap(h.tree, int(as));
+    std::string dir = spec.find('/') == std::string::npos ? "." : spec.substr(0, spec.rfind('/'));
+    std::string acc = dir + "/snapavg.f32", err;
+    bool have = file_exists(acc) && snap.load_file(acc, h.hash, &err);
+    ag.pol = policy_to_table(h.tree, compact_policy(tr, have ? &snap : nullptr));
+    std::printf("loaded compact %s (iteration %lld, %s)\n", spec.c_str(), (long long)tr.iter,
+                have ? ("snapshot average of " + std::to_string(snap.count) + " snapshots").c_str()
+                     : "no snapavg.f32: current strategy after the average streets");
+  } else {
     ag.kind = AG_POLICY;
     McfrConfig m;
     Trainer<HoldemSampler> tr(h.tree, HoldemSampler{&h.abs}, m);

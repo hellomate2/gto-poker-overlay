@@ -19,9 +19,12 @@ Subcommands
              [--cores N --e E]              ... projected from the 1-thread row instead
   schedule   --bench CSV                    shell assignments for train.sh
   visits     --log LOG.CSV                  cumulative visits done, from a `bp train` log
+  memory                                    table GB per run, dense vs compact (PLAN.md M3)
   plan-check                                reproduce PLAN.md 5.2 rows from its own inputs
 
 The bench CSV is written by bench.sh: threads,iters_per_sec,visits_per_sec,seconds
+(`bp scale bench --csv` adds trainer,load_before,load_after,table_mb; pick rows
+with --trainer compact|dense).
 """
 import argparse
 import csv
@@ -31,9 +34,22 @@ import sys
 # PLAN.md 5.1: "46.2M infoset visits/s on 4 threads for the medium 200-bucket tree,
 # so 11.55M visits per thread-second" (measured on the Apple M3 Pro, blueprint/README.md).
 M3_VISITS_PER_THREAD_SEC = 11.55e6
+# PLAN.md 5.2's R1 count, measured before the M0 tree change (all-in legal at
+# capped nodes); kept so plan-check still reproduces PLAN.md's own rows.
+PLAN_R1_INFOSETS = 81_406_148
+# The same command on the current tree (after M0, swarm/next 368b379):
 # `bp tree --preset medium --stack 20000 --flop 200 --turn 200 --river 200`
-# prints "infosets 81406148"; PLAN.md 5.2 rounds this to 81.4M.
-R1_INFOSETS = 81_406_148
+# prints "infosets 85778056" and 2,778.5 MB of dense training tables.
+R1_INFOSETS = 85_778_056
+# Slots per street (preflop, flop, turn, river) and total tree nodes, printed by
+# `bp scale tree --preset medium --stack 20000 --flop F --turn T --river R` on the
+# current tree (PLAN.md M3 memory table). Preflop has 169 buckets in every run.
+TREE_NODES = 1_157_902
+RUN_SLOTS = {
+    "R1 (200/200/200)": (214_461, 4_374_400, 35_576_000, 191_376_000),
+    "R2 (5000/5000/1000)": (214_461, 109_360_000, 889_400_000, 956_880_000),
+    "R3 (30000/30000/2000)": (214_461, 656_160_000, 5_336_400_000, 1_913_760_000),
+}
 # PLAN.md 5.1, crude quality rule from blueprint/README.md.
 VISITS_PER_INFOSET = 160_000
 # PLAN.md 5.6 / M3: "If e < 0.5 (ours), fix contention ... before any long run."
@@ -45,10 +61,13 @@ PRUNE_FRAC = 200 / 11520
 NUM_DISCOUNTS = 40
 
 
-def read_bench(path):
+def read_bench(path, trainer=None):
     rows = []
     with open(path) as fh:
         for r in csv.DictReader(fh):
+            # `bp scale bench --dense` writes compact and dense rows to one CSV
+            if trainer and r.get("trainer", trainer) != trainer:
+                continue
             rows.append({
                 "threads": int(r["threads"]),
                 "its": float(r["iters_per_sec"]),
@@ -84,7 +103,7 @@ def pick_row(rows, threads):
 
 
 def cmd_summary(a):
-    rows, base_threads = efficiency_table(read_bench(a.bench), a.ref_vps)
+    rows, base_threads = efficiency_table(read_bench(a.bench, a.trainer), a.ref_vps)
     print(f"baseline for speedup and e: {base_threads} thread(s); "
           f"f = baseline visits/s per thread / {a.ref_vps / 1e6:.2f}M (M3 Pro thread, PLAN.md 5.1)")
     print(f"{'threads':>7} {'iter/s':>12} {'visits/s':>12} {'speedup':>8} {'e':>6} {'visits/iter':>11}")
@@ -106,7 +125,7 @@ def cmd_summary(a):
 
 
 def run_numbers(a):
-    rows = read_bench(a.bench)
+    rows = read_bench(a.bench, getattr(a, "trainer", None))
     if a.cores:
         # Projection: the smallest-thread row's per-thread speed, times cores x e.
         # Use it to price a box you have not benched yet, e.g. the README's M3 row
@@ -125,7 +144,7 @@ def run_numbers(a):
 
 
 def rows_base(a):
-    return read_bench(a.bench)[0]["threads"]
+    return read_bench(a.bench, getattr(a, "trainer", None))[0]["threads"]
 
 
 def cmd_estimate(a):
@@ -206,6 +225,34 @@ def cmd_visits(a):
     return 0
 
 
+def layout_bytes(slots, avg_streets=1, nodes=TREE_NODES):
+    """Dense and compact table bytes, the same formulas as src/compact.h
+    layout_bytes(): dense 12 B/slot; compact 4 B/slot plus 8 B more on streets
+    with a running average, plus 16 B per tree node (block pointer + offset)."""
+    total = sum(slots)
+    dense = 12 * total
+    compact = 4 * total + 8 * sum(slots[:avg_streets]) + 16 * nodes
+    return dense, compact
+
+
+def cmd_memory(a):
+    """Table memory per run under both layouts (PLAN.md M3), from measured slot counts."""
+    gib = 1e9
+    print(f"{'run':<22} {'slots':>15} {'dense 12 B':>11} {'compact':>9} {'ratio':>6} "
+          f"{'snapshot file':>13}")
+    for name, slots in RUN_SLOTS.items():
+        dense, compact = layout_bytes(slots, a.avg_streets)
+        accum = 4 * sum(slots) + 40  # bp scale train snapavg.f32 (sparse on preflop)
+        print(f"{name:<22} {sum(slots):>15,} {dense / gib:>9.2f} GB {compact / gib:>6.2f} GB "
+              f"{compact / dense:>6.3f} {accum / gib:>10.2f} GB")
+    print("dense = bp train (GPOCKPT1); compact = bp scale train (GPOCKPT2), all blocks allocated. "
+          "Measured on the medium 200 BB tree: lazy allocation reached 98.9% of river node blocks "
+          "within 60 s on one thread, so plan RAM for every block.")
+    print("A checkpoint is about one table's size; snapshot file = the streaming snapshot average "
+          "(4 B per slot, written in place).")
+    return 0
+
+
 def cmd_plan_check(a):
     """Reproduce PLAN.md 5.2 from PLAN.md 5.1's inputs; exits non-zero on mismatch."""
     # PLAN.md 5.1 prices (AWS us-east-1 spot, 2026-10-09) and f/e scenarios.
@@ -214,7 +261,7 @@ def cmd_plan_check(a):
     # PLAN.md 5.2 table: (run, infosets, thread-h, [(wall h, c7a $, c8g $) per scenario]).
     r2 = 292 * 169 + 6504 * 5000 + 59056 * 5000 + 341224 * 1000  # PLAN.md 5.2 example check
     table = [
-        ("R1", R1_INFOSETS, 313, [(1.9, 7, 5), (3.1, 11, 8), (6.5, 22, 17)]),
+        ("R1", PLAN_R1_INFOSETS, 313, [(1.9, 7, 5), (3.1, 11, 8), (6.5, 22, 17)]),
         ("R2", r2, 2575, [(15.8, 54, 41), (25.5, 87, 66), (53.6, 183, 138)]),
     ]
     bad = 0
@@ -248,9 +295,11 @@ def main():
         sp.add_argument("--visits-per-infoset", type=int, default=VISITS_PER_INFOSET)
         sp.add_argument("--cores", type=int, help="project to this many cores instead of using a bench row")
         sp.add_argument("--e", type=float, help="parallel efficiency for --cores (PLAN.md 5.1: 0.85 / 0.7 / 0.5)")
+        sp.add_argument("--trainer", help="compact or dense: rows of a `bp scale bench --dense` CSV")
 
     s = sub.add_parser("summary")
     s.add_argument("--bench", required=True)
+    s.add_argument("--trainer", help="compact or dense: rows of a `bp scale bench --dense` CSV")
     s.add_argument("--ref-vps", type=float, default=M3_VISITS_PER_THREAD_SEC)
     s.set_defaults(fn=cmd_summary)
 
@@ -273,6 +322,10 @@ def main():
     s = sub.add_parser("visits")
     s.add_argument("--log", required=True)
     s.set_defaults(fn=cmd_visits)
+
+    s = sub.add_parser("memory")
+    s.add_argument("--avg-streets", type=int, default=1, help="streets with a running average (1 = preflop)")
+    s.set_defaults(fn=cmd_memory)
 
     s = sub.add_parser("plan-check")
     s.set_defaults(fn=cmd_plan_check)
