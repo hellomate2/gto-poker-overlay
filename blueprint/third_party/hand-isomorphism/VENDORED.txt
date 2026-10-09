@@ -1,0 +1,6 @@
+Vendored unchanged from https://github.com/kdub0/hand-isomorphism
+commit dabcee4a84c1d62ee6ded9b6ff02ece6823fcc0f (2014-07-31): src/deck.{c,h},
+src/hand_index.{c,h}, src/hand_index-impl.h, README.md, LICENSE.txt.
+The license notice in LICENSE.txt applies to these files. Used by
+src/hand_iso.cpp (Waugh, "A Fast and Optimal Hand Isomorphism Algorithm",
+AAAI-13 Computer Poker workshop).

@@ -5,7 +5,7 @@
 //   npm run play -- [--port 8765] [--bot engine] [--bot-dir PATH] [--flags SPEC]
 //                   [--sb 10] [--bb 20] [--stack-bb 100] [--you-bb N] [--bot-bb N]
 //                   [--delay 600] [--seed N] [--exploit] [--no-history]
-//                   [--history-dir DIR]
+//                   [--history-dir DIR] [--policy CKPT (with --bot blueprint)]
 //
 // API (JSON):
 //   GET  /api/state[?since=V&wait=MS]  snapshot; with wait, long-polls until the
@@ -137,7 +137,8 @@ export async function main(argv = process.argv.slice(2)): Promise<{ server: Serv
   const flags = typeof args.flags === 'string' ? args.flags : undefined;
 
   console.log = () => {}; // the engine logs every decision; the server writes to stdout directly
-  const playBot = await makePlayBot(kind, { dir, flags, exploit: args.exploit === true });
+  const policyFile = typeof args.policy === 'string' ? resolve(args.policy) : undefined;  // --bot blueprint
+  const playBot = await makePlayBot(kind, { dir, flags, exploit: args.exploit === true, policyFile });
 
   const cfg: SessionConfig = {
     sb, bb,

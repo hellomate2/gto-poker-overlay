@@ -13,16 +13,11 @@
 //              GPO_ENGINE_FLAGS (set it in the environment or with --flags);
 //              checkouts without src/core/engine-flags.ts ignore it.
 //
-// Planned (not built yet):
-//   blueprint  BlueprintAgent over the C++ trainer's exported policy
-//              (blueprint/ on ws/blueprint, TS loader in
-//              src/core/blueprint/loader.ts). Register it as
-//                BOT_FACTORIES.blueprint = async (o) => ({
-//                  info: { kind: 'blueprint', label: ..., dir: o.dir },
-//                  agent: makeBlueprintAgent(o.policyFile),
-//                });
-//              where makeBlueprintAgent maps SeatView to the abstraction,
-//              samples the policy and returns an ActResult.
+//   blueprint  BlueprintAgent (src/core/blueprint/agent.ts) over a C++
+//              trainer checkpoint served by `bp serve` (--policy CKPT; tree
+//              and abstraction flags from GPO_BP_FLAGS, binary from
+//              GPO_BP_BIN or <bot-dir>/blueprint/bin/bp). Heads-up, trained
+//              at 100 BB; average policy, no search. See sim/blueprint-serve.ts.
 // ============================================================
 
 import { execFileSync } from 'child_process';
@@ -32,6 +27,7 @@ import { pathToFileURL } from 'url';
 import { SeatAgent } from '../ring';
 import { loadEngine } from '../match';
 import { makeBotAgent } from '../agents';
+import { makeBlueprintSeatAgent, DEFAULT_BP_FLAGS } from '../blueprint-serve';
 
 export interface BotOptions {
   /** Source checkout for kinds that load code from a tree. */
@@ -40,7 +36,7 @@ export interface BotOptions {
   flags?: string;
   /** Let the engine track the human across hands (exploit adjuster). */
   exploit?: boolean;
-  /** Path to a policy file, for future policy-based kinds. */
+  /** Policy file for policy-based kinds (blueprint: a bp checkpoint). */
   policyFile?: string;
 }
 
@@ -94,8 +90,23 @@ const engineBot: BotFactory = async (opts) => {
   };
 };
 
+const blueprintBot: BotFactory = async (opts) => {
+  if (!opts.policyFile) throw new Error('--bot blueprint needs --policy <checkpoint>');
+  const seat = await makeBlueprintSeatAgent(`blueprint:${opts.policyFile}`, 'Bot', opts.dir);
+  return {
+    info: {
+      kind: 'blueprint',
+      label: `Blueprint ${seat.info.abs}, iteration ${seat.info.iterations} (no search)`,
+      dir: opts.dir, commit: gitDescribe(opts.dir),
+      flags: (process.env.GPO_BP_FLAGS ?? DEFAULT_BP_FLAGS),
+    },
+    agent: seat,
+  };
+};
+
 export const BOT_FACTORIES: Record<string, BotFactory> = {
   engine: engineBot,
+  blueprint: blueprintBot,
 };
 
 export async function makePlayBot(kind: string, opts: BotOptions): Promise<PlayBot> {
