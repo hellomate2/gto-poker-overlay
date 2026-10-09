@@ -19,7 +19,10 @@
 // of the CURRENT street, with both players following `pol` (the true strategy
 // of a known player, a model, e.g. our blueprint, for an unknown one), and
 // every node where the street ends valued by showdown equity times the pot
-// (pot * eq_p - committed_p; fold nodes are exact). With exact_depth = true
+// (pot * eq_p - committed_p; fold nodes are exact). `lookahead_from` = s
+// makes street-end nodes leading into street s or later recurse through the
+// chance event instead (hold'em: s = 3 values turn-end nodes by every river
+// card and the river betting). With exact_depth = true
 // (small games only) V recurses through the next chance event instead, which
 // makes V the true expected value when both strategies are known; the
 // estimate then has zero variance, which is the strongest possible check of
@@ -97,8 +100,11 @@ class Aivat {
 
   // pol[i]: strategy (known player) or model (unknown player) of position i.
   Aivat(const BettingTree& t, const Model& m, PolicyFn pol0, PolicyFn pol1, bool known0, bool known1,
-        bool exact_depth = false)
-      : tree(t), M(m), exact(exact_depth) {
+        bool exact_depth = false, int lookahead_from = -1, bool lookahead_obs_only = false)
+      : tree(t), M(m), exact(exact_depth), lookahead_store_only(lookahead_obs_only) {
+    // Street-end nodes whose next street is >= exact_from are valued by
+    // recursing through the next chance event instead of by equity.
+    exact_from = lookahead_from >= 0 ? lookahead_from : exact ? 1 : tree.cfg.nstreets;
     pol[0] = std::move(pol0);
     pol[1] = std::move(pol1);
     known[0] = known0;
@@ -152,6 +158,11 @@ class Aivat {
       }
       Ctx c = ctx(st, s, p, true, sc, rng);
       double vobs = walk(path[i], c);
+      if (lookahead_store_only) {
+        // the chance term must use the same V as its expectation
+        Ctx c2 = ctx(st, s, p, false, sc, rng);
+        vobs = walk(path[i], c2);
+      }
       t.chance += e - vobs;
       // action corrections on street s
       for (; tree.nodes[path[i]].type == DECISION && tree.nodes[path[i]].street == s; i++) {
@@ -192,6 +203,12 @@ class Aivat {
   PolicyFn pol[2];
   bool known[2];
   bool exact;
+  // Use the lookahead only in the observed-path walk, i.e. for the action
+  // corrections, and equity cutoffs for every chance term (each correction
+  // stays zero-mean on its own). Fixed at construction: the root
+  // expectation must be computed with the same V as the chance terms.
+  const bool lookahead_store_only;
+  int exact_from = 0;
   double root_expect[2] = {0, 0};
 
  private:
@@ -245,7 +262,7 @@ class Aivat {
     } else if (n.type == SHOWDOWN) {
       v = c.street == tree.cfg.nstreets - 1 ? terminal_utility(n, c.p, M.winner(*c.st)) : eqval(n, c);
     } else if (n.street != c.street) {
-      if (exact) {
+      if (n.street >= exact_from && (c.store || !lookahead_store_only)) {
         v = 0;
         M.for_each_board(*c.st, n.street, *c.rng, [&](const State& st2, double w) {
           Ctx c2 = ctx(st2, n.street, c.p, false, *c.sc, *c.rng);
@@ -457,10 +474,10 @@ struct AivatMatch {
 template <class Model>
 AivatMatch aivat_small_match(const BettingTree& tree, const Model& M, const PolicyFn play[2],
                              const PolicyFn score[2], const bool known[2], bool exact_depth, int64_t deals,
-                             uint64_t seed) {
+                             uint64_t seed, int lookahead_from = -1, bool lookahead_obs_only = false) {
   // av[k]: A sits in position k
-  Aivat<Model> a0(tree, M, score[0], score[1], known[0], known[1], exact_depth);
-  Aivat<Model> a1(tree, M, score[1], score[0], known[1], known[0], exact_depth);
+  Aivat<Model> a0(tree, M, score[0], score[1], known[0], known[1], exact_depth, lookahead_from, lookahead_obs_only);
+  Aivat<Model> a1(tree, M, score[1], score[0], known[1], known[0], exact_depth, lookahead_from, lookahead_obs_only);
   const Aivat<Model>* av[2] = {&a0, &a1};
   auto sc = a0.scratch();
   Rng rng(seed), crng(seed ^ 0xC0FFEEULL);

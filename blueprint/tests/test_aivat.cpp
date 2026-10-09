@@ -109,22 +109,24 @@ static void exact_suite(const char* game, const BettingTree& tree, const Model& 
   for (int p = 0; p < 2; p++) {
     double ref = exact_value<Sampler>(tree, play, p);
     for (int kn = 0; kn < 4; kn++)
-      for (int ex = 0; ex < 2; ex++) {
+      for (int ex = 0; ex < 3; ex++) {
+        // ex 0: street V; 1: exact V; 2: lookahead on the observed path only
         bool k0 = kn & 1, k1 = (kn >> 1) & 1;
         // An unknown player's V model is the other player's strategy.
         PolicyFn s0 = k0 ? play[0] : play[1], s1 = k1 ? play[1] : play[0];
-        Aivat<Model> av(tree, M, s0, s1, k0, k1, ex == 1);
+        Aivat<Model> av(tree, M, s0, s1, k0, k1, ex == 1, ex == 2 ? 1 : -1, ex == 2);
         AivatMoments m = aivat_exact_moments(av, play, p);
         CHECK_NEAR(m.mean_plain, ref, 1e-9);
         CHECK_NEAR(m.mean_est, ref, 1e-9);
         if (std::fabs(m.mean_est - ref) > 1e-9 || std::fabs(m.mean_plain - ref) > 1e-9)
           std::printf("    %s p%d kn%d ex%d: plain-ref %.3e est-ref %.3e\n", game, p, kn, ex, m.mean_plain - ref,
                       m.mean_est - ref);
-        if (k0 && k1 && ex == 1) CHECK(m.max_est - m.min_est < 1e-9);  // every path scores the game value
+        // every path scores the game value
+        if (k0 && k1 && ex == 1) CHECK(m.max_est - m.min_est < 1e-9);
         if (k0 && k1) CHECK(m.var_est < m.var_plain);
         if (print_sd && p == 0)
           std::printf("  %s p0 known=%s V=%s: mean %.6f (exact %.6f), SD plain %.4f -> aivat %.6f (%.4f%% removed)\n",
-                      game, kn == 3 ? "both" : kn == 1 ? "p0" : kn == 2 ? "p1" : "none", ex ? "exact " : "street",
+                      game, kn == 3 ? "both" : kn == 1 ? "p0" : kn == 2 ? "p1" : "none", ex == 1 ? "exact " : ex == 2 ? "obs-la" : "street",
                       m.mean_est, ref, std::sqrt(m.var_plain), std::sqrt(m.var_est),
                       100.0 * (1.0 - std::sqrt(m.var_est) / std::sqrt(m.var_plain)));
       }
@@ -200,7 +202,8 @@ static void test_leduc_sampled() {
       plain.add(r.plain);
       est.add(r.total());
     }
-    std::printf("  leduc sampled 200k, V=%s: plain %.4f +/- %.4f, aivat %.6f +/- %.6f (exact %.6f), SD %.4f -> %.6f\n",
+    std::printf("  leduc sampled 200k, V=%s: plain %.4f +/- %.4f, aivat %.6f +/- %.6f (exact %.6f), "
+                "SD %.4f -> %.6f\n",
                 ex ? "exact " : "street", plain.mean(), plain.ci95(), est.mean(), est.ci95(), ref, plain.sd(), est.sd());
     CHECK(std::fabs(plain.mean() - ref) < 4 * plain.sd() / std::sqrt(plain.n));
     CHECK(std::fabs(est.mean() - ref) < 4 * est.sd() / std::sqrt(est.n) + 1e-9);
@@ -288,9 +291,9 @@ static void test_holdem_unbiased() {
   tree.build(holdem_config("tiny"), b);
   PolicyFn pa = hashed_policy(tree, 31), pb = hashed_policy(tree, 32);
   PolicyFn play[2] = {pa, pb};
-  for (int kn = 0; kn < 2; kn++) {
-    bool kb = kn == 1;
-    Aivat<HoldemModel> av(tree, M, pa, kb ? pb : pa, true, kb);
+  for (int kn = 0; kn < 4; kn++) {
+    bool kb = kn & 1, la = kn >= 2;  // la: lookahead from the turn on the observed path
+    Aivat<HoldemModel> av(tree, M, pa, kb ? pb : pa, true, kb, false, la ? 2 : -1, la);
     auto sc = av.scratch();
     Rng rng(9), crng(10);
     RunStat plain, est, diff;
@@ -322,9 +325,9 @@ static void test_holdem_unbiased() {
       est.add(r.total());
       diff.add(r.total() - r.plain);
     }
-    std::printf("  holdem tiny 20k hands, known=%s: plain %.1f +/- %.1f, aivat %.1f +/- %.1f, diff %.1f +/- %.1f "
+    std::printf("  holdem tiny 20k hands, known=%s%s: plain %.1f +/- %.1f, aivat %.1f +/- %.1f, diff %.1f +/- %.1f "
                 "chips, SD %.0f -> %.0f, all-ins before river %d\n",
-                kb ? "both" : "p0", plain.mean(), plain.ci95(), est.mean(), est.ci95(), diff.mean(), diff.ci95(),
+                kb ? "both" : "p0", la ? ", lookahead" : "", plain.mean(), plain.ci95(), est.mean(), est.ci95(), diff.mean(), diff.ci95(),
                 plain.sd(), est.sd(), allins);
     CHECK(std::fabs(diff.mean()) < 4 * diff.sd() / std::sqrt(diff.n));
     CHECK(est.sd() < plain.sd());

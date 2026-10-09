@@ -27,6 +27,8 @@
 // ============================================================
 #pragma once
 
+#include <mutex>
+#include <string>
 #include <thread>
 
 #include "abstraction.h"
@@ -44,6 +46,7 @@ struct HoldemModel {
   };
   const Abstraction* abs = nullptr;
   int flop_samples = 32;
+  int turn_samples = 0;  // 0 = all 45 turn cards; else an unbiased sample
   std::vector<float> pre_eq;  // [class_p * 169 + class_o]
   struct DealW {
     State st;
@@ -170,6 +173,14 @@ struct HoldemModel {
     int rem[48], nr = 0;
     for (int c = 0; c < 52; c++)
       if (!(dead >> c & 1)) rem[nr++] = c;
+    if (street == 2 && turn_samples > 0) {
+      double w = 1.0 / turn_samples;
+      for (int k = 0; k < turn_samples; k++) {
+        t.board[nb] = rem[rng.below(uint32_t(nr))];
+        f(t, w);
+      }
+      return;
+    }
     double w = 1.0 / nr;
     for (int i = 0; i < nr; i++) {
       t.board[nb] = rem[i];
@@ -291,20 +302,54 @@ struct AivatH2HStats {
 // model such as A's blueprint for an unknown one). known: whose actions get
 // corrections. Every deal is played twice with seats swapped, as in
 // play_h2h; results are A's, in chips.
+// Seed of the chance-expectation stream for game `id`. It depends only on
+// the game counter, never on the cards, so the sampled flops are independent
+// of the dealt ones; `bp aivat-log` uses the same function, so a replayed
+// log reproduces every estimate exactly.
+inline uint64_t aivat_chance_seed(uint64_t seed, uint64_t id) {
+  uint64_t x = seed * 0x9E3779B97F4A7C15ULL + id;
+  return splitmix64(x);
+}
+
+// One line of an AIVAT hand log (see `bp aivat-log` in main.cpp):
+//   id seatA holeA holeB board tokens resultA
+// seatA = A's position (0 = small blind / button), cards like AhKd, the
+// board as five cards, tokens = the comma-separated tree history from the
+// root to the terminal node, resultA = A's chips won.
+inline std::string aivat_log_line(const BettingTree& tree, uint64_t id, int seatA, const Deal& d,
+                                  const std::vector<uint32_t>& path, double resultA) {
+  std::string s = std::to_string(id) + " " + std::to_string(seatA) + " ";
+  for (int k = 0; k < 2; k++) s += card_str(d.hole[seatA][k]);
+  s += " ";
+  for (int k = 0; k < 2; k++) s += card_str(d.hole[1 - seatA][k]);
+  s += " ";
+  for (int k = 0; k < 5; k++) s += card_str(d.board[k]);
+  s += " ";
+  for (size_t k = 1; k < path.size(); k++) s += (k > 1 ? "," : "") + tree.token(path[k]);
+  char buf[64];
+  std::snprintf(buf, sizeof buf, " %.17g\n", resultA);
+  return s + buf;
+}
+
 inline AivatH2HStats aivat_h2h(const BettingTree& tree, const HoldemSampler& smp, const HoldemModel& M,
                                const PolicyFn play_pol[2], const PolicyFn score_pol[2], const bool known[2],
-                               int64_t deals, int threads, uint64_t seed) {
+                               int64_t deals, int threads, uint64_t seed, FILE* log = nullptr,
+                               int lookahead_from = -1, bool lookahead_full = false) {
+  std::mutex log_mu;
   // scorer[k]: A sits in position k.
-  Aivat<HoldemModel> s0(tree, M, score_pol[0], score_pol[1], known[0], known[1]);
-  Aivat<HoldemModel> s1(tree, M, score_pol[1], score_pol[0], known[1], known[0]);
+  Aivat<HoldemModel> s0(tree, M, score_pol[0], score_pol[1], known[0], known[1], false, lookahead_from,
+                        !lookahead_full);
+  Aivat<HoldemModel> s1(tree, M, score_pol[1], score_pol[0], known[1], known[0], false, lookahead_from,
+                        !lookahead_full);
   const Aivat<HoldemModel>* sc[2] = {&s0, &s1};
   std::vector<AivatH2HStats> st(threads);
   std::vector<std::thread> pool;
   for (int t = 0; t < threads; t++)
     pool.emplace_back([&, t] {
       Rng rng(seed * 1000 + uint64_t(t));
-      Rng crng(seed * 7919 + uint64_t(t) * 104729 + 17);  // chance expectations only
+      Rng crng(1);  // chance expectations only, reseeded per game
       auto scr = s0.scratch();
+      std::string buf;
       Deal d;
       std::vector<uint32_t> path;
       int64_t n = deals / threads + (t < deals % threads ? 1 : 0);
@@ -332,7 +377,10 @@ inline AivatH2HStats aivat_h2h(const BettingTree& tree, const HoldemSampler& smp
             if (bk[0] != d.bucket[0][nd.street] || bk[1] != d.bucket[1][nd.street])
               die("aivat: model buckets differ from the sampler's");
           }
+          uint64_t id = 2 * uint64_t(t + i * threads) + uint64_t(seat);
+          crng.reseed(aivat_chance_seed(seed, id));
           auto r = sc[seat]->score(full, path, seat, crng, scr);
+          if (log) buf += aivat_log_line(tree, id, seat, d, path, r.plain);
           st[t].game_plain.add(r.plain);
           st[t].game_aivat.add(r.total());
           st[t].chance.add(r.chance);
@@ -343,6 +391,15 @@ inline AivatH2HStats aivat_h2h(const BettingTree& tree, const HoldemSampler& smp
         st[t].dup_plain.add(dp);
         st[t].dup_aivat.add(da);
         st[t].dup_diff.add(da - dp);
+        if (log && buf.size() > (1u << 16)) {
+          std::lock_guard<std::mutex> g(log_mu);
+          std::fputs(buf.c_str(), log);
+          buf.clear();
+        }
+      }
+      if (log && !buf.empty()) {
+        std::lock_guard<std::mutex> g(log_mu);
+        std::fputs(buf.c_str(), log);
       }
     });
   for (auto& th : pool) th.join();

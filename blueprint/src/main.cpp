@@ -14,6 +14,7 @@
 //   bp export --ckpt F --out G    write the compact policy file for TS
 //   bp show   --ckpt F            print the preflop opening strategy
 //   bp aivat  --game leduc|kuhn   AIVAT validation on a small game
+//   bp aivat-log --a F --log G    AIVAT for a logged match (A = checkpoint F)
 //   (bp h2h --aivat scores a hold'em match with AIVAT, see aivat.h)
 //
 // Every hold'em command takes the same tree + abstraction options so it can
@@ -683,6 +684,9 @@ void print_stat_line(const char* label, const RunStat& r, double unit) {
 }
 
 // bp h2h --aivat [--aivat-known a|both] [--aivat-flops K] [--aivat-pre-samples S]
+//              [--aivat-log-out F]   (also write every hand in the aivat-log format)
+//              [--aivat-turns T] [--aivat-lookahead S] [--aivat-lookahead-full]
+//              [--aivat-model SPEC]
 // Duplicate match scored both plainly and with AIVAT. "a" (default) treats
 // B as unknown: only A's actions and chance get corrections and the value
 // function models B with A's strategy (the setting for a match against an
@@ -696,15 +700,39 @@ int cmd_h2h_aivat(const Args& a) {
   if (kn != "a" && kn != "both") die("--aivat-known must be a or both");
   double t0 = now_sec();
   HoldemModel M(&h->abs, int(a.geti("aivat-flops", 32)), int(a.geti("aivat-pre-samples", 2000)), threads);
-  std::printf("aivat model ready in %.1fs (preflop table %lld samples per class pair, %d flop samples)\n",
-              now_sec() - t0, (long long)a.geti("aivat-pre-samples", 2000), M.flop_samples);
-  PolicyFn pa = agent_policy(A, h->tree), pb = agent_policy(B, h->tree);
+  M.turn_samples = int(a.geti("aivat-turns", 0));
+  // --aivat-lookahead S (1..3, default 2; 4 = off): in the walk along the
+  // observed path, which supplies the action corrections, street-end nodes
+  // leading into street S or later are valued by every next card and the
+  // next street's betting instead of by equity. Chance expectations keep
+  // the equity cutoffs (each correction is zero-mean on its own).
+  // --aivat-lookahead-full uses the lookahead everywhere (consistent V,
+  // much slower). See README "AIVAT".
+  int look = int(a.geti("aivat-lookahead", 2));
+  if (look < 1 || look > 4) die("--aivat-lookahead must be 1..4");
+  bool look_full = a.has("aivat-lookahead-full");
+  std::printf("aivat model ready in %.1fs (preflop table %lld samples per class pair, %d flop samples, "
+              "lookahead from street %d%s)\n",
+              now_sec() - t0, (long long)a.geti("aivat-pre-samples", 2000), M.flop_samples, look,
+              look_full ? ", full" : ", observed path");
+  // --aivat-model SPEC: what V assumes about an unknown B (default: A's own
+  // strategy). Any agent spec works: a checkpoint, checkcall, random, maniac.
+  Agent mdl_own;
+  if (a.has("aivat-model")) mdl_own = make_agent(a.get("aivat-model"), *h);
+  const Agent& Mdl = a.has("aivat-model") ? mdl_own : A;
+  PolicyFn pa = agent_policy(A, h->tree), pb = agent_policy(B, h->tree), pm = agent_policy(Mdl, h->tree);
   PolicyFn play[2] = {pa, pb};
-  PolicyFn score[2] = {pa, kn == "both" ? pb : pa};
+  PolicyFn score[2] = {pa, kn == "both" ? pb : pm};
   bool known[2] = {true, kn == "both"};
   t0 = now_sec();
   HoldemSampler smp{&h->abs};
-  AivatH2HStats r = aivat_h2h(h->tree, smp, M, play, score, known, deals, threads, uint64_t(a.geti("seed", 99)));
+  FILE* log = nullptr;
+  if (a.has("aivat-log-out") && !(log = std::fopen(a.get("aivat-log-out").c_str(), "w")))
+    die("cannot write " + a.get("aivat-log-out"));
+  AivatH2HStats r =
+      aivat_h2h(h->tree, smp, M, play, score, known, deals, threads, uint64_t(a.geti("seed", 99)), log, look,
+                look_full);
+  if (log) std::fclose(log);
   double dt = now_sec() - t0;
   const double U = 10;  // chips -> mbb (1 chip = 1/100 BB)
   std::printf("h2h %s vs %s with AIVAT (known: %s): %lld duplicate deals = %lld hands in %.0fs\n", A.name.c_str(),
@@ -723,6 +751,126 @@ int cmd_h2h_aivat(const Args& a) {
               100 * (1 - r.dup_aivat.sd() / r.dup_plain.sd()), r.dup_aivat.sd() / r.dup_plain.sd(),
               std::pow(r.dup_plain.sd() / r.dup_aivat.sd(), 2), 100 * (1 - r.game_aivat.sd() / r.game_plain.sd()),
               r.game_aivat.sd() / r.game_plain.sd());
+  return 0;
+}
+
+// bp aivat-log --a CKPT --log F [--quantized] [--aivat-model SPEC] [--seed N]
+// [--out G]: AIVAT for hands played elsewhere, e.g. the TS BlueprintAgent
+// against the engine. Every line of F
+// is "id seatA holeA holeB board tokens resultA" (aivat_log_line in
+// aivat_holdem.h): A's position, both hole pairs, the full five-card board,
+// the hand's path through the blueprint tree as tree tokens (the agent's
+// own action translation), and A's real chip result. A (the checkpoint) is
+// the known player; the opponent gets no action corrections and is modeled
+// inside V by A's strategy, or by --aivat-model. The plain value is the
+// logged result, so off-tree bet sizes in the real game still score in real chips; the
+// corrections stay zero-mean as long as A really sampled its abstract
+// action from the checkpoint's strategy at the logged node and bucket.
+int cmd_aivat_log(const Args& a) {
+  auto h = setup_holdem(a, true);
+  Agent A = make_agent(a.get("a"), *h);
+  if (A.kind != AG_POLICY) die("bp aivat-log: --a must be a checkpoint");
+  if (a.has("quantized")) {
+    // The strategy exactly as `bp export` writes it (bytes summing to 255,
+    // never-visited infosets uniform), i.e. what an agent reading the
+    // exported file through src/core/blueprint/loader.ts plays.
+    McfrConfig m;
+    Trainer<HoldemSampler> tr(h->tree, HoldemSampler{&h->abs}, m);
+    if (!tr.load(a.get("a"), h->hash)) die("cannot load checkpoint " + a.get("a"));
+    for (const Node& n : h->tree.nodes) {
+      if (n.type != DECISION) continue;
+      for (int b = 0; b < h->tree.buckets[n.street]; b++) {
+        uint64_t base = n.slot + uint64_t(b) * n.nact;
+        bool vis = false;
+        for (int x = 0; x < n.nact; x++) vis |= tr.S[base + x] > 0 || tr.R[base + x] != 0;
+        double p[MAX_ACTIONS];
+        uint8_t q[MAX_ACTIONS];
+        tr.average(base, n.nact, p);
+        quantize255(p, n.nact, q);
+        for (int x = 0; x < n.nact; x++) A.pol[base + x] = vis ? float(q[x] / 255.0) : float(1.0 / n.nact);
+      }
+    }
+    A.name += " (quantized as exported)";
+  }
+  int threads = int(a.geti("threads", 4));
+  HoldemModel M(&h->abs, int(a.geti("aivat-flops", 32)), int(a.geti("aivat-pre-samples", 2000)), threads);
+  M.turn_samples = int(a.geti("aivat-turns", 0));
+  int look = int(a.geti("aivat-lookahead", 2));
+  if (look < 1 || look > 4) die("--aivat-lookahead must be 1..4");
+  PolicyFn pa = agent_policy(A, h->tree);
+  Agent mdl_own;
+  if (a.has("aivat-model")) mdl_own = make_agent(a.get("aivat-model"), *h);
+  const Agent& Mdl = a.has("aivat-model") ? mdl_own : A;
+  PolicyFn pm = agent_policy(Mdl, h->tree);
+  bool obs_only = !a.has("aivat-lookahead-full");
+  Aivat<HoldemModel> s0(h->tree, M, pa, pm, true, false, false, look, obs_only);
+  Aivat<HoldemModel> s1(h->tree, M, pm, pa, false, true, false, look, obs_only);
+  const Aivat<HoldemModel>* sc[2] = {&s0, &s1};
+  auto scr = s0.scratch();
+  uint64_t seed = uint64_t(a.geti("seed", 99));
+  FILE* in = std::fopen(a.get("log").c_str(), "r");
+  if (!in) die("cannot read " + a.get("log"));
+  FILE* out = a.has("out") ? std::fopen(a.get("out").c_str(), "w") : nullptr;
+  if (out) std::fprintf(out, "id,seatA,plain,chance,action,aivat\n");
+  RunStat plain, est, diff;
+  char line[4096];
+  int64_t lineno = 0;
+  Rng crng(1);
+  std::vector<uint32_t> path;
+  while (std::fgets(line, sizeof line, in)) {
+    lineno++;
+    if (line[0] == '#' || line[0] == '\n') continue;
+    unsigned long long id;
+    int seat;
+    char ha[8], hb[8], bd[16], toks[2048];
+    double res;
+    if (std::sscanf(line, "%llu %d %7s %7s %15s %2047s %lf", &id, &seat, ha, hb, bd, toks, &res) != 7 ||
+        (seat != 0 && seat != 1) || std::strlen(ha) != 4 || std::strlen(hb) != 4 || std::strlen(bd) != 10)
+      die("aivat-log: bad line " + std::to_string(lineno));
+    HoldemModel::State full;
+    uint64_t used = 0;
+    auto take = [&](const char* s) {
+      int c = parse_card(s);
+      if (c < 0 || (used >> c & 1)) die("aivat-log: bad or repeated card on line " + std::to_string(lineno));
+      used |= 1ull << c;
+      return c;
+    };
+    for (int k = 0; k < 2; k++) full.h[seat][k] = take(ha + 2 * k), full.h[1 - seat][k] = take(hb + 2 * k);
+    for (int k = 0; k < 5; k++) full.board[k] = take(bd + 2 * k);
+    full.nb = 5;
+    path.assign(1, 0);
+    std::stringstream ss(toks);
+    std::string tk;
+    while (std::getline(ss, tk, ',')) {
+      const Node& n = h->tree.nodes[path.back()];
+      if (n.type != DECISION)
+        die("aivat-log: tokens continue past a terminal node on line " + std::to_string(lineno));
+      int pick = -1;
+      for (int x = 0; x < n.nact && pick < 0; x++)
+        if (h->tree.token(n.child + x) == tk) pick = x;
+      if (pick < 0) die("aivat-log: token " + tk + " not in the tree on line " + std::to_string(lineno));
+      path.push_back(n.child + pick);
+    }
+    if (h->tree.nodes[path.back()].type == DECISION)
+      die("aivat-log: history does not end at a terminal node on line " + std::to_string(lineno));
+    crng.reseed(aivat_chance_seed(seed, id));
+    auto t = sc[seat]->score(full, path, seat, crng, scr);
+    double e = res + t.chance + t.action;
+    plain.add(res);
+    est.add(e);
+    diff.add(e - res);
+    if (out) std::fprintf(out, "%llu,%d,%.17g,%.17g,%.17g,%.17g\n", id, seat, res, t.chance, t.action, e);
+  }
+  std::fclose(in);
+  if (out) std::fclose(out);
+  const double U = 10;
+  std::printf("aivat-log %s: %lld hands, A = %s (known), opponent unknown\n", a.get("log").c_str(),
+              (long long)plain.n, A.name.c_str());
+  print_stat_line("plain", plain, U);
+  print_stat_line("aivat", est, U);
+  print_stat_line("aivat - plain (paired)", diff, U);
+  std::printf(" SD reduction per hand %.1f%% (SD ratio %.3f)\n", 100 * (1 - est.sd() / plain.sd()),
+              est.sd() / plain.sd());
   return 0;
 }
 
@@ -764,27 +912,31 @@ int run_aivat_small(const std::string& game, const TreeConfig& tc, const int* bu
               (long long)deals);
   struct Setting {
     const char* name;
-    bool kb, exact;
-  } settings[] = {{"known A+B, exact V", true, true},
-                  {"known A+B, street V", true, false},
-                  {"known A, street V", false, false}};
+    bool kb, exact, look;
+  } settings[] = {{"known A+B, exact V", true, true, false},
+                  {"known A+B, street V", true, false, false},
+                  {"known A+B, street V + observed-path lookahead", true, false, true},
+                  {"known A, street V", false, false, false},
+                  {"known A, street V + observed-path lookahead", false, false, true}};
   for (const Setting& st : settings) {
     PolicyFn score[2] = {pa, st.kb ? pb : pa};
     bool known[2] = {true, st.kb};
     // exact reference: enumerate every deal and path, A in each seat
     PolicyFn sc_swapped[2] = {score[1], score[0]};
-    Aivat<Model> e0(tree, M, score[0], score[1], true, st.kb, st.exact);
-    Aivat<Model> e1(tree, M, sc_swapped[0], sc_swapped[1], st.kb, true, st.exact);
+    int la = st.look ? 1 : -1;
+    Aivat<Model> e0(tree, M, score[0], score[1], true, st.kb, st.exact, la, st.look);
+    Aivat<Model> e1(tree, M, sc_swapped[0], sc_swapped[1], st.kb, true, st.exact, la, st.look);
     AivatMoments m0 = aivat_exact_moments(e0, play, 0), m1 = aivat_exact_moments(e1, swapped, 1);
     double t0 = now_sec();
-    AivatMatch r = aivat_small_match(tree, M, play, score, known, st.exact, deals, seed);
+    AivatMatch r = aivat_small_match(tree, M, play, score, known, st.exact, deals, seed, la, st.look);
     std::printf("%s (%.1fs)\n", st.name, now_sec() - t0);
     std::printf("  exact A per deal: plain %.6f, aivat %.6f\n", 0.5 * (m0.mean_plain + m1.mean_plain),
                 0.5 * (m0.mean_est + m1.mean_est));
     std::printf("  plain  %+.6f +/- %.6f  SD %.6g\n", r.plain.mean(), r.plain.ci95(), r.plain.sd());
     std::printf("  aivat  %+.6f +/- %.6g  SD %.6g\n", r.aivat.mean(), r.aivat.ci95(), r.aivat.sd());
     std::printf("  aivat - plain (paired) %+.6f +/- %.6f\n", r.diff.mean(), r.diff.ci95());
-    std::printf("  SD reduction %.4f%% (SD ratio %.3g)\n", 100 * (1 - r.aivat.sd() / r.plain.sd()), r.aivat.sd() / r.plain.sd());
+    double ratio = r.aivat.sd() / r.plain.sd();
+    std::printf("  SD reduction %.4f%% (SD ratio %.3g)\n", 100 * (1 - ratio), ratio);
   }
   return 0;
 }
@@ -954,7 +1106,7 @@ int cmd_show(const Args& a) {
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show|aivat> [--options]\n"
+    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show|aivat|aivat-log> [--options]\n"
                          "see blueprint/README.md\n");
     return 2;
   }
@@ -970,5 +1122,6 @@ int main(int argc, char** argv) {
   if (cmd == "export") return cmd_export(a);
   if (cmd == "show") return cmd_show(a);
   if (cmd == "aivat") return cmd_aivat(a);
+  if (cmd == "aivat-log") return cmd_aivat_log(a);
   die("unknown command " + cmd);
 }

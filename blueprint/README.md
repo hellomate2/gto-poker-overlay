@@ -47,8 +47,11 @@ code can be moved to a rented many-core box unchanged.
 | `src/games.h` | deal samplers: Kuhn, Leduc, hold'em (cards projected to buckets) |
 | `src/mccfr.h` | the trainer (one template for every game) and the exact best response |
 | `src/export.{h,cpp}` | policy export format |
+| `src/aivat.h` | AIVAT estimator (generic), Kuhn/Leduc card models, exact-moment enumerator |
+| `src/aivat_holdem.h` | hold'em card model for AIVAT, duplicate match loop, hand-log format |
 | `src/main.cpp` | the `bp` CLI |
 | `tests/test_main.cpp` | C++ tests (`make test`) |
+| `tests/test_aivat.cpp` | AIVAT tests (`make test-aivat`) |
 | `../src/core/blueprint/loader.ts` | TS reader for exported policies |
 | `../tests/blueprint-loader.test.ts` | vitest suite for the loader, using real exports as fixtures |
 
@@ -436,6 +439,185 @@ with `--threads` set to the core count and a long `--minutes`; `--resume`
 picks up after an interruption. For memory, the first lever is storing
 average strategies only for preflop (as Pluribus did), which takes the cost
 per slot from 12 bytes to 4.
+
+## AIVAT: variance-reduced match scoring (PLAN.md M1)
+
+AIVAT (Burch, Schmid, Moravcik, Morrill, Bowling, AAAI 2018,
+https://arxiv.org/abs/1612.06915) scores each hand as the chips won plus
+zero-mean correction terms that remove luck the evaluator can explain:
+
+* a chance term at every chance event (both hole pairs, flop, turn, river,
+  and the run-out after an all-in): `E[V(after any card)] - V(after the dealt card)`;
+* an action term at every decision of a player whose strategy is known:
+  `sum_a sigma(a) V(after a) - V(after the action taken)`.
+
+Each term has expectation zero, so the estimate is unbiased for any value
+function V; V only decides how much variance goes away. Decisions of an
+opponent whose strategy is unknown get no term.
+
+### Commands
+
+```bash
+make test-aivat                          # exact-enumeration and brute-force checks
+./bin/bp aivat --game leduc --hands 1000000           # Leduc, A = 1M MCCFR iterations, B = 10k
+./bin/bp aivat --game leduc --b self --hands 1000000  # Leduc self-play
+./bin/bp h2h --aivat --a X.bin --b Y.bin --hands 500000 [tree/abs flags]
+./bin/bp h2h --aivat --aivat-known both ...           # also correct B's actions
+./bin/bp h2h --aivat ... --aivat-log-out hands.log    # write every hand as a log line
+./bin/bp aivat-log --a X.bin --log hands.log [tree/abs flags]   # score a logged match
+```
+
+`bp h2h --aivat` plays the usual duplicate match (each deal twice, seats
+swapped) and prints, per duplicate deal and per hand, the plain and AIVAT
+means with 95% CIs, the paired AIVAT-minus-plain difference (it must
+contain 0), the mean chance and action terms and the SD reduction.
+`--aivat-known a` (default) treats B as unknown: only A's actions and chance
+are corrected, and inside V the opponent is modeled by A's strategy or by
+`--aivat-model SPEC` (any agent spec). `--aivat-known both` also corrects
+B's actions.
+
+### The value function
+
+`V(h)` is the expected result over the rest of the current street with both
+players following the strategies the estimator knows (or models), cut off
+where the street ends. A cut-off node is valued `pot * equity - committed`,
+where equity is exact on the flop (all 990 turn and river runouts), turn and
+river, and comes from a 169 x 169 class-vs-class table preflop (Monte Carlo
+with a fixed seed, 2,000 samples per class pair by default; the table only
+shapes V, so its sampling error cannot bias the estimate). Fold nodes and
+river showdowns are exact. The expectation over the hole cards is exact (a
+sum over class pairs weighted by their combo counts out of 1,326 x 1,225
+ordered hole pairs). The expectation over the flop averages 32 flops drawn
+from a separate random stream (`--aivat-flops`), which keeps it unbiased;
+turn and river cards are enumerated.
+
+Observed-path lookahead (`--aivat-lookahead S`, default 2; 4 turns it off):
+in the walk along the observed path, which supplies the action corrections,
+nodes where the flop or turn ends are valued by every next card and the next
+street's betting instead of by equity. Chance terms keep the equity cut-off.
+Each correction stays zero-mean on its own; the root expectation and every
+chance term must use the same V, which the exact tests check (an earlier
+draft that mixed the two V's for one chance term was biased, and the Leduc
+enumeration test caught it). `--aivat-lookahead-full` uses the lookahead
+everywhere (a consistent V; on hold'em 109 s instead of 3 s for 20,000
+deals, see the ablations below).
+
+Not implemented: the paper's "imaginary observations" (averaging over every
+private hand A could hold, weighted by A's reach). It would need V walks for
+about 1,000 hands per hand played.
+
+### Validation against exact references
+
+`make test-aivat` (387 checks, 0 failures). Kuhn and Leduc are enumerated
+over every deal and every action path with its true probability:
+
+* For two hashed mixed strategies, a 100k-iteration MCCFR strategy against
+  uniform, and its self-play, the exact expectation of the AIVAT estimate
+  equals `ExactEval`'s game value within 1e-9 for every set of known players
+  (none, either, both), both positions, and all three value functions.
+* Both strategies known with the exact V (`exact_depth`): every path scores
+  the game value (spread under 1e-9).
+* Hold'em equity: river equity equals the showdown result; turn equity
+  equals the average over all 44 rivers; flop equity equals the average of
+  turn equities over all 45 turns; equities of the two players sum to 1. For
+  AhAd vs KcKs, exact enumeration over all 1,712,304 boards gives 0.81255;
+  the test's class table (300 samples per pair) gives 0.83833 for AA vs KK.
+* Sampled hold'em on the `tiny` tree with one postflop bucket and no card
+  abstraction, 20,000 hands: the paired AIVAT-minus-plain mean is inside 4
+  standard errors of 0 for A known and both known, with and without the
+  lookahead.
+* `bp aivat-log` replaying a 40,000-hand log written by `bp h2h --aivat`
+  reproduces the same plain and AIVAT means and SDs.
+
+Leduc, `./bin/bp aivat --game leduc --hands 1000000` (chips per duplicate
+deal, A = 1M MCCFR iterations, B = 10k; exact expectation of A per deal
+0.023884; plain +0.022594 +/- 0.002966, SD 1.51318):
+
+| setting | AIVAT mean (95% CI) | SD | SD removed |
+| --- | ---: | ---: | ---: |
+| both known, exact V | +0.023884 +/- 3.7e-19 | 1.9e-16 | 100.0000% |
+| both known, street V | +0.024142 +/- 0.000543 | 0.277169 | 81.68% |
+| both known, street V + lookahead | +0.023829 +/- 0.000171 | 0.087166 | 94.24% |
+| A known, street V | +0.023145 +/- 0.001703 | 0.868665 | 42.59% |
+| A known, street V + lookahead | +0.023020 +/- 0.001690 | 0.861997 | 43.03% |
+
+The PLAN.md M1 Leduc acceptance (both strategies known, at least 99% of the
+SD removed, mean equal to the plain mean within CI) is met by the exact V.
+The street V, which hold'em uses, removes 81.7% per deal here; for the
+tests' 100k-iteration-vs-uniform pair the exact per-hand figure is 83.35%.
+
+### Hold'em self-play, 1M hands
+
+A copy of the overnight checkpoint (`~/.gpo/overnight/ckpt.bin` copied at
+04:12 PDT, iteration 701,930,101; small tree, 200/200/200 buckets) against
+itself, 500,000 duplicate deals = 1,000,000 hands, 4 threads:
+
+```bash
+./bin/bp h2h --aivat --aivat-known both --a ckpt.bin --b ckpt.bin --preset small \
+  --flop 200 --turn 200 --river 200 --bins 50 --abs-seed 7 --threads 4 --hands 500000
+```
+
+mbb/hand; plain: per deal +4.9 +/- 17.0 (SD 6,144.5), per hand SD 13,044.4.
+
+| setting | AIVAT per deal (95% CI) | AIVAT - plain, paired | SD per deal | SD per hand | SD ratio per deal | time |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| both known, lookahead 2 (default) | -0.7 +/- 4.1 | -5.6 +/- 16.6 | 1,462.0 | 4,164.3 | 0.238 | 195 s |
+| both known, no lookahead (`--aivat-lookahead 4`) | -0.2 +/- 5.2 | -5.1 +/- 16.6 | 1,886.4 | 4,498.3 | 0.307 | 61 s |
+| A known, lookahead 2 (default) | +7.0 +/- 9.1 | +2.0 +/- 14.3 | 3,268.6 | 5,868.2 | 0.532 | 195 s |
+| A known, no lookahead (`--aivat-lookahead 4`) | +7.1 +/- 9.4 | +2.1 +/- 14.3 | 3,373.9 | 5,987.6 | 0.549 | 55 s |
+
+Times are wall-clock on a shared machine (load average between about 19
+and 49 during these runs), so they compare only roughly. Every AIVAT
+mean is within its CI of the plain mean and every paired difference contains
+0. With both strategies known, the same CI needs (1 / 0.238)^2 = 17.7x fewer
+deals; with only A known, 3.5x. For comparison, the AIVAT paper reports a
+per-hand SD of 25.962 chips plain and 8.095 chips with AIVAT for HUNL
+self-play at 100 BB (68.8% removed) with one strategy known; here the
+per-hand figures are 68.1% (both known) and 55.0% (A
+known).
+
+Ablations on 20,000 duplicate deals, both known: `--aivat-flops` 8 / 32 /
+128 gave per-deal SDs 2,000.0 / 1,889.2 / 1,853.1 (on 50,000 deals, before
+the lookahead); `--aivat-lookahead` 4 / 3 / 2 gave 1,839.3 / 1,572.0 /
+1,421.4 in 3 / 5 / 7 s; `--aivat-lookahead-full` from street 3 gave 1,294.9
+in 109 s.
+
+The opponent model matters when B is unknown. Against `checkcall`, 100,000
+deals: plain +1,700.9 +/- 63.4 per deal (SD 10,234.0). With A known and the
+opponent modeled by A's strategy, AIVAT gives +1,694.7 +/- 64.4 (SD 10,382.8,
+no reduction per deal, 8.1% per hand). With `--aivat-model checkcall` (or
+B known) it gives +1,706.7 +/- 32.2 (SD 5,192.7, 49.3% removed).
+
+### Using it for the BlueprintAgent vs engine match
+
+The TS `BlueprintAgent` (planned in `sim/play/bots.ts`) plays real bet sizes
+against the engine, so its match runs outside `bp`. To score it with AIVAT:
+
+1. For every hand, write one line in the `bp aivat-log` format:
+   `id seatA holeA holeB board tokens resultA`, for example
+   `10 0 9sTd KcJd 3s5dAdTh7h r0.5,c,k,b0.5,c,k,k,b1,c 1200`. `id` is a hand
+   counter (it seeds the flop sampling, so ids must be unique; never derive
+   them from the cards), `seatA` is the blueprint's position (0 = small blind
+   and button), the board is all five cards (the local harness deals them, so
+   they are known even when the hand ends early), `tokens` is the hand's path
+   through the blueprint tree as the agent itself translated it (`bp
+   aivat-log` refuses tokens that are not in the tree or a path that does not
+   end at a terminal node), and `resultA` is the blueprint's real chip result
+   (chips with 50/100 blinds, so off-tree bet sizes still count in real
+   chips).
+2. The estimate is unbiased only if the agent really sampled each abstract
+   action from the strategy `bp aivat-log` assumes, at the same bucket. If
+   the agent reads the exported `.gpobp` file, pass `--quantized` so the
+   strategy is the exported one (bytes summing to 255, unvisited infosets
+   uniform). Its flop and turn buckets must come from the same `cache/abs-*`
+   tables (the TS loader does not load them yet). A purified (argmax) agent
+   breaks this unless the log is scored against the purified strategy.
+3. Run `./bin/bp aivat-log --a <ckpt> --log hands.log <tree/abs flags>
+   [--quantized] [--out per-hand.csv]`. The engine's actions get no
+   correction. Its strategy is unknown, so V models it by the blueprint
+   unless `--aivat-model` names something closer; the checkcall result above
+   shows a poor model can remove almost nothing per deal, so measure the SD
+   on a pilot before fixing the hand count.
 
 ## Known limitations
 
