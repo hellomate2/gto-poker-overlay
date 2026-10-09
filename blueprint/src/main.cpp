@@ -13,6 +13,8 @@
 //                                 lower bound inside the abstraction)
 //   bp export --ckpt F --out G    write the compact policy file for TS
 //   bp show   --ckpt F            print the preflop opening strategy
+//   bp aivat  --game leduc|kuhn   AIVAT validation on a small game
+//   (bp h2h --aivat scores a hold'em match with AIVAT, see aivat.h)
 //
 // Every hold'em command takes the same tree + abstraction options so it can
 // rebuild the exact tree a checkpoint was trained on; a fingerprint of both
@@ -33,6 +35,7 @@
 #include <sstream>
 
 #include "abstraction.h"
+#include "aivat_holdem.h"
 #include "eval.h"
 #include "export.h"
 #include "games.h"
@@ -643,7 +646,165 @@ H2HResult play_h2h(Holdem* h, const Agent& A, const Agent& B, int64_t hands, int
   return {mean * 10, ci * 10};
 }
 
+// ---- AIVAT (aivat.h, aivat_holdem.h) ------------------------------------------------
+// The exact action probabilities an Agent plays with.
+PolicyFn agent_policy(const Agent& ag, const BettingTree& tree) {
+  return [&ag, &tree](uint32_t ni, int b, double* out) {
+    const Node& n = tree.nodes[ni];
+    const int na = n.nact;
+    for (int x = 0; x < na; x++) out[x] = 0;
+    switch (ag.kind) {
+      case AG_CHECKCALL: {
+        int pick = 0;
+        for (int x = 0; x < na; x++) {
+          int k = tree.nodes[n.child + x].act_kind;
+          if (k == ACT_CHECK || k == ACT_CALL) {
+            pick = x;
+            break;
+          }
+        }
+        out[pick] = 1;
+        break;
+      }
+      case AG_RANDOM:
+        for (int x = 0; x < na; x++) out[x] = 1.0 / na;
+        break;
+      case AG_MANIAC: out[na - 1] = 1; break;
+      case AG_POLICY:
+        for (int x = 0; x < na; x++) out[x] = ag.pol[n.slot + uint64_t(b) * na + x];
+        break;
+    }
+  };
+}
+
+void print_stat_line(const char* label, const RunStat& r, double unit) {
+  std::printf("  %-22s %+9.1f mbb/hand  95%% CI +/- %7.1f  SD %9.1f\n", label, r.mean() * unit, r.ci95() * unit,
+              r.sd() * unit);
+}
+
+// bp h2h --aivat [--aivat-known a|both] [--aivat-flops K] [--aivat-pre-samples S]
+// Duplicate match scored both plainly and with AIVAT. "a" (default) treats
+// B as unknown: only A's actions and chance get corrections and the value
+// function models B with A's strategy (the setting for a match against an
+// opponent whose strategy we do not have). "both" also corrects B's actions.
+int cmd_h2h_aivat(const Args& a) {
+  auto h = setup_holdem(a, true);
+  Agent A = make_agent(a.get("a"), *h), B = make_agent(a.get("b", "checkcall"), *h);
+  int64_t deals = a.geti("hands", 200000);
+  int threads = int(a.geti("threads", 4));
+  std::string kn = a.get("aivat-known", "a");
+  if (kn != "a" && kn != "both") die("--aivat-known must be a or both");
+  double t0 = now_sec();
+  HoldemModel M(&h->abs, int(a.geti("aivat-flops", 32)), int(a.geti("aivat-pre-samples", 2000)), threads);
+  std::printf("aivat model ready in %.1fs (preflop table %lld samples per class pair, %d flop samples)\n",
+              now_sec() - t0, (long long)a.geti("aivat-pre-samples", 2000), M.flop_samples);
+  PolicyFn pa = agent_policy(A, h->tree), pb = agent_policy(B, h->tree);
+  PolicyFn play[2] = {pa, pb};
+  PolicyFn score[2] = {pa, kn == "both" ? pb : pa};
+  bool known[2] = {true, kn == "both"};
+  t0 = now_sec();
+  HoldemSampler smp{&h->abs};
+  AivatH2HStats r = aivat_h2h(h->tree, smp, M, play, score, known, deals, threads, uint64_t(a.geti("seed", 99)));
+  double dt = now_sec() - t0;
+  const double U = 10;  // chips -> mbb (1 chip = 1/100 BB)
+  std::printf("h2h %s vs %s with AIVAT (known: %s): %lld duplicate deals = %lld hands in %.0fs\n", A.name.c_str(),
+              B.name.c_str(), kn == "both" ? "A and B" : "A only", (long long)deals, (long long)deals * 2, dt);
+  std::printf(" per duplicate deal (the h2h sample unit):\n");
+  print_stat_line("plain", r.dup_plain, U);
+  print_stat_line("aivat", r.dup_aivat, U);
+  print_stat_line("aivat - plain (paired)", r.dup_diff, U);
+  std::printf(" per hand:\n");
+  print_stat_line("plain", r.game_plain, U);
+  print_stat_line("aivat", r.game_aivat, U);
+  print_stat_line("chance term", r.chance, U);
+  print_stat_line("action term", r.action, U);
+  std::printf(" SD reduction: per deal %.1f%% (SD ratio %.3f, %.1fx fewer deals for the same CI); per hand %.1f%% "
+              "(ratio %.3f)\n",
+              100 * (1 - r.dup_aivat.sd() / r.dup_plain.sd()), r.dup_aivat.sd() / r.dup_plain.sd(),
+              std::pow(r.dup_plain.sd() / r.dup_aivat.sd(), 2), 100 * (1 - r.game_aivat.sd() / r.game_plain.sd()),
+              r.game_aivat.sd() / r.game_plain.sd());
+  return 0;
+}
+
+// bp aivat --game leduc|kuhn: trains A (--iters-a) and B (--iters-b, or
+// --b self for self-play) with the gate's MCCFR settings, then scores a
+// duplicate match of --hands deals with AIVAT in three settings, next to
+// the exact expectation from enumerating every deal and action path.
+template <class Model, class Sampler>
+int run_aivat_small(const std::string& game, const TreeConfig& tc, const int* buckets, const Args& a) {
+  BettingTree tree;
+  tree.build(tc, buckets);
+  auto train = [&](int64_t iters, uint64_t seed) {
+    McfrConfig m;
+    m.regret_scale = 10000;
+    m.seed = seed;
+    m.discount_every = 1000;
+    m.lcfr_until = iters / 4;
+    Trainer<Sampler> tr(tree, Sampler{}, m);
+    tr.run(iters, 1e9, iters, nullptr);
+    return policy_table(tr, tree);
+  };
+  int64_t ia = a.geti("iters-a", 1000000), ib = a.geti("iters-b", 10000);
+  bool self = a.get("b") == "self";
+  std::vector<float> ta = train(ia, 1), tb = self ? ta : train(ib, 2);
+  PolicyFn pa = [&](uint32_t ni, int b, double* out) {
+    const Node& n = tree.nodes[ni];
+    for (int x = 0; x < n.nact; x++) out[x] = ta[n.slot + uint64_t(b) * n.nact + x];
+  };
+  PolicyFn pb = [&](uint32_t ni, int b, double* out) {
+    const Node& n = tree.nodes[ni];
+    for (int x = 0; x < n.nact; x++) out[x] = tb[n.slot + uint64_t(b) * n.nact + x];
+  };
+  PolicyFn play[2] = {pa, pb}, swapped[2] = {pb, pa};
+  int64_t deals = a.geti("hands", 1000000);
+  uint64_t seed = uint64_t(a.geti("seed", 99));
+  Model M;
+  std::printf("%s: A = MCCFR %lld iterations, B = %s; %lld duplicate deals per setting\n", game.c_str(),
+              (long long)ia, self ? "A (self-play)" : ("MCCFR " + std::to_string(ib) + " iterations").c_str(),
+              (long long)deals);
+  struct Setting {
+    const char* name;
+    bool kb, exact;
+  } settings[] = {{"known A+B, exact V", true, true},
+                  {"known A+B, street V", true, false},
+                  {"known A, street V", false, false}};
+  for (const Setting& st : settings) {
+    PolicyFn score[2] = {pa, st.kb ? pb : pa};
+    bool known[2] = {true, st.kb};
+    // exact reference: enumerate every deal and path, A in each seat
+    PolicyFn sc_swapped[2] = {score[1], score[0]};
+    Aivat<Model> e0(tree, M, score[0], score[1], true, st.kb, st.exact);
+    Aivat<Model> e1(tree, M, sc_swapped[0], sc_swapped[1], st.kb, true, st.exact);
+    AivatMoments m0 = aivat_exact_moments(e0, play, 0), m1 = aivat_exact_moments(e1, swapped, 1);
+    double t0 = now_sec();
+    AivatMatch r = aivat_small_match(tree, M, play, score, known, st.exact, deals, seed);
+    std::printf("%s (%.1fs)\n", st.name, now_sec() - t0);
+    std::printf("  exact A per deal: plain %.6f, aivat %.6f\n", 0.5 * (m0.mean_plain + m1.mean_plain),
+                0.5 * (m0.mean_est + m1.mean_est));
+    std::printf("  plain  %+.6f +/- %.6f  SD %.6g\n", r.plain.mean(), r.plain.ci95(), r.plain.sd());
+    std::printf("  aivat  %+.6f +/- %.6g  SD %.6g\n", r.aivat.mean(), r.aivat.ci95(), r.aivat.sd());
+    std::printf("  aivat - plain (paired) %+.6f +/- %.6f\n", r.diff.mean(), r.diff.ci95());
+    std::printf("  SD reduction %.4f%% (SD ratio %.3g)\n", 100 * (1 - r.aivat.sd() / r.plain.sd()), r.aivat.sd() / r.plain.sd());
+  }
+  return 0;
+}
+
+int cmd_aivat(const Args& a) {
+  std::string g = a.get("game", "leduc");
+  if (g == "kuhn") {
+    int b[4] = {3, 1, 1, 1};
+    return run_aivat_small<KuhnModel, KuhnSampler>(g, kuhn_config(), b, a);
+  }
+  if (g == "leduc") {
+    int b[4] = {3, 9, 1, 1};
+    return run_aivat_small<LeducModel, LeducSampler>(g, leduc_config(), b, a);
+  }
+  die("bp aivat: --game kuhn|leduc");
+}
+// ---- end AIVAT ------------------------------------------------------------------------
+
 int cmd_h2h(const Args& a) {
+  if (a.has("aivat")) return cmd_h2h_aivat(a);  // AIVAT scoring (block above)
   auto h = setup_holdem(a, true);
   Agent A = make_agent(a.get("a"), *h), B = make_agent(a.get("b", "checkcall"), *h);
   int64_t hands = a.geti("hands", 200000);
@@ -793,7 +954,7 @@ int cmd_show(const Args& a) {
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show> [--options]\n"
+    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show|aivat> [--options]\n"
                          "see blueprint/README.md\n");
     return 2;
   }
@@ -808,5 +969,6 @@ int main(int argc, char** argv) {
   if (cmd == "br") return cmd_br(a);
   if (cmd == "export") return cmd_export(a);
   if (cmd == "show") return cmd_show(a);
+  if (cmd == "aivat") return cmd_aivat(a);
   die("unknown command " + cmd);
 }
