@@ -32,8 +32,12 @@ import { Spot } from './features';
 //                    the engine would actually make, capped at hero's all-in.
 //   canRaise/canBet  true only when the move is offered. Live: false when hero
 //                    cannot cover more than the call, or every live villain is
-//                    all-in. A stack of 0 is treated as unread (no restriction),
-//                    matching legalizeDecision.
+//                    all-in (stack 0 with chips in front this street). Hero's
+//                    stack of 0 is treated as unread (no restriction), matching
+//                    legalizeDecision.
+//   pot (serve)      the caller's pot (GameState.pot, or 1 chip when it is not
+//                    positive), the same value the engine sizes bets and prices
+//                    pot odds with.
 //
 // Known remaining differences (documented, not fixable on the serve side):
 //   - The dataset's offered size is the solver's own sizing; the live value is
@@ -53,8 +57,12 @@ export interface NetSpotContext {
   betTo: number;
   /** Raise-TO total the engine would make when facing a wager (chips). */
   raiseTo: number;
-  /** Stacks behind of the villains still in the hand. */
-  liveVillainStacks: number[];
+  /** The live villains still in the hand: stack behind and chips in front on
+   *  this street. */
+  liveVillains: { stack: number; currentBet: number }[];
+  /** The pot the engine uses for its own sizing and pot odds. Passed in so the
+   *  feature fractions and the sizes they describe use one and the same pot. */
+  pot: number;
 }
 
 export function buildNetSpot(state: GameState, ctx: NetSpotContext): Spot | null {
@@ -68,12 +76,18 @@ export function buildNetSpot(state: GameState, ctx: NetSpotContext): Spot | null
   const currentBet = state.currentBet || 0;
   const toCall = Math.max(0, currentBet - heroBet);
   const facingBet = toCall > 0;
-  // prep rejects pot <= 0; an unread pot falls back to 1 chip so fractions stay finite.
-  const pot = state.pot > 0 ? state.pot : 1;
+  const pot = ctx.pot;
 
+  // A villain counts as all-in only when its stack reads 0 AND it has chips in
+  // front on this street. The scraper returns 0 for an unreadable stack as well
+  // as for an all-in one, so a 0 alone is not enough: a villain who has not put
+  // chips in this street with a 0 stack is treated as unread (no restriction).
+  // A wrong read is still possible for a villain who bet and whose stack fails
+  // to parse; GameState has no field that tells the two apart. Hero's stack of
+  // 0 is treated as unread, the same way legalizeDecision treats it.
   const stacksKnown = heroStack > 0;
-  const villainsAllIn = stacksKnown && ctx.liveVillainStacks.length > 0
-    && ctx.liveVillainStacks.every(s => s <= 0);
+  const villainsAllIn = stacksKnown && ctx.liveVillains.length > 0
+    && ctx.liveVillains.every(v => v.stack <= 0 && v.currentBet > 0);
   const canRaise = facingBet && !villainsAllIn && (!stacksKnown || heroStack > toCall);
   const canBet = !facingBet && !villainsAllIn;
   const maxTo = stacksKnown ? heroStack + heroBet : Infinity;

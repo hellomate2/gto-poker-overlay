@@ -111,8 +111,10 @@ function engineSizes(engine: DecisionEngine, s: GameState): { betTo: number; rai
   const e = engine as any;
   const boardIds = s.communityCards.map(cardToId);
   const heroCat = Math.floor(evaluateHand([cardToId(s.heroCards![0]), cardToId(s.heroCards![1]), ...boardIds]) / 1_000_000);
-  const betTo = e.chooseBetSize(e.analyzeBoard(s.communityCards), Math.max(1, s.pot), s.street, BB, heroCat);
-  const raiseTo = Math.max(e.roundToStake(s.currentBet * 2.5, BB), s.currentBet + betTo);
+  const bb = s.bigBlind;
+  const pot = s.pot > 0 ? s.pot : 1;
+  const betTo = e.chooseBetSize(e.analyzeBoard(s.communityCards), pot, s.street, bb, heroCat);
+  const raiseTo = Math.max(e.roundToStake(s.currentBet * 2.5, bb), s.currentBet + betTo);
   return { betTo, raiseTo };
 }
 
@@ -215,6 +217,33 @@ describe('distilled net: serve-side Spot matches ml/prep.ts training encoding', 
       expect(Array.from(encodeSpot(spot))).toEqual(Array.from(encodeSpot(parsed!.spot)));
     });
   }
+
+  it('a villain whose stack reads 0 with no chips in front is unread, not all-in: the bet stays offered', async () => {
+    const c = { ...CASES[2], villainStack: 0 };
+    const { spot } = await engineSpot(c);
+    expect(spot.canBet).toBe(true);
+    expect(spot.offeredSizeFrac).toBeGreaterThan(0);
+  });
+
+  it('a villain with 0 behind and chips in front this street is all-in: no raise is offered', async () => {
+    const c = { ...CASES[0], villainStack: 0 };
+    const { spot } = await engineSpot(c);
+    expect(spot.canRaise).toBe(false);
+    expect(spot.offeredSizeFrac).toBe(0);
+  });
+
+  it('decimal stakes: the offered bet is sized off the same pot as the features (not a 1-chip floor)', async () => {
+    // A $0.01/$0.02 table: the pot is 0.60, under one unit.
+    const c = { ...CASES[2], pot: 0.6, heroStack: 1.7, villainStack: 1.7 };
+    const engine = new DecisionEngine();
+    const state = { ...stateFor(c), bigBlind: 0.02, smallBlind: 0.01, minRaise: 0.02 };
+    const { betTo } = engineSizes(engine, state);
+    await engine.decide(state);
+    const spot = captured.spots[0] as Spot;
+    expect(spot.offeredSizeFrac).toBeCloseTo(betTo / 0.6, 9);
+    // chooseBetSize never sizes above 0.90 pot, so the fraction must stay at or under that.
+    expect(spot.offeredSizeFrac).toBeLessThanOrEqual(0.9 + 1e-9);
+  });
 
   it('facing a bet, the offered size is a raise-to well above the call (holdout p10 ratio is 2.2)', async () => {
     const { spot } = await engineSpot(CASES[0]);

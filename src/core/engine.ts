@@ -63,6 +63,10 @@ type BoardTexture = 'dry' | 'semi_wet' | 'wet' | 'very_wet' | 'monotone' | 'pair
 // measure whether hero has the equity to call off a big preflop bet. Deliberately
 // not razor-precise — the solved charts handle the exact preflop decision; this is
 // the backstop that stops weak hands stacking off on any non-chart path.
+/** Facing a bet, the equity vs villain's betting range at which the net path
+ *  raises instead of calling (see decidePostflopNet). */
+const NET_RAISE_MIN_EQ = 0.60;
+
 const PREFLOP_VALUE_RANGE = new Set<string>([
   'AA', 'KK', 'QQ', 'JJ', 'TT', '99', '88', '77', '66', '55',
   'AKs', 'AQs', 'AJs', 'ATs', 'A9s', 'A8s', 'A7s', 'A6s', 'A5s', 'A4s', 'A3s', 'A2s',
@@ -535,7 +539,11 @@ export class DecisionEngine {
     const heroBet = hero?.currentBet || 0;
     const toCall = Math.max(0, state.currentBet - heroBet);
     const facingBet = toCall > 0;
-    const pot = Math.max(1, state.pot);
+    // One pot for sizing, pot odds and the net's features. A pot that does not
+    // read as positive falls back to 1 chip so fractions stay finite. (This used
+    // to be Math.max(1, pot), which on decimal stakes, where the pot is under 1,
+    // priced bets and pot odds against a 1-chip pot.)
+    const pot = state.pot > 0 ? state.pot : 1;
     const isIP = this.isInPosition(state);
 
     // Sizing first: the net's offeredSizeFrac feature is the bet / raise-to the
@@ -557,7 +565,11 @@ export class DecisionEngine {
       heroCards, isIP,
       threeBetPot: this.isThreeBetPot(state),
       betTo: betSize, raiseTo: raiseSize,
-      liveVillainStacks: this.liveVillains(state).map(i => state.players[i]?.stack || 0),
+      liveVillains: this.liveVillains(state).map(i => ({
+        stack: state.players[i]?.stack || 0,
+        currentBet: state.players[i]?.currentBet || 0,
+      })),
+      pot,
     });
     if (!spot) return null;
     const isPreflopAggressor = !!spot.isPreflopAggressor;
@@ -608,6 +620,7 @@ export class DecisionEngine {
     // calls); pure air with no equity folds. This makes the basic turn/river
     // decision (call / fold / jam) correct ~always, instead of punting.
     let raiseDowngraded = false;
+    let raiseUpgraded = false;
     if (facingBet && finalAction !== 'fold') {
       const boardIds = board.map(c => cardToId(c));
       let eqR: number;
@@ -636,9 +649,32 @@ export class DecisionEngine {
           mixedStrategy: { fold: 1, check: 0, call: 0, bets: [] },
         };
       }
-      // Have the odds to continue, but not strong enough to raise for value:
-      // don't turn a marginal call into a -EV raise/bluff-raise. Just call.
-      if (finalAction === 'raise' && eqR < 0.60) { finalAction = 'call'; raiseDowngraded = true; }
+      // Raise or call, once hero continues: equity vs villain's betting range
+      // decides it. Below NET_RAISE_MIN_EQ a net raise becomes a call (don't turn
+      // a marginal call into a -EV raise/bluff-raise). At or above it a net call
+      // becomes a value raise, when a raise is offered and the board is not a
+      // flush board.
+      //
+      // The upgrade half exists because of the train/serve parity fix
+      // (serve-spot.ts). Before it, the net saw offeredSizeFrac = toCall/pot (a
+      // raise looked 2-3x cheaper than in training) and canRaise always true, and
+      // it raised more: in the heads-up tag-field sims on tuning seeds 7, 13 and
+      // 29 (sim/match.ts, 3000 deals each), of the 334 facing-bet spots with
+      // eqR >= 0.60, a raise offered and no flush board, the net's argmax was
+      // raise in 254 (76%) with the old features and 162 (49%) with the
+      // parity-correct ones. The old net's extra raises were what won against
+      // the tag field, so the parity fix alone lost there. Tuned on seeds 7, 13
+      // and 29 only, never on the evaluation seeds 1 and 202: A = swarm/next,
+      // A - B vs the tag field was -1.52, +7.15, +14.46 bb/100 for the parity fix
+      // alone and -20.62, -12.32, -4.33 with this upgrade (negative = B better).
+      // The PokerBench holdout does not back this as GTO: of its 354 facing-bet
+      // rows with eqR >= 0.60 and a raise offered, the solver raises 55% and the
+      // net's argmax 50%. It is an exploit of opponents who call too wide.
+      if (finalAction === 'raise' && eqR < NET_RAISE_MIN_EQ) {
+        finalAction = 'call'; raiseDowngraded = true;
+      } else if (finalAction === 'call' && spot.canRaise && !dangerousFlushBoard && eqR >= NET_RAISE_MIN_EQ) {
+        finalAction = 'raise'; raiseUpgraded = true;
+      }
     }
 
     // ----------------------------------------------------------------
@@ -707,6 +743,13 @@ export class DecisionEngine {
         call: finalAction === 'call' ? probs.call + betProb : probs.call,
         bets: [],
       };
+    } else if (raiseUpgraded) {
+      mixedStrategy = {
+        fold: probs.fold,
+        check: probs.check,
+        call: 0,
+        bets: [{ amount: raiseSize, probability: probs.call + betProb }],
+      };
     } else {
       mixedStrategy = {
         fold: probs.fold,
@@ -722,6 +765,8 @@ export class DecisionEngine {
       ? `net ${action}->${finalAction} (behind range on flush board)`
       : raiseDowngraded
       ? `net ${action}->${finalAction} (no equity to raise)`
+      : raiseUpgraded
+      ? `net ${action}->${finalAction} (value raise)`
       : `net ${action} (f${pct(probs.fold)} k${pct(probs.check)} ` +
         `c${pct(probs.call)} b${pct(probs.bet)} r${pct(probs.raise)})`;
 
