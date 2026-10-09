@@ -1,0 +1,10 @@
+=== decision latency: flags FIX_LIVE_VILLAINS, 200 hands, 2 seats vs [barreler], seed 5 (15s wall) ===
+all            n=  285  p50    17.8  p95   314.9  p99   665.7  max   791.1 ms
+preflop        n=  141  p50    14.8  p95    32.8  p99    39.7  max    53.3 ms
+flop           n=  101  p50    21.5  p95   541.2  p99   681.1  max   791.1 ms
+turn           n=   25  p50    24.0  p95    57.9  p99   116.0  max   116.0 ms
+river          n=   18  p50    15.4  p95    34.7  p99    34.7  max    34.7 ms
+path:lead-policy n=   53  p50    18.6  p95   351.5  p99   541.2  max   541.2 ms
+path:net       n=   88  p50    24.1  p95   448.1  p99   681.1  max   681.1 ms
+path:preflop   n=  141  p50    14.8  p95    32.8  p99    39.7  max    53.3 ms
+path:ranged/other n=    3  p50     7.3  p95   791.1  p99   791.1  max   791.1 ms

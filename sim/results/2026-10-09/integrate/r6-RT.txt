@@ -1,0 +1,15 @@
+CMD: GPO_ENGINE_FLAGS=RANGE_TRACKER npx tsx sim/match.ts --a /Users/rg/Downloads/gto-poker-overlay --b /Users/rg/Downloads/gpo-wt/integrate --mode field --seats 6 --deals 3000 --seed 1
+=== MATCH (field duplicate, 6 seats vs [tag,lag,nit,station,tag], 3000 deals, each engine plays every deal), seed 1, 100bb, blinds 10/20 ===
+A = /Users/rg/Downloads/gto-poker-overlay (swarm/base@b39bc8b)
+B = /Users/rg/Downloads/gpo-wt/integrate (swarm/integrate@479307a)
+A vs field: +849.65 bb/100 (±226.9)   B vs field: +1008.75 bb/100 (±253.3)
+A - B (paired): -159.11 bb/100, 95% CI ±137.99  (sd per deal 38.56 bb)
+  -> B is better (CI excludes 0)
+  fold-to-raise (postflop)   A 19.4% (26/134)         B 18.8% (42/223)         A-B +0.6pp ±8.4
+  fold-to-flop-bet           A 59.8% (430/719)        B 22.6% (151/667)        A-B +37.2pp ±4.8
+  fold-to-turn-barrel        A 39.3% (48/122)         B 39.4% (97/246)         A-B -0.1pp ±10.6
+  fold-to-river-bet          A 50.7% (75/148)         B 53.8% (150/279)        A-B -3.1pp ±10.0
+  turn barrel                A 59.0% (59/100)         B 59.8% (98/164)         A-B -0.8pp ±12.2
+  river barrel               A 66.7% (44/66)          B 55.3% (52/94)          A-B +11.3pp ±15.2
+(1392s wall, 4.3 games/s)
+EXIT 0 after 1393s

@@ -6,6 +6,48 @@ ws/subgame, ws/blueprint) are merged. The engine wiring lives in
 blueprint stays offline: `src/core/blueprint/loader.ts` and its tests are
 present, nothing in the live engine calls it.
 
+## What the evidence supports (updated 2026-10-09 05:15 PDT)
+
+Read this section before quoting any number below. All CIs are 95%, and the
+raw match outputs are in `sim/results/2026-10-09/` (integration runs in
+`integrate/`, the held-out seed 101 reruns in `heldout-s101/`, the subgame cap
+fix runs in `subgame-cap/`). The measurement rules going forward are in
+`sim/EVAL_PROTOCOL.md`.
+
+- No measured flag configuration has a significant heads-up gain over
+  swarm/base. The integration-time default package C1 (FIX_LIVE_VILLAINS +
+  RANGE_TRACKER + SUBGAME_SOLVER) scored -6.35 +/- 13.46 bb/100 for base on seed 1 and
+  -5.83 +/- 14.13 on seed 101 (A's bb/100, so negative leans toward the
+  candidate, but both CIs include 0). RANGE_TRACKER alone: +1.40 +/- 10.46.
+- The defaults that ship on swarm/next (315dcdd) turn on FIX_LIVE_VILLAINS
+  only. That flag does not change heads-up play (FIX+MW vs base, 500 deals:
+  +0.00 +/- 0.00), so heads-up the shipped engine plays exactly like swarm/base.
+- The 6-max field gains did not replicate on a fresh seed. Seed 1 (3000 deals)
+  vs seed 101 (2000 deals), A - B bb/100: RANGE_TRACKER -159.11 +/- 137.99 vs
+  -30.97 +/- 156.20; C1 -173.73 +/- 138.39 vs -37.25 +/- 156.32;
+  SUBGAME_SOLVER -21.05 +/- 14.58 vs -9.68 +/- 11.31. Only the seed 1 runs
+  exclude 0. The seed 101 runs had fewer deals, so this shows the seed 1 gains
+  are not established; it does not show the effects are zero.
+- The heads-up probe gains did replicate where they were rerun. Seed 1 vs
+  seed 101 (3000 deals each): RANGE_TRACKER vs raiser -64.17 +/- 46.44 vs
+  -66.60 +/- 50.22, RANGE_TRACKER vs tag -56.93 +/- 35.48 vs -47.26 +/- 34.63,
+  C1 vs raiser -53.51 +/- 50.67 vs -87.32 +/- 57.25. All six exclude 0. The
+  barreler and checkraiser probes were not rerun on seed 101. These are gains
+  against scripted archetypes, not evidence of heads-up strength.
+- DEFENSE shows why probes are not enough. It beats base against the raiser,
+  barreler and checkraiser probes (each CI excludes 0; tag +2.49 +/- 43.38 is
+  no difference), yet base beats it heads-up: +22.61 +/- 18.49 bb/100 for base
+  on seed 1 (3000 deals, significant) and +16.59 +/- 18.45 on seed 101 (2000
+  deals, not significant alone). An inverse-variance pool of the two seeds,
+  computed from the two printed CIs, gives +19.59 +/- 13.06 for base.
+- The subgame cap fix (673724d) is heads-up neutral and wins against the
+  barreler probe on both seeds: hu -7.58 +/- 15.27 (seed 1) and
+  +5.77 +/- 12.83 (seed 202); barreler -49.21 +/- 43.19 and -101.34 +/- 43.13.
+  Details in "Subgame cap fix" below.
+- The decisive heads-up test is pre-registered: 22,000 deals at seed 7, one
+  run, and a gain counts only if its 95% CI excludes 0. See "Pre-registered
+  heads-up test" at the end of this file.
+
 ## How the numbers were produced
 
 Every run is `sim/match.ts` with A = the swarm/base checkout
@@ -26,11 +68,15 @@ Mode args:
 
 Sign convention (from the harness): in hu mode the number is A's bb/100, and in
 field mode it is A minus B. **Negative means the candidate beat base.** All
-CIs are 95%. The fold columns read "base -> candidate". The runs used engine
-commit 61bb8df, except MW2, FIXMW2, FIXRT, FIXRTMW, C1, C2, RTDEF and
-FIX-s2, which used 479307a or later (the multiway range fix; it only changes
-MULTIWAY_EQUITY behavior). r6-ALL was rerun on 479307a and reproduced
--473.39 +/- 262.63 exactly.
+CIs are 95%. The fold columns read "base -> candidate". Each output in
+`sim/results/2026-10-09/integrate/` is named after its run (hu-C1.txt,
+p-raiser-RT.txt, r6-C1.txt) and prints B's commit. 61bb8df with uncommitted
+edits: hu-RT, the four RT probe runs, and the 6-max ALL, DEF, FIX, FIX+MW
+(before fix), MW (before fix) and SG runs. 479307a with uncommitted edits: the
+two guard runs, hu FIX+MW and the two RT rechecks. Every other run: 479307a
+(the multiway range fix; it only changes MULTIWAY_EQUITY behavior). r6-ALL was
+rerun on 479307a (r6-ALL2.txt) and reproduced -473.39 +/- 262.63 exactly.
+Runs without `--workers` in their CMD line used 1 worker.
 
 Config names: RT = RANGE_TRACKER, DEF = DEFENSE, SG = SUBGAME_SOLVER,
 MW = MULTIWAY_EQUITY, FIX = FIX_LIVE_VILLAINS, C1 = FIX+RT+SG (the shipped
@@ -152,6 +198,31 @@ The harness README warns that this scripted field rewards loose play, so a
 MULTIWAY_EQUITY, which loses on its own, and with DEFENSE, which loses heads-up
 to base; it is not shipped.
 
+### Held-out seed 101 reruns
+
+After integration, a statistics reviewer reran the main claims on seed 101,
+which no tuning had used. B = swarm/integrate fc10eaf, A = swarm/base b39bc8b,
+default `--workers` (1) as in the seed 1 runs, so field results compare at
+equal worker counts. Seed 1 B commits: the RT probe runs and 6-max SG used
+61bb8df with uncommitted edits, every other seed 1 run in this table 479307a. Outputs: `sim/results/2026-10-09/heldout-s101/`.
+
+| run | seed 1 | seed 101 | replicated |
+|---|---|---|---|
+| hu C1 (3000 / 3000 deals) | -6.35 +/- 13.46 | -5.83 +/- 14.13 | both no difference |
+| hu DEF (3000 / 2000) | +22.61 +/- 18.49 | +16.59 +/- 18.45 | same sign; seed 101 alone not significant |
+| hu ALL (3000 / 2000) | -10.19 +/- 16.81 | -6.00 +/- 20.37 | both no difference |
+| raiser probe RT (3000 / 3000) | -64.17 +/- 46.44 | -66.60 +/- 50.22 | yes |
+| tag probe RT (3000 / 3000) | -56.93 +/- 35.48 | -47.26 +/- 34.63 | yes |
+| raiser probe C1 (3000 / 3000) | -53.51 +/- 50.67 | -87.32 +/- 57.25 | yes |
+| 6-max RT (3000 / 2000) | -159.11 +/- 137.99 | -30.97 +/- 156.20 | no |
+| 6-max C1 (3000 / 2000) | -173.73 +/- 138.39 | -37.25 +/- 156.32 | no |
+| 6-max SG (3000 / 2000) | -21.05 +/- 14.58 | -9.68 +/- 11.31 | no |
+
+Measured sd per deal pair (hu) or per deal (field), which sets the deal counts
+in `sim/EVAL_PROTOCOL.md`: hu C1 7.52 and 7.90 bb, hu DEF 10.33 and 8.42, hu RT
+5.85; raiser probe RT 12.98 and 14.03; tag probe RT 9.92 and 9.68; 6-max C1
+38.67 and 35.67.
+
 ### Decision latency
 
 `GPO_ENGINE_FLAGS=<spec> npx tsx sim/latency.ts 200 5 --seats 2 --field raiser`
@@ -173,8 +244,18 @@ stays far under the 2.5 s p95 target.
 
 ## Defaults
 
-ON: FIX_LIVE_VILLAINS, RANGE_TRACKER, SUBGAME_SOLVER. OFF: DEFENSE,
-MULTIWAY_EQUITY. The reasons are in the comment on `DEFAULT_ENGINE_FLAGS`.
+swarm/integrate (fc10eaf) shipped C1: FIX_LIVE_VILLAINS, RANGE_TRACKER and
+SUBGAME_SOLVER on. swarm/next (created 04:30 from fc10eaf, now 315dcdd) turns
+on FIX_LIVE_VILLAINS only; RANGE_TRACKER and SUBGAME_SOLVER went off after
+review found the subgame cap bug and the possible scraper log-order bug, and
+DEFENSE and MULTIWAY_EQUITY stay off. The reasons, with numbers, are in the
+comment on `DEFAULT_ENGINE_FLAGS`.
+
+None of these defaults has a measured heads-up gain. C1 is -6.35 +/- 13.46
+(seed 1) and -5.83 +/- 14.13 (seed 101) bb/100 for base, no significant
+difference on either seed, and FIX_LIVE_VILLAINS alone plays heads-up exactly
+like base. FIX_LIVE_VILLAINS is on because it is a correctness fix that is
+neutral in the 6-max field (seed 2, 9000 deals: -3.43 +/- 6.49).
 
 ## Known issues found during integration
 
@@ -222,6 +303,17 @@ option that sets one tree's flags), `--workers 1`, 2000 deals:
 Fold to turn barrel, hu: A 59.5% (22/37) vs B 8.3% (3/36) on seed 1, A 55.3%
 (21/38) vs B 11.4% (4/35) on seed 202.
 
+These runs measured the uncommitted branch on top of 368b379 (the outputs say
+`368b379+dirty`); it was committed as 673724d and merged into swarm/next at
+315dcdd. Raw outputs: `sim/results/2026-10-09/subgame-cap/`. What they show:
+with the fix, SUBGAME_SOLVER is heads-up neutral on both seeds (the two point
+estimates have opposite signs and both CIs include 0) and beats the barreler
+probe on both seeds. The comparison is SUBGAME_SOLVER on vs off, not new cap vs
+old cap. The large drop in fold-to-turn-barrel rests on 35 to 37 spots per run
+and has not turned into a measured heads-up gain. SUBGAME_SOLVER stays off on
+swarm/next until the scraper log order is checked and the latency budget is
+settled (the slowest solve below, 1541.6 ms, ran past the 1500 ms budget).
+
 Latency, `sim/latency.ts 200 5 --seats 2`, run at load average 62 to 66:
 
 | config | vs raiser p50 / p95 / max (ms) | vs barreler p50 / p95 / max (ms) |
@@ -233,3 +325,54 @@ Subgame path alone (FIX+SG): p95 1195.8 ms vs raiser (n 40), 561.9 ms vs
 barreler (n 33). The slow solves are river spots that run to the 1500 ms
 budget while closing in on the 0.3% target (0.29% to 0.36% at 270 to 350
 iterations under that load).
+
+## Pre-registered heads-up test (NOW-F)
+
+Registered 2026-10-09 at about 05:15 PDT, before any `sim/match.ts` run used
+seed 7 (none of the recorded match outputs from this session uses it). The
+same text is in `/Users/rg/Downloads/gpo-master/LOG.md`, and the general rules
+are in `sim/EVAL_PROTOCOL.md`.
+
+Question: does the default package C1 with the subgame cap fix beat swarm/base
+heads-up?
+
+| item | value |
+|---|---|
+| A | swarm/base b39bc8b, the checkout at `/Users/rg/Downloads/gto-poker-overlay` (it has no engine flags) |
+| B | a clean worktree of swarm/next 315dcdd, or of a later commit whose engine sources are unchanged; record the exact commit |
+| B flags | `--flags-b FIX_LIVE_VILLAINS,RANGE_TRACKER,SUBGAME_SOLVER`, with `GPO_ENGINE_FLAGS` unset in the shell |
+| mode | `--mode hu --deals 22000 --seed 7` |
+| workers | any count (hu results do not depend on it; RT reran identically at `--workers 2`); record it |
+| load | start only when the 1-minute load average is under 20, and record `uptime` before and after, because SUBGAME_SOLVER stops on a 1500 ms time budget |
+
+Command, run from B's worktree:
+
+```
+npx tsx sim/match.ts --a /Users/rg/Downloads/gto-poker-overlay --b <B worktree> \
+  --flags-b FIX_LIVE_VILLAINS,RANGE_TRACKER,SUBGAME_SOLVER \
+  --mode hu --deals 22000 --seed 7 --workers <K> --out <file>
+```
+
+Expected precision: C1's measured sd per deal pair is 7.52 bb (seed 1) and
+7.90 bb (seed 101), so 22,000 deals give a 95% half-width of about 4.97 to
+5.22 bb/100 (half-width = 98 x sd / sqrt(deals)).
+
+Decision rule, fixed now:
+
+- One run. No re-rolls, no second seed, and no change to the deal count, seed,
+  flags or commits after any part of the result is seen.
+- A gain counts only if the 95% CI excludes 0 with A's bb/100 negative (B
+  ahead). Then RANGE_TRACKER and SUBGAME_SOLVER have heads-up evidence; turning
+  them on for live play still waits for the scraper log-order check.
+- If the CI excludes 0 with A's bb/100 positive, C1 is a heads-up regression
+  and stays off.
+- Otherwise the result is "no significant heads-up difference", and it does
+  not count as a gain.
+- The number is reported whatever it is, with both commits, the worker count,
+  the load averages and the wall time.
+
+The same rule covers the other gains planned for today: a blueprint gain from
+the overnight evaluation (NOW-E) or an engine gain (NOW-G) counts only if its
+95% CI excludes 0 on a run whose seed and size were fixed before it started.
+`bp h2h --seed 7` in NOW-E is a different program with its own RNG, so it
+does not use up the `sim/match.ts` seed.

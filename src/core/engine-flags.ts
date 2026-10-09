@@ -52,19 +52,33 @@ export const ENGINE_FLAG_NAMES: readonly EngineFlagName[] = [
   'SUBGAME_SOLVER',
 ];
 
-// Defaults for main (2026-10-09 04:30 PDT). Evidence in sim/INTEGRATION.md; field-mode
-// A-B < 0 and hu "A vs B" < 0 mean the candidate beat swarm/base.
-//   FIX_LIVE_VILLAINS ON: a correctness fix (folded players no longer count as live),
-//     neutral in the 6-max field (-3.4 +/- 6.5 bb/100 over 9000 deals).
-//   RANGE_TRACKER OFF for now: it beat base against all four heads-up probes on two
-//     seeds, but it reads the scraped action log, and review found that
-//     scraper.ts parseGameLog may walk the log newest-first. Turn it on once the
-//     live log order is verified.
-//   SUBGAME_SOLVER OFF for now: review reproduced that solveSubgame's per-side
-//     combo cap drops the low-weight (bluff) part of a narrowed range, so it
-//     over-folds draws and bluff-catchers. Turn it on after that fix is measured.
-//   DEFENSE OFF: heads-up base beats it (+22.6 +/- 18.5 bb/100).
-//   MULTIWAY_EQUITY OFF: over-folds multiway (+269 +/- 204 bb/100 for base).
+// Defaults for main (2026-10-09, updated 05:15 PDT). Evidence in sim/INTEGRATION.md
+// ("What the evidence supports") with raw outputs in sim/results/2026-10-09/; rules
+// for new measurements in sim/EVAL_PROTOCOL.md. All CIs are 95%. Field-mode A-B < 0
+// and hu "A vs B" < 0 mean the candidate beat swarm/base.
+// No flag set here has a significant heads-up gain over swarm/base. The old default
+// package FIX+RT+SG scored -6.35 +/- 13.46 (seed 1) and -5.83 +/- 14.13 (seed 101)
+// bb/100 for base heads-up, and with only FIX_LIVE_VILLAINS on the engine plays
+// heads-up exactly like base. The decisive heads-up test is pre-registered in
+// sim/INTEGRATION.md: 22,000 deals at seed 7, a gain counts only if its CI excludes 0.
+//   FIX_LIVE_VILLAINS ON: a correctness fix (folded players no longer count as live).
+//     No heads-up effect (+0.00 +/- 0.00 with MULTIWAY_EQUITY, 500 deals); neutral
+//     in the 6-max field (-3.43 +/- 6.49 bb/100, seed 2, 9000 deals).
+//   RANGE_TRACKER OFF: heads-up vs base +1.40 +/- 10.46 (no difference). It beat base
+//     against all four scripted probes on seed 1, and the two probes rerun on seed
+//     101 replicated (raiser -66.60 +/- 50.22, tag -47.26 +/- 34.63). Its 6-max
+//     field gain did not replicate (seed 1 -159.11 +/- 137.99, seed 101
+//     -30.97 +/- 156.20). It also reads the scraped action log, and review found
+//     that scraper.ts parseGameLog may walk the log newest-first; it stays off until
+//     the live log order is verified.
+//   SUBGAME_SOLVER OFF: the per-side combo cap that dropped the bluff part of
+//     narrowed ranges is fixed (673724d). With the fix, SUBGAME_SOLVER on vs off is
+//     heads-up neutral (seed 1 -7.58 +/- 15.27, seed 202 +5.77 +/- 12.83) and beats
+//     the barreler probe on both seeds (-49.21 +/- 43.19, -101.34 +/- 43.13). It
+//     stays off pending the scraper log order and the 1500 ms latency budget.
+//   DEFENSE OFF: it beats base against three of four probes but loses heads-up:
+//     +22.61 +/- 18.49 bb/100 for base on seed 1 and +16.59 +/- 18.45 on seed 101.
+//   MULTIWAY_EQUITY OFF: over-folds multiway (+268.73 +/- 204.22 bb/100 for base).
 export const DEFAULT_ENGINE_FLAGS: Readonly<EngineFlags> = Object.freeze({
   FIX_LIVE_VILLAINS: true,
   RANGE_TRACKER: false,
