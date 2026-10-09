@@ -27,6 +27,7 @@
 #pragma once
 
 #include <array>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -80,8 +81,17 @@ struct AbsConfig {
   int kmeans_iters = 30;
   uint64_t seed = 7;
   int threads = 4;
+  // ---- v2 options (abs_v2.h). Defaults reproduce the original abstraction
+  // and leave id() unchanged, so old caches and checkpoints still load.
+  std::string flop_mode = "da";   // "da" distribution-aware | "pa" potential-aware (GS14)
+  std::string river_mode = "ehs"; // "ehs" 1-D EHS | "ochs" 8-D opponent-cluster hand strength (J13)
+  int restarts = 1;               // k-means restarts for the pa flop
+  int pa_sample = 200000;         // weighted flop hands the pa centers are fit on
+  bool waugh_lookup = false;      // runtime only: read buckets via Waugh-indexed tables
   std::string id() const;      // stable file-name fragment
 };
+
+struct WaughTables;
 
 struct Abstraction {
   AbsConfig cfg;
@@ -92,6 +102,7 @@ struct Abstraction {
   std::vector<float> river_bounds;    // midpoints between consecutive centers
   BoardIso river_iso;                 // built by prepare_river_table()
   std::vector<uint8_t> river_bucket;  // [canon_river * 1326 + combo]
+  std::shared_ptr<WaughTables> waugh; // set by --waugh-lookup (abs_v2.h)
 
   int num_buckets(int street) const {
     return street == 0 ? 169 : street == 1 ? cfg.flop_k : street == 2 ? cfg.turn_k : cfg.river_k;
@@ -99,7 +110,8 @@ struct Abstraction {
   int flop(const int hole[2], const int board[3]) const;
   int turn(const int hole[2], const int board[4]) const;
   int river_from_ehs(float ehs) const;
-  bool has_river_table() const { return !river_bucket.empty(); }
+  bool has_river_table() const { return !river_bucket.empty() || waugh_river; }
+  bool waugh_river = false;
   int river(const int hole[2], const int board[5]) const;
   // Expand river_bounds into the river lookup table (needs river_k <= 255).
   void prepare_river_table(int threads, bool verbose = true);

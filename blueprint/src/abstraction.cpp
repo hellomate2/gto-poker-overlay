@@ -10,6 +10,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include "abs_v2.h"
 #include "eval.h"
 
 namespace bp {
@@ -389,7 +390,8 @@ bool hist_to_cdf(const uint16_t* h, int bins, float* out) {
 
 // Fit centers on sampled boards, then bucket every canonical board.
 void build_street(const BoardIso& iso, int k_board, int K, const AbsConfig& cfg, int nsample,
-                  std::vector<uint16_t>& table, bool verbose, const char* name) {
+                  std::vector<uint16_t>& table, bool verbose, const char* name,
+                  std::vector<float>* centers_out = nullptr) {
   const int bins = cfg.bins;
   Rng rng(cfg.seed * 1000003ULL + uint64_t(k_board));
   // 1) sample raw boards uniformly (so canonical boards appear in proportion
@@ -431,6 +433,7 @@ void build_street(const BoardIso& iso, int k_board, int K, const AbsConfig& cfg,
                 nsample, now_sec() - t0, inertia / double(n));
   X.clear();
   X.shrink_to_fit();
+  if (centers_out) *centers_out = C;
   // 2) bucket every canonical board.
   t0 = now_sec();
   size_t nb = iso.num_canon();
@@ -458,7 +461,11 @@ std::string AbsConfig::id() const {
   char buf[128];
   std::snprintf(buf, sizeof buf, "f%d-t%d-r%d-b%d-s%llu", flop_k, turn_k, river_k, bins,
                 (unsigned long long)seed);
-  return buf;
+  std::string s = buf;
+  // v2 suffixes only for non-default modes, so default ids are unchanged
+  if (flop_mode == "pa") s += "-fpa" + std::to_string(restarts) + "x" + std::to_string(pa_sample);
+  if (river_mode == "ochs") s += "-rochs";
+  return s;
 }
 
 void Abstraction::build(const AbsConfig& c, bool verbose) {
@@ -468,8 +475,23 @@ void Abstraction::build(const AbsConfig& c, bool verbose) {
   if (turn_iso.k != 4) turn_iso.build(4);
   double t0 = now_sec();
   if (verbose) std::printf("building abstraction %s (%d threads)\n", cfg.id().c_str(), cfg.threads);
-  build_street(flop_iso, 3, cfg.flop_k, cfg, cfg.sample_flops, flop_bucket, verbose, "flop");
-  build_street(turn_iso, 4, cfg.turn_k, cfg, cfg.sample_turns, turn_bucket, verbose, "turn");
+  if (cfg.flop_mode != "da" && cfg.flop_mode != "pa") die("flop mode must be da or pa");
+  if (cfg.river_mode != "ehs" && cfg.river_mode != "ochs") die("river mode must be ehs or ochs");
+  if (cfg.flop_mode == "pa") {
+    // potential-aware flop (abs_v2.cpp): turn first, then flop over turn clusters
+    std::vector<float> turn_centers;
+    build_street(turn_iso, 4, cfg.turn_k, cfg, cfg.sample_turns, turn_bucket, verbose, "turn", &turn_centers);
+    build_pa_flop(*this, turn_centers, verbose);
+  } else {
+    build_street(flop_iso, 3, cfg.flop_k, cfg, cfg.sample_flops, flop_bucket, verbose, "flop");
+    build_street(turn_iso, 4, cfg.turn_k, cfg, cfg.sample_turns, turn_bucket, verbose, "turn");
+  }
+  if (cfg.river_mode == "ochs") {
+    build_ochs_river(*this, verbose);  // abs_v2.cpp; fills river_centers and river_bucket
+    river_bounds.clear();
+    if (verbose) std::printf("  total build %.1fs\n", now_sec() - t0);
+    return;
+  }
   // river: 1-D k-means on EHS of sampled boards
   Rng rng(cfg.seed * 7919ULL + 5);
   std::vector<float> X;
@@ -504,12 +526,14 @@ void Abstraction::build(const AbsConfig& c, bool verbose) {
 }
 
 int Abstraction::flop(const int hole[2], const int board[3]) const {
+  if (waugh) return waugh->flop_bucket(hole, board);
   int perm;
   uint32_t id = flop_iso.lookup(board, perm);
   return flop_bucket[size_t(id) * NUM_COMBOS + combo_index(perm_card(hole[0], perm), perm_card(hole[1], perm))];
 }
 
 int Abstraction::turn(const int hole[2], const int board[4]) const {
+  if (waugh) return waugh->turn_bucket(hole, board);
   int perm;
   uint32_t id = turn_iso.lookup(board, perm);
   return turn_bucket[size_t(id) * NUM_COMBOS + combo_index(perm_card(hole[0], perm), perm_card(hole[1], perm))];
@@ -520,12 +544,14 @@ int Abstraction::river_from_ehs(float e) const {
 }
 
 int Abstraction::river(const int hole[2], const int board[5]) const {
+  if (waugh_river) return waugh->river_bucket(hole, board);
   int perm;
   uint32_t id = river_iso.lookup(board, perm);
   return river_bucket[size_t(id) * NUM_COMBOS + combo_index(perm_card(hole[0], perm), perm_card(hole[1], perm))];
 }
 
 void Abstraction::prepare_river_table(int threads, bool verbose) {
+  if (cfg.river_mode == "ochs") return;  // OCHS tables come from build or the .river cache file
   if (cfg.river_k > 255) return;  // stay on the on-the-fly EHS path
   double t0 = now_sec();
   if (river_iso.k != 5) river_iso.build(5);
@@ -550,6 +576,12 @@ void Abstraction::prepare_river_table(int threads, bool verbose) {
 // centers. Canonical-board maps are rebuilt on load (deterministic, < 1 s).
 
 namespace {
+bool file_exists_abs(const std::string& p) {
+  FILE* f = std::fopen(p.c_str(), "rb");
+  if (!f) return false;
+  std::fclose(f);
+  return true;
+}
 const char ABS_MAGIC[8] = {'G', 'P', 'O', 'A', 'B', 'S', '0', '1'};
 }
 
@@ -614,7 +646,51 @@ void Abstraction::load_or_build(const AbsConfig& c, const std::string& dir) {
     if (!save(p)) die("cannot write " + p);
     std::printf("saved abstraction %s\n", p.c_str());
   }
-  prepare_river_table(c.threads);
+  // ---- v2: OCHS river table cache, Waugh-indexed lookups (abs_v2.h)
+  if (cfg.river_mode == "ochs") {
+    river_bounds.clear();  // 1-D bounds do not describe OCHS buckets
+    std::string rp = p + ".river";
+    if (river_bucket.empty()) {
+      FILE* f = std::fopen(rp.c_str(), "rb");
+      uint64_t n = 0;
+      bool ok = f && std::fread(&n, 8, 1, f) == 1;
+      if (ok) {
+        if (river_iso.k != 5) river_iso.build(5);
+        ok = n == river_iso.num_canon() * NUM_COMBOS;
+        if (ok) {
+          river_bucket.resize(n);
+          ok = std::fread(river_bucket.data(), 1, n, f) == n;
+        }
+      }
+      if (f) std::fclose(f);
+      if (ok) {
+        std::printf("loaded OCHS river table %s\n", rp.c_str());
+      } else {
+        river_bucket.clear();
+        build_ochs_river(*this, true);
+      }
+    }
+    if (!file_exists_abs(rp)) {
+      std::string tmp = rp + ".tmp";
+      FILE* f = std::fopen(tmp.c_str(), "wb");
+      uint64_t n = river_bucket.size();
+      bool ok = f && std::fwrite(&n, 8, 1, f) == 1 && std::fwrite(river_bucket.data(), 1, n, f) == n;
+      if (f) ok = std::fclose(f) == 0 && ok;
+      if (!ok || std::rename(tmp.c_str(), rp.c_str()) != 0) die("cannot write " + rp);
+    }
+  } else {
+    prepare_river_table(c.threads);
+  }
+  if (cfg.waugh_lookup) {
+    auto W = std::make_shared<WaughTables>();
+    waugh_from_legacy(*this, *W, c.threads, true);
+    waugh = W;
+    if (!W->river.empty()) {
+      waugh_river = true;
+      river_bucket.clear();
+      river_bucket.shrink_to_fit();
+    }
+  }
 }
 
 }  // namespace bp
