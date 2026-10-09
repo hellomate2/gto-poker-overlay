@@ -52,29 +52,26 @@ export const ENGINE_FLAG_NAMES: readonly EngineFlagName[] = [
   'SUBGAME_SOLVER',
 ];
 
-// Defaults (evidence in sim/INTEGRATION.md; field-mode A-B < 0 and hu "A vs B"
-// < 0 mean the candidate beat swarm/base):
-//   RANGE_TRACKER ON: beat base against all four heads-up probes (raiser,
-//     barreler, checkraiser, tag; every 95% CI excludes 0) and in the 6-max
-//     field (-159 +/- 138 bb/100); heads-up vs base neutral (+1.4 +/- 10.5).
-//   SUBGAME_SOLVER ON: 6-max field -21.1 +/- 14.6 bb/100; heads-up vs base and
-//     every probe neutral-to-favorable; p95 decision latency under 0.6 s.
-//   FIX_LIVE_VILLAINS ON: a correctness fix, neutral in the field (-3.4 +/- 6.5
-//     over 9000 deals); part of the measured default package
-//     (FIX+RT+SG: 6-max -174 +/- 138, raiser -54 +/- 51, tag -50 +/- 40).
-//   DEFENSE OFF: big gains against the exploit probes, but heads-up base beats
-//     it (+22.6 +/- 18.5 alone, +22.7 +/- 20.4 with RANGE_TRACKER).
-//   MULTIWAY_EQUITY OFF: over-folds multiway; the 6-max field loses
-//     +269 +/- 204 bb/100 alone and +128 +/- 206 with FIX+RT.
+// Defaults for main (2026-10-09 04:30 PDT). Evidence in sim/INTEGRATION.md; field-mode
+// A-B < 0 and hu "A vs B" < 0 mean the candidate beat swarm/base.
+//   FIX_LIVE_VILLAINS ON: a correctness fix (folded players no longer count as live),
+//     neutral in the 6-max field (-3.4 +/- 6.5 bb/100 over 9000 deals).
+//   RANGE_TRACKER OFF for now: it beat base against all four heads-up probes on two
+//     seeds, but it reads the scraped action log, and review found that
+//     scraper.ts parseGameLog may walk the log newest-first. Turn it on once the
+//     live log order is verified.
+//   SUBGAME_SOLVER OFF for now: review reproduced that solveSubgame's per-side
+//     combo cap drops the low-weight (bluff) part of a narrowed range, so it
+//     over-folds draws and bluff-catchers. Turn it on after that fix is measured.
+//   DEFENSE OFF: heads-up base beats it (+22.6 +/- 18.5 bb/100).
+//   MULTIWAY_EQUITY OFF: over-folds multiway (+269 +/- 204 bb/100 for base).
 export const DEFAULT_ENGINE_FLAGS: Readonly<EngineFlags> = Object.freeze({
   FIX_LIVE_VILLAINS: true,
-  RANGE_TRACKER: true,
+  RANGE_TRACKER: false,
   MULTIWAY_EQUITY: false,
   DEFENSE: false,
-  SUBGAME_SOLVER: true,
+  SUBGAME_SOLVER: false,
 });
-
-/** The live flag object the engine reads on every decision. Mutate via setEngineFlags. */
 export const ENGINE_FLAGS: EngineFlags = { ...DEFAULT_ENGINE_FLAGS };
 
 /** Override some flags (tests, sims). */
