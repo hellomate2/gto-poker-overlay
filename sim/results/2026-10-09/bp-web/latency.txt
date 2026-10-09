@@ -1,0 +1,25 @@
+$ GPO_ENGINE_FLAGS=+BLUEPRINT npx tsx sim/latency.ts 1000 1 --seats 2 --field tag   (11:01  up 1 day, 15:10, 1 user, load averages: 6.93 7.79 8.01)
+blueprint assets loaded in 39 ms (loader 39 ms): f200-t200-r200-b50-s7, iteration 12749175749
+=== decision latency: flags FIX_LIVE_VILLAINS+SUBGAME_SOLVER+BLUEPRINT, 1000 hands, 2 seats vs [tag], seed 1 (1s wall) ===
+all            n= 2305  p50    0.01  p95    0.14  p99    0.20  max  160.19 ms
+preflop        n=  796  p50    0.01  p95    0.01  p99    0.05  max    0.84 ms
+flop           n=  634  p50    0.01  p95    0.02  p99    0.04  max  160.19 ms
+turn           n=  497  p50    0.01  p95    0.02  p99    0.07  max   28.60 ms
+river          n=  378  p50    0.13  p95    0.21  p99    0.42  max   27.38 ms
+path:blueprint n= 2300  p50    0.01  p95    0.14  p99    0.19  max    0.84 ms
+path:net       n=    1  p50  160.19  p95  160.19  p99  160.19  max  160.19 ms
+path:subgame   n=    4  p50   10.13  p95   28.60  p99   28.60  max   28.60 ms
+
+$ GPO_ENGINE_FLAGS=+BLUEPRINT npx tsx sim/latency.ts 1000 2 --seats 2 --field lag
+blueprint assets loaded in 40 ms (loader 39 ms): f200-t200-r200-b50-s7, iteration 12749175749
+=== decision latency: flags FIX_LIVE_VILLAINS+SUBGAME_SOLVER+BLUEPRINT, 1000 hands, 2 seats vs [lag], seed 2 (1s wall) ===
+all            n= 2773  p50    0.01  p95    0.14  p99    0.19  max  103.78 ms
+preflop        n= 1010  p50    0.01  p95    0.01  p99    0.03  max    0.84 ms
+flop           n=  878  p50    0.01  p95    0.02  p99    0.05  max  103.78 ms
+turn           n=  548  p50    0.01  p95    0.02  p99    0.11  max   41.50 ms
+river          n=  337  p50    0.13  p95    0.19  p99   14.43  max   34.05 ms
+path:blueprint n= 2760  p50    0.01  p95    0.14  p99    0.16  max    0.84 ms
+path:lead-policy n=    2  p50    4.21  p95  103.78  p99  103.78  max  103.78 ms
+path:net       n=    1  p50  101.66  p95  101.66  p99  101.66  max  101.66 ms
+path:ranged/other n=    1  p50   32.75  p95   32.75  p99   32.75  max   32.75 ms
+path:subgame   n=    9  p50   15.07  p95   41.50  p99   41.50  max   41.50 ms

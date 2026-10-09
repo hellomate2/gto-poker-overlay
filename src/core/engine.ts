@@ -28,6 +28,7 @@ import {
   defendVsAggression, balancedAggressorRange, leadPolicyRange, PostflopStreet,
 } from './defense';
 import { solveSubgame, subgameEligibility, pickSubgameAction } from './solver/subgame';
+import { BlueprintBridge } from './blueprint/engine-bridge';
 // Live postflop paths: the real-time range-vs-range subgame solver
 // (SUBGAME_SOLVER flag, heads-up turn/river), then the distilled net (heads-up)
 // or the range-aware heuristic (multiway). See engine-flags.ts for the toggles.
@@ -42,8 +43,8 @@ function normName(x: string): string {
  * soundness gate and the exploit step. Reset at the start of every decide().
  */
 interface DecisionMeta {
-  /** 'defense' (defense.ts) or 'subgame' (solver/subgame.ts). */
-  source?: 'defense' | 'subgame';
+  /** 'defense' (defense.ts), 'subgame' (solver/subgame.ts) or 'blueprint' (blueprint/engine-bridge.ts). */
+  source?: 'defense' | 'subgame' | 'blueprint';
   /** The action that path chose (later layers may change decision.action). */
   action?: ActionType;
   /** Hero equity vs the villain range that path used (with bluffs). */
@@ -99,12 +100,15 @@ export class DecisionEngine {
   private meta: DecisionMeta = {};
   /** Tracker ranges for the state being decided (computed once per decision). */
   private vrCache: { state: GameState; key: string; vr: VillainRange[] } | null = null;
+  /** Heads-up blueprint (BLUEPRINT flag); assets load on first use. */
+  readonly blueprint = new BlueprintBridge();
 
   constructor(settings: BotSettings = DEFAULT_SETTINGS) {
     this.settings = settings;
     this.tracker = new OpponentTracker();
     this.profiler = new PlayerProfiler(this.tracker);
     this.adjuster = new ExploitAdjuster({ exploitWeight: settings.exploitWeight });
+    if (F.BLUEPRINT) this.blueprint.preload();
   }
 
   async initialize(playerNames: string[]): Promise<void> {
@@ -126,6 +130,22 @@ export class DecisionEngine {
       const facingBet = state.currentBet > heroBet;
       console.warn(`[GTO Bot] Postflop (${state.street}) but board unreadable (${state.communityCards.length} cards) — safe ${facingBet ? 'fold' : 'check'}`);
       return this.defaultDecision(facingBet ? 'fold' : 'check');
+    }
+
+    // BLUEPRINT: heads-up decisions from the trained blueprint's average
+    // strategy (blueprint/engine-bridge.ts). It returns null whenever it cannot
+    // answer exactly (multiway, stack depth, assets missing, unmapped history),
+    // and the normal path below plays. A blueprint decision skips the exploit,
+    // sanity and soundness layers (they would distort the equilibrium mix) and
+    // goes straight to the legal-sizing clamp.
+    if (F.BLUEPRINT) {
+      const bpd = await this.blueprint.decide(state);
+      if (bpd) {
+        this.meta = { source: 'blueprint', action: bpd.action };
+        const legal = this.legalizeDecision(bpd, state);
+        console.log(`[GTO Bot] => ${legal.action}${legal.amount ? ' $' + legal.amount : ''} | ${legal.reasoning}`);
+        return legal;
+      }
     }
 
     const heroCardIds: [number, number] = [

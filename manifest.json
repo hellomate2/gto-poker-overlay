@@ -26,7 +26,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["cfr-worker.js"],
+      "resources": ["cfr-worker.js", "blueprint/*"],
       "matches": [
         "https://www.pokernow.club/*",
         "https://pokernow.club/*",

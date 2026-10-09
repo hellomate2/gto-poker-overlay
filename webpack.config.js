@@ -36,6 +36,9 @@ module.exports = {
       patterns: [
         { from: 'manifest.json', to: 'manifest.json' },
         { from: 'src/ui/overlay.css', to: 'overlay.css' },
+        // In-browser blueprint (BLUEPRINT engine flag): gzipped policy and bucket
+        // tables, fetched by src/core/blueprint/web-assets.ts.
+        { from: 'blueprint/web', to: 'blueprint' },
       ],
     }),
     new HtmlWebpackPlugin({

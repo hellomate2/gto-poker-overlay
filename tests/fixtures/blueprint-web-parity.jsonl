@@ -1,0 +1,1000 @@
+{"history":"a","hole":"3d2s","board":"","node":5,"street":0,"player":1,"bucket":1,"probs":[0.999999906,9.35798892e-08],"toks":["f","c"]}
+{"history":"r1 r1 c b1","hole":"2d6h","board":"KsTh9c","node":30612,"street":1,"player":0,"bucket":196,"probs":[1,0,0,0],"toks":["f","c","r1","a"]}
+{"history":"r0.5 c b1 r1 c b0.5","hole":"TcJs","board":"QcJdKc2d","node":20378,"street":2,"player":0,"bucket":38,"probs":[0.0180928472,0.973641488,0.00826566449],"toks":["f","c","a"]}
+{"history":"r0.5 r1 c b1 c b1 c a","hole":"Ks8s","board":"6s9h8cAh5h","node":25357,"street":3,"player":0,"bucket":100,"probs":[0.814402431,0.185597569],"toks":["f","c"]}
+{"history":"","hole":"KdKh","board":"","node":0,"street":0,"player":0,"bucket":154,"probs":[5.80128559e-10,0.0124756731,0.817109532,0.170414789,5.46053293e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r1 r0.5 c","hole":"QhKc","board":"8d6dJh","node":25394,"street":1,"player":1,"bucket":105,"probs":[0.999474629,8.05131932e-05,0.000444854208,3.19313775e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r0.5 c b1 c a","hole":"QdQc","board":"AhAd6s4c","node":31714,"street":2,"player":0,"bucket":15,"probs":[1.18158709e-07,0.999999882],"toks":["f","c"]}
+{"history":"r1 c k k b0.5 c a","hole":"2s4h","board":"6cKcTh7dQh","node":26623,"street":3,"player":0,"bucket":6,"probs":[0.999999983,1.66418437e-08],"toks":["f","c"]}
+{"history":"r0.5 r0.5 r0.5","hole":"8h6d","board":"","node":20505,"street":0,"player":1,"bucket":58,"probs":[0.333333333,0.333333333,0.333333333],"toks":["f","c","a"]}
+{"history":"r1 r1 r1 c k","hole":"4sQs","board":"8hQdKc","node":31738,"street":1,"player":0,"bucket":82,"probs":[0.998616697,0.0011629832,0.000212005562,8.31405466e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r0.5 c k b1 c a","hole":"Jd6d","board":"9c3s7h5d","node":31630,"street":2,"player":0,"bucket":168,"probs":[0.412502173,0.587497827],"toks":["f","c"]}
+{"history":"r1 r0.5 c b1 c k k b0.5","hole":"7dTd","board":"4dJs5d9cKs","node":29525,"street":3,"player":0,"bucket":37,"probs":[0.986558263,4.38005043e-05,0.013397936],"toks":["f","c","a"]}
+{"history":"r1 r0.5","hole":"9d7c","board":"","node":26341,"street":0,"player":0,"bucket":72,"probs":[0.000951713476,0.969010473,6.6329053e-06,0.0300311783,2.01752887e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"Ts5c","board":"Th8cAc","node":6,"street":1,"player":1,"bucket":120,"probs":[0.999856415,0.000142388277,1.18756697e-06,8.95479853e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k b0.5 r1 c","hole":"4c6c","board":"9sQdTd2h","node":18748,"street":2,"player":1,"bucket":198,"probs":[0.999994309,5.11880921e-06,1.83482214e-07,3.88946724e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 r1 c k b0.5 c","hole":"Kd3s","board":"Jh5dQs7h6c","node":25211,"street":3,"player":1,"bucket":38,"probs":[5.88689492e-06,0.999994113],"toks":["k","a"]}
+{"history":"","hole":"KhTd","board":"","node":0,"street":0,"player":0,"bucket":115,"probs":[0,0.258177819,0.551886863,0.18993527,4.8227666e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c","hole":"5hJs","board":"Qc4c4s","node":20504,"street":1,"player":1,"bucket":183,"probs":[0.0033296298,0.942278066,0.0543738489,1.84549284e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b1 c","hole":"4dKd","board":"6sJcKsTc","node":2966,"street":2,"player":1,"bucket":163,"probs":[0.250540998,0.748644521,0.000153120812,0.000661359791],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k k b1 c","hole":"8sKc","board":"2s9d7h7cTh","node":454,"street":3,"player":1,"bucket":62,"probs":[0.999974511,9.20900784e-06,1.62467003e-05,3.35062853e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5","hole":"2d5d","board":"","node":3,"street":0,"player":1,"bucket":39,"probs":[1.16535058e-06,0.999998719,3.64840822e-08,7.3295594e-10,7.88799528e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"9h7s","board":"4c3hTs","node":26340,"street":1,"player":1,"bucket":89,"probs":[0.999998798,9.12154762e-07,2.87522731e-07,1.86218686e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r0.5 c b1 c b0.5","hole":"2h5d","board":"4h4c5c8h","node":25973,"street":2,"player":0,"bucket":86,"probs":[0.264363775,0.0069034636,0.728732761],"toks":["f","c","a"]}
+{"history":"c b0.5 c b1 r1 c k b0.5 c","hole":"Qd2c","board":"4hQc5h3sTd","node":6306,"street":3,"player":1,"bucket":157,"probs":[0.999786554,0.000121165571,9.22808072e-05],"toks":["k","b0.5","a"]}
+{"history":"r1","hole":"8dTd","board":"","node":4,"street":0,"player":1,"bucket":110,"probs":[1.49912475e-06,0.387782048,0.0374468591,0.574769159,4.34994382e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c a","hole":"3s8d","board":"2sQh8h","node":26347,"street":1,"player":0,"bucket":109,"probs":[0.999991816,8.18385539e-06],"toks":["f","c"]}
+{"history":"r1 c b1 c","hole":"Td5d","board":"Jc2cKdJs","node":28100,"street":2,"player":1,"bucket":130,"probs":[0.999985247,1.18900973e-05,3.90989576e-07,2.4718965e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c k k b1 c","hole":"Ks6h","board":"Jh6d5d5cAc","node":20856,"street":3,"player":1,"bucket":122,"probs":[0.999836719,6.10430679e-05,2.25544793e-05,7.96837263e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Kc5d","board":"","node":0,"street":0,"player":0,"bucket":50,"probs":[5.5480114e-07,0.0556286361,0.841577138,0.102793656,1.58742941e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c b0.5","hole":"2hTc","board":"4c5s8c","node":17832,"street":1,"player":0,"bucket":26,"probs":[0.999998783,6.43269689e-07,5.71170634e-07,3.04200306e-09],"toks":["f","c","r1","a"]}
+{"history":"c b1 c b1 c","hole":"7h4d","board":"TcQcAcJc","node":13988,"street":2,"player":1,"bucket":184,"probs":[0.999997378,1.15615645e-06,4.60410008e-07,1.00570649e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 c b1 c a","hole":"4hAd","board":"8sQs3h9d2c","node":25159,"street":3,"player":0,"bucket":59,"probs":[0.993154359,0.00684564098],"toks":["f","c"]}
+{"history":"a","hole":"4s3h","board":"","node":5,"street":0,"player":1,"bucket":15,"probs":[0.999999993,6.65838362e-09],"toks":["f","c"]}
+{"history":"r1 c a","hole":"8d9c","board":"5sJcQd","node":26347,"street":1,"player":0,"bucket":91,"probs":[0.997563972,0.00243602848],"toks":["f","c"]}
+{"history":"c k b0.5 c","hole":"8d3c","board":"Jh2c6dQs","node":2147,"street":2,"player":1,"bucket":23,"probs":[0.998171253,0.00111883569,0.000695846215,1.40651084e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r1 c k k b0.5 c k","hole":"4cJh","board":"AdTh9d4sTc","node":30396,"street":3,"player":0,"bucket":120,"probs":[0.992975136,0.00657021504,0.000454648839],"toks":["k","b0.5","a"]}
+{"history":"","hole":"7dAs","board":"","node":0,"street":0,"player":0,"bucket":77,"probs":[2.35213785e-08,0.408559685,0.336066516,0.255373705,6.95623806e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"Kd5h","board":"4hKsAs","node":17827,"street":1,"player":1,"bucket":82,"probs":[0.99999691,2.27403936e-06,7.84425423e-07,3.15959882e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k","hole":"5s7s","board":"Jd2dKsQd","node":17835,"street":2,"player":1,"bucket":124,"probs":[0.999999039,8.81165055e-07,7.90058194e-08,9.9864556e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 c b0.5 r1 c b0.5 a","hole":"Kh7d","board":"Ah7sAsQc9c","node":27910,"street":3,"player":1,"bucket":130,"probs":[0.876712329,0.123287671],"toks":["f","c"]}
+{"history":"","hole":"Qc9c","board":"","node":0,"street":0,"player":0,"bucket":137,"probs":[1.45108755e-07,6.8432486e-07,0.996985209,0.00301395095,1.06610377e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"5c4c","board":"Qh8h3s","node":6,"street":1,"player":1,"bucket":64,"probs":[0.99814903,0.000221695637,0.00162925082,2.31308273e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r1 c k b1 c k","hole":"2h5s","board":"8sTdJs5d","node":26229,"street":2,"player":0,"bucket":59,"probs":[0.776690552,0.223309448],"toks":["k","a"]}
+{"history":"c k b1 c b0.5 c a","hole":"JcTd","board":"8d9s5h9dTh","node":3240,"street":3,"player":0,"bucket":162,"probs":[0.999997215,2.78497802e-06],"toks":["f","c"]}
+{"history":"","hole":"8c8h","board":"","node":0,"street":0,"player":0,"bucket":84,"probs":[0,0.234421797,0.746797815,0.0187803809,7.68097082e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c a","hole":"QcJc","board":"Qd7c6c","node":26347,"street":1,"player":0,"bucket":47,"probs":[0,1],"toks":["f","c"]}
+{"history":"c b0.5 c b1 c","hole":"9s7h","board":"9hTs5h3h","node":5939,"street":2,"player":1,"bucket":38,"probs":[0.664471995,0.326077057,0.00944590577,5.04222358e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c b1 c b0.5 c b0.5","hole":"2dTs","board":"4s3c9sQdQh","node":29600,"street":3,"player":0,"bucket":29,"probs":[0.490897817,1.51100599e-07,0.509102032],"toks":["f","c","a"]}
+{"history":"r0.5","hole":"KsQs","board":"","node":3,"street":0,"player":1,"bucket":153,"probs":[1.80414537e-09,6.02807378e-06,0.0448406651,0.955152905,4.00204363e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"8s5h","board":"4cQhTs","node":26340,"street":1,"player":1,"bucket":51,"probs":[0.999992305,2.23441163e-06,5.4359227e-06,2.43265732e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c b1 c a","hole":"3s9d","board":"ThQhTsKc","node":29519,"street":2,"player":0,"bucket":127,"probs":[0.999987585,1.24148034e-05],"toks":["f","c"]}
+{"history":"r0.5 r0.5 c k k b1 c","hole":"8cTs","board":"4sAdJs6d7c","node":20856,"street":3,"player":1,"bucket":30,"probs":[0.072881127,0.0932894323,0.711394894,0.122434547],"toks":["k","b0.5","b1","a"]}
+{"history":"r1","hole":"2hAh","board":"","node":4,"street":0,"player":1,"bucket":156,"probs":[1.33299744e-06,0.87742908,0.000178230657,0.122389715,1.64203278e-06],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c","hole":"Ks9c","board":"9s6d4s","node":20504,"street":1,"player":1,"bucket":41,"probs":[0.0252809276,0.923323932,0.0513929178,2.2226666e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 c k b1 r1 c","hole":"9c5c","board":"AcKhAh6s","node":5175,"street":2,"player":1,"bucket":95,"probs":[0.999709782,0.000221612263,5.39538945e-05,1.46523191e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r0.5 c b0.5 r1 c b0.5 c","hole":"6hJh","board":"5s3dAdQc4d","node":7956,"street":3,"player":1,"bucket":25,"probs":[0.537451031,0.295104648,0.167444321],"toks":["k","b0.5","a"]}
+{"history":"","hole":"Ts2d","board":"","node":0,"street":0,"player":0,"bucket":8,"probs":[0.74331208,0.256574834,9.73307928e-06,0.000103351872,8.38947831e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 c k","hole":"7s5d","board":"Qh2h8h","node":30610,"street":1,"player":0,"bucket":196,"probs":[0.999998997,1.00326765e-06,0,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c b0.5 c","hole":"9d8h","board":"7hKsTdTs","node":30091,"street":2,"player":1,"bucket":175,"probs":[0.00211450537,0.997845455,1.89745844e-05,2.10646816e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r0.5 c b1 c b0.5 c a","hole":"6h3d","board":"4d6s9d8cTd","node":26017,"street":3,"player":0,"bucket":76,"probs":[0.907632834,0.0923671659],"toks":["f","c"]}
+{"history":"c a","hole":"9d7s","board":"","node":9,"street":0,"player":0,"bucket":72,"probs":[0.999999977,2.29211344e-08],"toks":["f","c"]}
+{"history":"c k","hole":"Qd8d","board":"Kh2h9c","node":6,"street":1,"player":1,"bucket":3,"probs":[0.999863408,0.000133728791,2.86054397e-06,2.53816712e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b0.5 c","hole":"8c6h","board":"Qc4s7h5d","node":26817,"street":2,"player":1,"bucket":42,"probs":[0.947479686,0.0348880669,0.0176319471,3.00547231e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b0.5 c k b1 c","hole":"TcAd","board":"Qc8hTd9s8s","node":26960,"street":3,"player":1,"bucket":120,"probs":[0.999999881,1.95924924e-08,5.06998728e-09,9.44044399e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"2h6h","board":"","node":0,"street":0,"player":0,"bucket":52,"probs":[1.68440516e-06,0.0275415813,0.0958803517,0.876576363,1.98630089e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b1 r0.5 c","hole":"KcAs","board":"4s8hKs","node":14369,"street":1,"player":1,"bucket":17,"probs":[0.999764908,0.000163239815,6.69420449e-05,4.91050015e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r1 r0.5 c k b0.5 c a","hole":"Jd5s","board":"5d6dAs3s","node":17458,"street":2,"player":0,"bucket":55,"probs":[0.00374090596,0.996259094],"toks":["f","c"]}
+{"history":"r0.5 r1 r0.5 c b1 c b0.5 c k a","hole":"8h3s","board":"4dQdTdAhJs","node":26019,"street":3,"player":1,"bucket":31,"probs":[1,0],"toks":["f","c"]}
+{"history":"a","hole":"QcTs","board":"","node":5,"street":0,"player":1,"bucket":114,"probs":[0.999998314,1.68561897e-06],"toks":["f","c"]}
+{"history":"r0.5 r1 c","hole":"KcTd","board":"Qs4s8c","node":24213,"street":1,"player":1,"bucket":154,"probs":[0.976221636,0.0237666829,1.16138597e-05,6.73331185e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 r0.5 c k b0.5 c","hole":"6h7h","board":"2h3dQs5d","node":22720,"street":2,"player":1,"bucket":90,"probs":[0.522909602,0.033663557,0.443418261,8.57937901e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 c b0.5 c b1 a","hole":"4sTc","board":"QcKd3h8c4h","node":25134,"street":3,"player":1,"bucket":113,"probs":[1,0],"toks":["f","c"]}
+{"history":"r0.5","hole":"3cJd","board":"","node":3,"street":0,"player":1,"bucket":22,"probs":[0.00447512713,0.995524817,8.64716246e-09,4.14940799e-08,6.09397905e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r1 c b0.5","hole":"AhTs","board":"4h9cJh","node":24218,"street":1,"player":0,"bucket":186,"probs":[1.62724655e-06,0.999723212,0.000275159955,1.06682158e-09],"toks":["f","c","r1","a"]}
+{"history":"c k k k a","hole":"TsAh","board":"Ad4s7hTd","node":21,"street":2,"player":0,"bucket":154,"probs":[0.223164146,0.776835854],"toks":["f","c"]}
+{"history":"c k b1 c b0.5 r1 c","hole":"4h4c","board":"KsTc9cAs7s","node":3294,"street":3,"player":1,"bucket":65,"probs":[0.734278301,0.161103717,0.0940317416,0.0105862402],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Jc2d","board":"","node":0,"street":0,"player":0,"bucket":9,"probs":[3.11280838e-06,0.999899108,3.98987223e-05,5.7879177e-05,1.69180253e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"Ts2h","board":"Jh7hTh","node":17827,"street":1,"player":1,"bucket":11,"probs":[0.998310873,0.00168902458,8.47548916e-08,1.74137953e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b1 c","hole":"4s7h","board":"Ac7d6h8d","node":28100,"street":2,"player":1,"bucket":135,"probs":[0.600938071,0.399034843,2.52215071e-06,2.45638816e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b1 r1 c k b0.5 c","hole":"2sJs","board":"4dQs9d8h3h","node":22353,"street":3,"player":1,"bucket":29,"probs":[0.0050745048,0.994925495],"toks":["k","a"]}
+{"history":"","hole":"4c2d","board":"","node":0,"street":0,"player":0,"bucket":2,"probs":[0.999984568,8.33577635e-06,6.98143692e-06,1.1486053e-07,8.59311659e-11],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 r1 r0.5 c b1","hole":"Jd3c","board":"7dKs2c","node":11286,"street":1,"player":0,"bucket":100,"probs":[0.999997316,0,2.68390089e-06],"toks":["f","c","a"]}
+{"history":"c k b0.5 c","hole":"5s6d","board":"2dKs3d5h","node":2147,"street":2,"player":1,"bucket":199,"probs":[0.294132295,0.705830605,3.08331067e-05,6.26721578e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k k k k a","hole":"9c6d","board":"9sQh9hJsJc","node":29,"street":3,"player":0,"bucket":176,"probs":[0.999999656,3.4372855e-07],"toks":["f","c"]}
+{"history":"","hole":"4c9c","board":"","node":0,"street":0,"player":0,"bucket":93,"probs":[1.06772833e-06,0.877038868,0.122758675,0.00020138643,2.98176611e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 r1 c","hole":"7hTh","board":"9hQs2h","node":23570,"street":1,"player":1,"bucket":24,"probs":[0.998198489,0.00164443161,7.42612072e-05,8.28184736e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k b0.5 c","hole":"6cQd","board":"KcQh8c2h","node":18328,"street":2,"player":1,"bucket":139,"probs":[0.990959724,0.00903961259,6.6353318e-07,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c k k b0.5 r1 c a","hole":"3h8h","board":"Js6d4cQc7s","node":29842,"street":3,"player":0,"bucket":7,"probs":[1,0],"toks":["f","c"]}
+{"history":"a","hole":"6sAc","board":"","node":5,"street":0,"player":1,"bucket":64,"probs":[0.999996345,3.65474702e-06],"toks":["f","c"]}
+{"history":"c k a","hole":"KdAc","board":"Ah3h4h","node":13,"street":1,"player":0,"bucket":39,"probs":[0.999017037,0.000982963499],"toks":["f","c"]}
+{"history":"c b1 r1 r0.5 c b0.5 c","hole":"6c3c","board":"QhTsQc9d","node":17538,"street":2,"player":1,"bucket":143,"probs":[0.999954062,3.91736434e-05,6.76461834e-06],"toks":["k","b0.5","a"]}
+{"history":"r1 r1 c b1 c b1 c k","hole":"JsKs","board":"Td4s2dQd9d","node":31397,"street":3,"player":0,"bucket":128,"probs":[0.11710045,0.88289955],"toks":["k","a"]}
+{"history":"","hole":"6h5c","board":"","node":0,"street":0,"player":0,"bucket":43,"probs":[1.664913e-06,0.500036016,0.376653152,0.123309168,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 c","hole":"Qh8h","board":"7c4d7s","node":3715,"street":1,"player":1,"bucket":195,"probs":[0.0154492566,0.843721359,0.140829233,1.51384995e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 c k b1 c k a","hole":"3s8c","board":"Kc6dKd9h","node":4861,"street":2,"player":1,"bucket":53,"probs":[0.999912569,8.74310115e-05],"toks":["f","c"]}
+{"history":"r0.5 c k k b1 c","hole":"6h9c","board":"Th2s5d2dAc","node":18227,"street":3,"player":1,"bucket":30,"probs":[0.0184216715,0.540199292,0.441379019,1.81883759e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"9d9s","board":"","node":0,"street":0,"player":0,"bucket":98,"probs":[2.61482036e-11,0.0180797202,0.659848925,0.322070604,7.50655237e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c a","hole":"Js9s","board":"2d5cTh","node":17834,"street":1,"player":0,"bucket":141,"probs":[0.99999777,2.22968691e-06],"toks":["f","c"]}
+{"history":"c k b1 r1 c a","hole":"2s3d","board":"Qh5h4h7d","node":3439,"street":2,"player":0,"bucket":90,"probs":[0.999999663,3.37271757e-07],"toks":["f","c"]}
+{"history":"c k b0.5 c k k","hole":"QsKs","board":"6sQc4h5c5h","node":2154,"street":3,"player":1,"bucket":164,"probs":[0.000237701153,0.000294273046,0.999467675,3.50841136e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"a","hole":"Ah3d","board":"","node":5,"street":0,"player":1,"bucket":25,"probs":[0.999997661,2.3389239e-06],"toks":["f","c"]}
+{"history":"r1 c a","hole":"6d8h","board":"Kd9dJh","node":26347,"street":1,"player":0,"bucket":16,"probs":[0.9999999,1.00190276e-07],"toks":["f","c"]}
+{"history":"c b1 c b1 c","hole":"2dKs","board":"9c2h2cTh","node":13988,"street":2,"player":1,"bucket":144,"probs":[8.23363763e-05,0.10131034,0.898606928,3.95387731e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r1 c b1 c b1 c a","hole":"7cAs","board":"QcKcJs6s2d","node":17286,"street":3,"player":0,"bucket":65,"probs":[0.689194913,0.310805087],"toks":["f","c"]}
+{"history":"c a","hole":"2hKc","board":"","node":9,"street":0,"player":0,"bucket":11,"probs":[0.999999959,4.13631035e-08],"toks":["f","c"]}
+{"history":"c k","hole":"4dQd","board":"3sTh3c","node":6,"street":1,"player":1,"bucket":3,"probs":[0.999863408,0.000133728791,2.86054397e-06,2.53816712e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k k","hole":"7s8s","board":"9cAdKc4c","node":26348,"street":2,"player":1,"bucket":53,"probs":[0.999999924,5.81873353e-08,1.46972733e-08,2.91707148e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b1 r1 c k k b1 a","hole":"Ts8d","board":"4d5h8hQcAc","node":14301,"street":3,"player":1,"bucket":130,"probs":[0,1],"toks":["f","c"]}
+{"history":"a","hole":"TsAs","board":"","node":5,"street":0,"player":1,"bucket":164,"probs":[0.9993088,0.000691199563],"toks":["f","c"]}
+{"history":"r1 r1 c","hole":"Kd7h","board":"Jd2h4s","node":30606,"street":1,"player":1,"bucket":58,"probs":[0.84146293,0.0450843501,0.113452562,1.58323603e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c k b0.5 c k a","hole":"7dJc","board":"Js9d5h2c","node":28824,"street":2,"player":1,"bucket":129,"probs":[0.67072868,0.32927132],"toks":["f","c"]}
+{"history":"r0.5 r0.5 r1 c b0.5 c b0.5 c b0.5","hole":"TdKd","board":"QdAd2h2s7s","node":24086,"street":3,"player":0,"bucket":93,"probs":[0.999990688,1.47793842e-06,7.83391647e-06],"toks":["f","c","a"]}
+{"history":"c","hole":"2h5d","board":"","node":2,"street":0,"player":1,"bucket":3,"probs":[0.999999933,3.30139403e-09,6.37583977e-08,0],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b1 a","hole":"Ks4h","board":"9sQcTh","node":13990,"street":1,"player":1,"bucket":105,"probs":[0.999941639,5.83607428e-05],"toks":["f","c"]}
+{"history":"r1 c k b0.5 c","hole":"2hQc","board":"8hTc7sJs","node":26817,"street":2,"player":1,"bucket":121,"probs":[0.999996863,1.68880645e-06,1.38604599e-06,6.20263456e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c k b1 c b1 c k","hole":"7hQc","board":"7d5dJd3dTs","node":29200,"street":3,"player":0,"bucket":78,"probs":[0.841280379,0.158719621],"toks":["k","a"]}
+{"history":"r0.5 r0.5","hole":"AhJd","board":"","node":17828,"street":0,"player":0,"bucket":129,"probs":[1.93453031e-09,0.500568115,0.0449508303,0.447896104,0.00658494808],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r1 r1 c k","hole":"Ac7s","board":"9s2cTd","node":26037,"street":1,"player":0,"bucket":112,"probs":[0.0278613178,0.969876311,0.00226227577,9.519193e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r1 c b1 c k","hole":"KcJd","board":"3s7cAsTh","node":31910,"street":2,"player":0,"bucket":126,"probs":[0.234995813,0.765004187],"toks":["k","a"]}
+{"history":"r0.5 c k k b1 c","hole":"Qd4c","board":"Jc2c9sAd6h","node":18227,"street":3,"player":1,"bucket":46,"probs":[0.783560051,0.190694205,0.0242451662,0.00150057777],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"8d9c","board":"","node":0,"street":0,"player":0,"bucket":85,"probs":[4.88421531e-08,0.52129668,0.367641172,0.111062097,1.57749784e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r1 c","hole":"3s7c","board":"2dJh6c","node":24213,"street":1,"player":1,"bucket":122,"probs":[0.0440404631,0.0075336737,0.948425597,2.66011098e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 c b0.5","hole":"Jd6c","board":"3cAd4s6h","node":2151,"street":2,"player":0,"bucket":180,"probs":[1.22326021e-08,0.965479324,0.0345205309,1.32989315e-07],"toks":["f","c","r1","a"]}
+{"history":"c k k b1 c k b0.5 r1 c","hole":"Th8d","board":"6hKc6c9dJs","node":1526,"street":3,"player":1,"bucket":50,"probs":[0.881346828,0.0352264891,0.0692316739,0.0141950091],"toks":["k","b0.5","b1","a"]}
+{"history":"c","hole":"7s7d","board":"","node":2,"street":0,"player":1,"bucket":70,"probs":[3.07862516e-05,0.000897876435,0.999071264,7.31989227e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b1 r1 a","hole":"6sTd","board":"4s2h3c","node":14265,"street":1,"player":0,"bucket":121,"probs":[0.9,0.1],"toks":["f","c"]}
+{"history":"r1 c b0.5 c b1","hole":"5sAc","board":"2c4s8d5c","node":27654,"street":2,"player":0,"bucket":180,"probs":[0.0184880159,0.969085264,0.0124267107,8.88713202e-09],"toks":["f","c","r1","a"]}
+{"history":"r0.5 c b0.5 c b1 r1 c","hole":"7s5c","board":"As2s5dAcTd","node":19807,"street":3,"player":1,"bucket":137,"probs":[0.999304366,0.00056203472,0.000133599724],"toks":["k","b0.5","a"]}
+{"history":"","hole":"Th6s","board":"","node":0,"street":0,"player":0,"bucket":60,"probs":[1.46550323e-06,1.85603844e-05,0.614695399,0.385284573,2.1304264e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 r1 c k b0.5 a","hole":"4h9d","board":"Th8dQh","node":31844,"street":1,"player":0,"bucket":168,"probs":[0.166666667,0.833333333],"toks":["f","c"]}
+{"history":"c b1 c b1 r1 c b0.5 a","hole":"Th2d","board":"Jh2h5c5d","node":14336,"street":2,"player":1,"bucket":24,"probs":[0.999819397,0.000180603215],"toks":["f","c"]}
+{"history":"c k b1 c b0.5 c k b1","hole":"QdKd","board":"7sQhTdKc6c","node":3243,"street":3,"player":1,"bucket":186,"probs":[0,0.394822006,0.605177994,0],"toks":["f","c","r1","a"]}
+{"history":"a","hole":"Jd6d","board":"","node":5,"street":0,"player":1,"bucket":121,"probs":[0.999999892,1.07991448e-07],"toks":["f","c"]}
+{"history":"c b1 c b0.5","hole":"8d2d","board":"6sJcKd","node":12233,"street":1,"player":0,"bucket":51,"probs":[0.999999993,2.70709451e-09,0,4.6814418e-09],"toks":["f","c","r1","a"]}
+{"history":"c b1 c k k","hole":"Ks8c","board":"7hQsAd7d","node":12236,"street":2,"player":1,"bucket":22,"probs":[0.671180769,0.328614701,0.000204525774,4.15222257e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 c k k","hole":"5s9d","board":"7dKs8hAhQd","node":19423,"street":3,"player":1,"bucket":34,"probs":[0.470438687,0.431797867,0.0954618923,0.00230155413],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5","hole":"8cTs","board":"","node":3,"street":0,"player":1,"bucket":86,"probs":[1.44001614e-06,0.946757068,2.87660405e-05,0.053212725,5.16381344e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b1 c a","hole":"6c8c","board":"9d2c3s","node":12235,"street":1,"player":0,"bucket":150,"probs":[0.999999836,1.63720013e-07],"toks":["f","c"]}
+{"history":"c k b0.5 c b1","hole":"8hAd","board":"6s6h2sKd","node":2152,"street":2,"player":0,"bucket":188,"probs":[0.920351215,0.0792280808,0.000420541367,1.62698122e-07],"toks":["f","c","r1","a"]}
+{"history":"r0.5 c k b0.5 r1 c k k k a","hole":"Th2d","board":"Jc5c7d9h9d","node":18765,"street":3,"player":1,"bucket":29,"probs":[0.999999976,2.44699287e-08],"toks":["f","c"]}
+{"history":"c","hole":"5cTh","board":"","node":2,"street":0,"player":1,"bucket":47,"probs":[0.993078053,0.00520724127,0.00171469747,8.09853758e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5","hole":"AcTs","board":"Th2sAs","node":11,"street":1,"player":0,"bucket":146,"probs":[5.12222453e-10,0.999979924,2.006748e-05,7.76346632e-09],"toks":["f","c","r1","a"]}
+{"history":"r1 c b1 c","hole":"4c8h","board":"Th6dKd9s","node":28100,"street":2,"player":1,"bucket":121,"probs":[0.868861219,0.00189617443,0.129242121,4.84980111e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b0.5 c b0.5 c","hole":"4hJh","board":"KsAd8s4d3s","node":31247,"street":3,"player":1,"bucket":102,"probs":[0.99977574,0.000222534568,1.72589539e-06],"toks":["k","b0.5","a"]}
+{"history":"","hole":"6sTd","board":"","node":0,"street":0,"player":0,"bucket":60,"probs":[1.46550323e-06,1.85603844e-05,0.614695399,0.385284573,2.1304264e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"4dKc","board":"Ah5hQd","node":6,"street":1,"player":1,"bucket":157,"probs":[0.995690621,0.00430931625,6.26541331e-08,2.05143021e-11],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r1 r0.5 c k k b1","hole":"7sQd","board":"9c4sQs4d","node":11294,"street":2,"player":0,"bucket":129,"probs":[0,0.999956699,4.33014256e-05],"toks":["f","c","a"]}
+{"history":"r1 c b0.5 c b1 c k","hole":"AsAc","board":"Kd9cKc4dQd","node":27923,"street":3,"player":0,"bucket":166,"probs":[0.952196452,0.0478006225,2.44363377e-06,4.82245386e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 a","hole":"5d4d","board":"","node":26343,"street":0,"player":0,"bucket":41,"probs":[0.999173957,0.000826042637],"toks":["f","c"]}
+{"history":"r1 r1 c b0.5 a","hole":"2sAs","board":"8s4s7c","node":31165,"street":1,"player":1,"bucket":27,"probs":[0.00172176528,0.998278235],"toks":["f","c"]}
+{"history":"r1 c b0.5 c k b1","hole":"Td8c","board":"4sJd2cKs","node":27658,"street":2,"player":1,"bucket":95,"probs":[0.999999631,3.48718019e-08,2.87810761e-07,4.5881166e-08],"toks":["f","c","r1","a"]}
+{"history":"r1 c b0.5 c b0.5 c b1","hole":"4h5s","board":"2s7h3cAh7c","node":27850,"street":3,"player":0,"bucket":192,"probs":[4.28163815e-08,2.19433955e-07,0.999999738],"toks":["f","c","a"]}
+{"history":"","hole":"3cQd","board":"","node":0,"street":0,"player":0,"bucket":23,"probs":[2.25779702e-06,0.000700279733,0.211599123,0.787698331,8.29483924e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c b1","hole":"8hKh","board":"Th9cKs","node":26346,"street":1,"player":0,"bucket":74,"probs":[0,0.999950995,4.25606674e-05,6.44472202e-06],"toks":["f","c","r1","a"]}
+{"history":"r0.5 c k k k","hole":"Kc6s","board":"3d9d3c7d","node":17839,"street":2,"player":0,"bucket":25,"probs":[0.999999985,9.61366934e-10,1.33557494e-08,4.9891039e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b1 c b0.5 c","hole":"Js6c","board":"JdQsKc8sTc","node":31382,"street":3,"player":1,"bucket":83,"probs":[0.98995965,0.0100403497],"toks":["k","a"]}
+{"history":"","hole":"Jd8c","board":"","node":0,"street":0,"player":0,"bucket":87,"probs":[1.57758853e-07,0.47167367,0.142289907,0.386036262,2.97579421e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r1 r1 c","hole":"Td8d","board":"3h7cKc","node":26035,"street":1,"player":1,"bucket":54,"probs":[0.999997473,1.11254197e-06,1.18649868e-06,2.27646987e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 c","hole":"7sAs","board":"Tc6dKd5c","node":2147,"street":2,"player":1,"bucket":137,"probs":[0.99981165,3.7174667e-05,0.000151006122,1.69654093e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c k b0.5 r1 c b0.5 c","hole":"8hJd","board":"2d2cKc3dQc","node":21340,"street":3,"player":1,"bucket":64,"probs":[0.421292467,0.346051624,0.232655908],"toks":["k","b0.5","a"]}
+{"history":"r1","hole":"5s2d","board":"","node":4,"street":0,"player":1,"bucket":3,"probs":[0.999999985,7.88752151e-09,4.55936237e-11,1.17559487e-09,5.99037137e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c b0.5","hole":"6h2d","board":"3sJdKc","node":17832,"street":1,"player":0,"bucket":75,"probs":[0.997636222,1.65110652e-08,0.00236375785,3.323266e-09],"toks":["f","c","r1","a"]}
+{"history":"r0.5 r0.5 r1 c k k","hole":"9d5c","board":"4h2d7hQc","node":23576,"street":2,"player":1,"bucket":107,"probs":[0.993963427,0.00603355459,2.07885716e-06,9.39350394e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r0.5 r0.5 c b1 c k b0.5 c a","hole":"7sTs","board":"AdAs3hQc5c","node":16158,"street":3,"player":0,"bucket":47,"probs":[0.99995763,4.23704875e-05],"toks":["f","c"]}
+{"history":"a","hole":"5s4c","board":"","node":5,"street":0,"player":1,"bucket":29,"probs":[0.999999473,5.26560827e-07],"toks":["f","c"]}
+{"history":"r0.5 r1 c","hole":"8c5h","board":"Ks6d9s","node":24213,"street":1,"player":1,"bucket":121,"probs":[4.27312289e-05,0.999957088,3.40236505e-08,1.46513002e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 c","hole":"Jh7d","board":"6d3hKsJs","node":27649,"street":2,"player":1,"bucket":139,"probs":[0.822741814,0.177202068,3.85363103e-05,1.75822047e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c k k k b1 c b0.5 a","hole":"5sTh","board":"JcTs9sJs6c","node":28658,"street":3,"player":1,"bucket":149,"probs":[1,0],"toks":["f","c"]}
+{"history":"c","hole":"9c7s","board":"","node":2,"street":0,"player":1,"bucket":72,"probs":[0.952974295,0.000764691911,0.0462549257,6.08769483e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 r1","hole":"3dJc","board":"Qh8sKh","node":20052,"street":1,"player":1,"bucket":183,"probs":[0.788683665,0.051013971,0.160302364],"toks":["f","c","a"]}
+{"history":"r0.5 c b0.5 r1 c b0.5","hole":"9s6s","board":"8c3hKhKd","node":19839,"street":2,"player":0,"bucket":145,"probs":[0.99999895,1.92939397e-07,1.02034911e-07,7.55394745e-07],"toks":["f","c","r1","a"]}
+{"history":"c k b1 c k b0.5 c","hole":"5s8s","board":"4s3cKd8c5c","node":3034,"street":3,"player":1,"bucket":171,"probs":[0.894632556,0.105148764,0.000218679999,0],"toks":["k","b0.5","b1","a"]}
+{"history":"a","hole":"TdJc","board":"","node":5,"street":0,"player":1,"bucket":113,"probs":[0.999999646,3.53618455e-07],"toks":["f","c"]}
+{"history":"r0.5 r0.5 r0.5 c a","hole":"3h9h","board":"Jh4cJs","node":22394,"street":1,"player":0,"bucket":179,"probs":[0.999999249,7.50820271e-07],"toks":["f","c"]}
+{"history":"c k b1 c","hole":"7cKd","board":"5c4c5d9h","node":2966,"street":2,"player":1,"bucket":132,"probs":[0.896655464,0.0814899373,0.0218545986,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 c b1 r1 c a","hole":"2h9s","board":"Ts7hAd5h8h","node":19811,"street":3,"player":0,"bucket":16,"probs":[0.875006429,0.124993571],"toks":["f","c"]}
+{"history":"r1","hole":"2dJh","board":"","node":4,"street":0,"player":1,"bucket":9,"probs":[0.999997928,2.05591115e-06,6.4729581e-10,1.34763812e-08,2.45500625e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"QdJc","board":"3c9d6d","node":17827,"street":1,"player":1,"bucket":98,"probs":[0.978726944,0.019340692,0.00193236235,1.67407998e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 c","hole":"9dJs","board":"5h3c7h8s","node":24970,"street":2,"player":1,"bucket":168,"probs":[0.00111791958,0.365966754,0.632915236,9.03427086e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r0.5 c b1 c k k k","hole":"7c5s","board":"KsTdQh5h8d","node":31717,"street":3,"player":0,"bucket":86,"probs":[0.455340533,0.544659467],"toks":["k","a"]}
+{"history":"r1","hole":"3s4c","board":"","node":4,"street":0,"player":1,"bucket":15,"probs":[0.999999959,2.672549e-08,1.47576655e-09,1.25892171e-08,8.70299892e-11],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b1 c b1 a","hole":"JsQc","board":"9d8hQd","node":13990,"street":1,"player":1,"bucket":29,"probs":[0.968666447,0.0313335534],"toks":["f","c"]}
+{"history":"r1 r0.5 r0.5 c b1 c","hole":"3s9s","board":"5hJs4d5c","node":30238,"street":2,"player":1,"bucket":53,"probs":[0.995661605,0.00224980429,0.00208859052],"toks":["k","b0.5","a"]}
+{"history":"r1 c k b1 c b1 r1 c","hole":"9h8c","board":"7d4dTc7sQc","node":27527,"street":3,"player":1,"bucket":34,"probs":[0.995018229,0.00498177062],"toks":["k","a"]}
+{"history":"","hole":"2h9s","board":"","node":0,"street":0,"player":0,"bucket":7,"probs":[0.999993438,6.56013813e-06,6.05347228e-10,3.46539444e-10,6.74461653e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"TdQs","board":"3dKc4c","node":17827,"street":1,"player":1,"bucket":195,"probs":[0.991526113,0.0071918476,0.00128203742,2.23055407e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k k k","hole":"2h3c","board":"6sJhQsKh","node":18,"street":2,"player":0,"bucket":196,"probs":[0.721366985,0.278632692,3.13898705e-07,8.40578979e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r0.5 c k b0.5 r1 c b1 c","hole":"Jc6h","board":"2c7hAd5h3d","node":7253,"street":3,"player":1,"bucket":18,"probs":[0.317600412,0.682399588],"toks":["k","a"]}
+{"history":"r1","hole":"Qc5s","board":"","node":4,"street":0,"player":1,"bucket":49,"probs":[0.999981988,1.7660113e-05,2.5974613e-07,1.6484322e-08,7.58963133e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 c","hole":"7sQs","board":"4cThJs","node":30606,"street":1,"player":1,"bucket":149,"probs":[0.908847253,0.0354663528,0.0556862993,9.51179579e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k b0.5","hole":"Kc9c","board":"7cJd2dTh","node":17840,"street":2,"player":0,"bucket":35,"probs":[7.77874154e-07,0.999999187,3.34778411e-08,1.43143893e-09],"toks":["f","c","r1","a"]}
+{"history":"r0.5 r0.5 r0.5 c b0.5 c b0.5 c","hole":"5sQs","board":"2cJd2h6hQc","node":23278,"street":3,"player":1,"bucket":165,"probs":[0.500927704,0.286188113,0.0790734461,0.133810736],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"8d5d","board":"","node":0,"street":0,"player":0,"bucket":81,"probs":[1.94044306e-07,9.51825123e-05,0.721122492,0.27878213,1.33303327e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c b1","hole":"Kc5h","board":"9sTh2d","node":17833,"street":1,"player":0,"bucket":80,"probs":[0.99999929,6.46936511e-09,7.00190774e-07,3.06685913e-09],"toks":["f","c","r1","a"]}
+{"history":"r1 c k k","hole":"3dKc","board":"Qd5c5dJs","node":26348,"street":2,"player":1,"bucket":132,"probs":[0.99999347,5.56529194e-06,9.64001907e-07,7.98469635e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k b1 r1 c b1 c","hole":"JhQd","board":"6h4dJc2d6c","node":2088,"street":3,"player":1,"bucket":169,"probs":[0.999828614,0.000116251481,3.64615009e-06,5.14887691e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 a","hole":"KhAc","board":"","node":17830,"street":0,"player":0,"bucket":155,"probs":[1.42227022e-08,0.999999986],"toks":["f","c"]}
+{"history":"r1 r0.5 r1 c a","hole":"8h7h","board":"9cJsJd","node":30308,"street":1,"player":0,"bucket":168,"probs":[0.999995069,4.93076315e-06],"toks":["f","c"]}
+{"history":"c k b0.5 c","hole":"KhJd","board":"Jh3h9d5h","node":2147,"street":2,"player":1,"bucket":21,"probs":[0.000867624075,0.371626697,0.627487873,1.78059904e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c k k","hole":"Ad5d","board":"Kd3sQc4c2c","node":20058,"street":3,"player":1,"bucket":186,"probs":[0.0519567116,0.0268338148,0.920628131,0.000581342167],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"9s4h","board":"","node":0,"street":0,"player":0,"bucket":33,"probs":[7.26178376e-06,0.99977794,0.000106417628,0.000108381008,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"7cAc","board":"8c6cAh","node":6,"street":1,"player":1,"bucket":65,"probs":[0.959623399,0.0394247475,0.000951769517,8.44338018e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b1 c","hole":"8h7s","board":"2s3d7d4c","node":13988,"street":2,"player":1,"bucket":186,"probs":[0.942266835,0.0577257109,3.01673589e-06,4.437449e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r1 r1 c b1 c k k","hole":"5d8c","board":"8hJdTh4c9c","node":17800,"street":3,"player":1,"bucket":64,"probs":[0.834358914,0.165641086],"toks":["k","a"]}
+{"history":"r0.5","hole":"Ad6s","board":"","node":3,"street":0,"player":1,"bucket":64,"probs":[1.11768663e-06,0.998847299,0.00111079676,4.02910271e-05,4.95341871e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 c","hole":"8c3c","board":"6h8h8d","node":30606,"street":1,"player":1,"bucket":45,"probs":[0.188021717,0.811766966,0.000211035817,2.81322032e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k b0.5 c b0.5 r1","hole":"2s5s","board":"9dTh6c6h","node":860,"street":2,"player":1,"bucket":124,"probs":[0.999855814,0.000144185711,0],"toks":["f","c","a"]}
+{"history":"r1 c b1 r1 c b1 c","hole":"Kh2d","board":"3sJhKdQhAc","node":28460,"street":3,"player":1,"bucket":127,"probs":[0.124824239,0.875175761],"toks":["k","a"]}
+{"history":"r0.5","hole":"2h9c","board":"","node":3,"street":0,"player":1,"bucket":7,"probs":[0.999999287,1.17471428e-07,3.78457846e-09,5.83807202e-07,7.6134499e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c b1","hole":"Tc7c","board":"Qc2s2h","node":17833,"street":1,"player":0,"bucket":1,"probs":[0.999055716,0.000927864946,1.64077574e-05,1.17195056e-08],"toks":["f","c","r1","a"]}
+{"history":"r1 c b1 c","hole":"5sQd","board":"Qc6s3cKh","node":28100,"street":2,"player":1,"bucket":139,"probs":[0.908965712,0.0910306882,2.00162395e-06,1.59799943e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k k b1 c","hole":"7dJs","board":"TcQh9c8h2c","node":18015,"street":3,"player":1,"bucket":177,"probs":[0.994796672,0.00468838696,0.000514928008,1.32228136e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5","hole":"3cKc","board":"","node":7,"street":0,"player":0,"bucket":144,"probs":[8.58648637e-06,0.0272657467,0.000109054675,0.972616554,5.78314887e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 r1 c","hole":"4c7c","board":"Js5dAc","node":30303,"street":1,"player":1,"bucket":20,"probs":[0.999991566,5.00599685e-06,5.15109183e-07,2.9125458e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b1 c","hole":"4c6s","board":"3h2dJs2s","node":22112,"street":2,"player":1,"bucket":20,"probs":[0.823851372,0.00253778208,0.173599228,1.16181013e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k b1 c b1 c b0.5","hole":"QhKc","board":"6hAs2s2d6c","node":19238,"street":3,"player":0,"bucket":64,"probs":[0.632045438,0.261234519,0.106720043],"toks":["f","c","a"]}
+{"history":"a","hole":"7s6s","board":"","node":5,"street":0,"player":1,"bucket":69,"probs":[0.999999762,2.38004394e-07],"toks":["f","c"]}
+{"history":"c k k","hole":"7s8d","board":"4h2c8s","node":10,"street":1,"player":0,"bucket":110,"probs":[0.000617274867,0.999382463,2.61445602e-07,6.72702465e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k a","hole":"JhKd","board":"4h6hQd7h","node":17842,"street":2,"player":0,"bucket":82,"probs":[0.99905096,0.000949039902],"toks":["f","c"]}
+{"history":"c k k b0.5 c b0.5 r1 c k a","hole":"Jc6c","board":"Jh3d5c3s9d","node":928,"street":3,"player":1,"bucket":163,"probs":[0.999999269,7.31316106e-07],"toks":["f","c"]}
+{"history":"","hole":"5h3s","board":"","node":0,"street":0,"player":0,"bucket":16,"probs":[3.64307598e-06,0.000666372608,0.433126323,0.566203657,3.99261425e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"2h7c","board":"Qs2c9c","node":6,"street":1,"player":1,"bucket":86,"probs":[0.988219597,0.0117803647,2.73249711e-08,1.12833188e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 r1 c k","hole":"3c2d","board":"3h5c7hKc","node":19838,"street":2,"player":0,"bucket":59,"probs":[0.560082768,0.131221347,0.30869541,4.74595634e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 r1 c k k","hole":"AsTd","board":"ThAdQs2c6s","node":20381,"street":3,"player":1,"bucket":191,"probs":[0.0303311251,0.836962866,0.119121513,0.0135844956],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Jc5d","board":"","node":0,"street":0,"player":0,"bucket":48,"probs":[1.7186318e-06,8.01814144e-05,0.998970449,0.00094764339,7.87024311e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c b1 r1 a","hole":"8s6h","board":"4dQh3d","node":20376,"street":1,"player":0,"bucket":20,"probs":[1,0],"toks":["f","c"]}
+{"history":"c k b1 c","hole":"9s2h","board":"5dJs5hQd","node":2966,"street":2,"player":1,"bucket":183,"probs":[0.99773149,0.0012070722,0.00104108461,2.03527204e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 r1 c k k b0.5 c k b0.5","hole":"4h9c","board":"2h5h8c7d7h","node":23719,"street":3,"player":1,"bucket":6,"probs":[1,0,0],"toks":["f","c","a"]}
+{"history":"c b0.5 a","hole":"8dKh","board":"","node":3718,"street":0,"player":1,"bucket":89,"probs":[0.905625832,0.0943741678],"toks":["f","c"]}
+{"history":"r1 c","hole":"9h4c","board":"Qc4h6d","node":26340,"street":1,"player":1,"bucket":60,"probs":[0.928291248,0.0717087408,2.98365681e-09,7.87413495e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k k","hole":"3sQh","board":"9s8hJsAc","node":14,"street":2,"player":1,"bucket":76,"probs":[0.882163401,2.5990435e-08,0.117835004,1.56850614e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 c b1 c a","hole":"AhJc","board":"Ks7h5c4c2c","node":25159,"street":3,"player":0,"bucket":62,"probs":[0.999974912,2.50880651e-05],"toks":["f","c"]}
+{"history":"","hole":"4d3s","board":"","node":0,"street":0,"player":0,"bucket":15,"probs":[0.00311338782,0.173791194,0.43237562,0.390719798,2.34291099e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 r0.5 c","hole":"9c7s","board":"5cJs8h","node":6392,"street":1,"player":1,"bucket":22,"probs":[0.864192659,0.0461899765,0.0896143029,3.06188101e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k k k b0.5","hole":"AsTs","board":"KdJh4d3d","node":26357,"street":2,"player":1,"bucket":50,"probs":[0.130827524,0.577765424,0.291407052,0],"toks":["f","c","r1","a"]}
+{"history":"c b1 r0.5 c b1 c k k","hole":"Jc9d","board":"9c3hAd2h7d","node":15408,"street":3,"player":1,"bucket":150,"probs":[0.997897163,0.00210283722,0,0],"toks":["k","b0.5","b1","a"]}
+{"history":"c","hole":"4s6h","board":"","node":2,"street":0,"player":1,"bucket":30,"probs":[0.999178443,3.00521026e-05,0.000791500906,3.51218432e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c","hole":"9sJh","board":"Qc6hAd","node":24213,"street":1,"player":1,"bucket":3,"probs":[0.347056401,0.588379735,0.0645638545,9.19031643e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b1 c","hole":"TsKc","board":"JdTd8d3d","node":25245,"street":2,"player":1,"bucket":89,"probs":[0.971577037,0.028417847,2.62178692e-06,2.49436293e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 r1 c b1 c k","hole":"Jc3h","board":"8sJh5h2hAs","node":2912,"street":3,"player":0,"bucket":142,"probs":[0.999953643,2.33048544e-05,1.11664627e-05,1.18855105e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"7hAh","board":"","node":0,"street":0,"player":0,"bucket":161,"probs":[8.41861076e-09,2.53991731e-06,0.560707212,0.439289774,4.65941557e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"6d4d","board":"7d2h6s","node":17827,"street":1,"player":1,"bucket":70,"probs":[0.998093706,0.00176179765,0.000144478216,1.78523676e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b1 c a","hole":"6cAd","board":"Ac8c2hTs","node":28106,"street":2,"player":0,"bucket":30,"probs":[0.197877889,0.802122111],"toks":["f","c"]}
+{"history":"c k k k k k b0.5 a","hole":"AcKh","board":"2dTdJh2c9c","node":61,"street":3,"player":1,"bucket":93,"probs":[1,0],"toks":["f","c"]}
+{"history":"r1 r1","hole":"6s8d","board":"","node":26342,"street":0,"player":0,"bucket":58,"probs":[0.999958805,4.10955119e-05,9.72337577e-08,1.72626613e-10,1.58839478e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c a","hole":"2hTd","board":"2d4sAs","node":26347,"street":1,"player":0,"bucket":85,"probs":[0.972007785,0.0279922146],"toks":["f","c"]}
+{"history":"r0.5 r1 c k k","hole":"Tc8d","board":"As7c2sQc","node":24221,"street":2,"player":1,"bucket":95,"probs":[0.986102165,0.00872870183,0.00516911586,1.73690012e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 c b1 c k k","hole":"6d4s","board":"ThKcJh2h4d","node":5946,"street":3,"player":1,"bucket":95,"probs":[0.999925042,1.41915834e-05,5.21548297e-05,8.61123329e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"9sTs","board":"","node":0,"street":0,"player":0,"bucket":111,"probs":[3.50483933e-07,0.0231152907,0.413162608,0.563721742,9.10900264e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"2s9c","board":"9s3c4s","node":26340,"street":1,"player":1,"bucket":110,"probs":[0.999991141,8.36938639e-06,4.8072229e-07,8.58015792e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 r0.5 c b1 r1 c","hole":"3cJs","board":"Ac2cKsQh","node":23543,"street":2,"player":1,"bucket":132,"probs":[1,0],"toks":["k","a"]}
+{"history":"c b1 c k b1 c b0.5 c","hole":"6s5c","board":"Td5h6h8cAd","node":13328,"street":3,"player":1,"bucket":178,"probs":[0.543570097,0.419389625,0.0370162652,2.40120625e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"c","hole":"9d7h","board":"","node":2,"street":0,"player":1,"bucket":72,"probs":[0.952974295,0.000764691911,0.0462549257,6.08769483e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r0.5 r1 c b0.5 r1","hole":"5s7d","board":"TcQcJh","node":9888,"street":1,"player":1,"bucket":133,"probs":[0.333333333,0.333333333,0.333333333],"toks":["f","c","a"]}
+{"history":"c k k k b1 a","hole":"5cQc","board":"9h2h8sTs","node":456,"street":2,"player":1,"bucket":173,"probs":[0.993877551,0.00612244898],"toks":["f","c"]}
+{"history":"c b0.5 c k k b1 c","hole":"Qd8h","board":"2sKcTh4s6d","node":4115,"street":3,"player":1,"bucket":47,"probs":[0.929772113,0.0192784884,0.0358401157,0.0151092828],"toks":["k","b0.5","b1","a"]}
+{"history":"c","hole":"4c4s","board":"","node":2,"street":0,"player":1,"bucket":28,"probs":[5.07183959e-05,0.0374550188,0.96249352,7.42800997e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c k","hole":"4c3d","board":"Ts6d6h","node":6,"street":1,"player":1,"bucket":164,"probs":[0.999987079,1.0735805e-05,2.1850315e-06,6.21934318e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b0.5 c","hole":"5dKd","board":"7cAs8d7s","node":26817,"street":2,"player":1,"bucket":103,"probs":[0.999999794,1.81421039e-07,7.55900388e-09,1.74748934e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b1 r1 c b0.5 c","hole":"Js8d","board":"Td8h7sThKh","node":14335,"street":3,"player":1,"bucket":130,"probs":[0.999319886,0.000680114197],"toks":["k","a"]}
+{"history":"c b0.5","hole":"Ad7c","board":"","node":7,"street":0,"player":0,"bucket":77,"probs":[0,0.926513639,0.00245528566,0.0710310753,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 c","hole":"Qd2d","board":"7h7cKc","node":3715,"street":1,"player":1,"bucket":157,"probs":[0.900385647,0.0995273191,8.69454305e-05,8.81459245e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b1 c","hole":"6d6s","board":"2c9dJdJh","node":28100,"street":2,"player":1,"bucket":109,"probs":[0.999494658,5.35471207e-05,0.000451351802,4.42660252e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r0.5 c b0.5 c b0.5 r1 c","hole":"7cKh","board":"3c5d6d6c3s","node":15296,"street":3,"player":1,"bucket":89,"probs":[0.767931344,0.232068656],"toks":["k","a"]}
+{"history":"r1","hole":"4h8h","board":"","node":4,"street":0,"player":1,"bucket":80,"probs":[4.82222445e-05,0.998814099,0.00107333293,6.4332422e-05,1.30027522e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c k","hole":"5dAd","board":"6d4c3c","node":20508,"street":1,"player":0,"bucket":174,"probs":[0.448581436,0.0376379348,0.513780626,3.47319496e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b1 c b1 a","hole":"2sTs","board":"7h6cKh7d","node":22298,"street":2,"player":1,"bucket":45,"probs":[0.99460357,0.00539643005],"toks":["f","c"]}
+{"history":"r1 c b0.5 c b0.5 r1 c b0.5 a","hole":"Ts4s","board":"3hTh3s5s7c","node":27910,"street":3,"player":1,"bucket":158,"probs":[0,1],"toks":["f","c"]}
+{"history":"","hole":"7s4h","board":"","node":0,"street":0,"player":0,"bucket":31,"probs":[1.01152993e-06,0.349024871,0.571922713,0.0790514038,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"KsTc","board":"8s8h2c","node":17827,"street":1,"player":1,"bucket":151,"probs":[0.999964154,3.40921067e-05,1.74905008e-06,4.96009162e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k b1 a","hole":"8c5c","board":"Td2h2d2c","node":18229,"street":2,"player":1,"bucket":67,"probs":[0.999330656,0.000669344043],"toks":["f","c"]}
+{"history":"r0.5 c k k b0.5 c a","hole":"3hAs","board":"Qh8sJh4hTs","node":18122,"street":3,"player":0,"bucket":46,"probs":[0.999999982,1.83172568e-08],"toks":["f","c"]}
+{"history":"","hole":"Qh9s","board":"","node":0,"street":0,"player":0,"bucket":101,"probs":[2.77386171e-07,0.591349849,0.408632736,1.71348422e-05,2.72327817e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 r0.5 c b0.5","hole":"4d2h","board":"Kd3sJc","node":6397,"street":1,"player":0,"bucket":34,"probs":[0.950277151,0.00127216723,0.0484273874,2.32948192e-05],"toks":["f","c","r1","a"]}
+{"history":"r1 r1 c b1 r1 c","hole":"7d4h","board":"4d4cKd2s","node":31410,"street":2,"player":1,"bucket":154,"probs":[0,1],"toks":["k","a"]}
+{"history":"c b1 r1 c k b1 r1 c k k k","hole":"3hQh","board":"Ks8sJs8c6d","node":17032,"street":3,"player":0,"bucket":64,"probs":[0.00571428571,0.994285714],"toks":["k","a"]}
+{"history":"a","hole":"5h8c","board":"","node":5,"street":0,"player":1,"bucket":45,"probs":[0.999998546,1.45397876e-06],"toks":["f","c"]}
+{"history":"r1 c","hole":"8d4h","board":"6hAh2d","node":26340,"street":1,"player":1,"bucket":20,"probs":[0.999996877,2.32898901e-06,7.89945037e-07,3.81270906e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r0.5 r1 c b1 c b0.5","hole":"8h5d","board":"7s2dJcAc","node":10037,"street":2,"player":0,"bucket":23,"probs":[1,0,0],"toks":["f","c","a"]}
+{"history":"r1 c k b0.5 c b1 r1 c k","hole":"QcQs","board":"QdQhJdTs7s","node":27126,"street":3,"player":0,"bucket":199,"probs":[0,1],"toks":["k","a"]}
+{"history":"","hole":"7d2h","board":"","node":0,"street":0,"player":0,"bucket":5,"probs":[0.999991494,1.42329278e-09,6.11174063e-06,2.39277639e-06,4.29619346e-11],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 c k","hole":"9h8d","board":"As5c5s","node":28485,"street":1,"player":0,"bucket":134,"probs":[0.999939747,5.39577551e-05,6.26548107e-06,2.99688436e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r0.5 c b0.5 c","hole":"5hKd","board":"9sAhKc4s","node":31650,"street":2,"player":1,"bucket":80,"probs":[0.999837743,2.04634651e-06,0.000160210845],"toks":["k","b0.5","a"]}
+{"history":"r1 c b0.5 r1 c b0.5 c","hole":"9s8d","board":"Ah5c9dQsKd","node":28056,"street":3,"player":1,"bucket":113,"probs":[0.998627577,0.000142324832,0.00123009772],"toks":["k","b0.5","a"]}
+{"history":"c a","hole":"3s5d","board":"","node":9,"street":0,"player":0,"bucket":16,"probs":[0.999974919,2.50814784e-05],"toks":["f","c"]}
+{"history":"r0.5 r0.5 r1 c b0.5 r1","hole":"KdJs","board":"3cAh7d","node":24000,"street":1,"player":1,"bucket":118,"probs":[0.99847183,0.00124343755,0.000284732498],"toks":["f","c","a"]}
+{"history":"c b0.5 r0.5 c b1 r1 c","hole":"Kc9d","board":"4s8s5cTc","node":8212,"street":2,"player":1,"bucket":71,"probs":[0.406658545,0.584320713,0.00902074203],"toks":["k","b0.5","a"]}
+{"history":"c k b1 r1 c b0.5 c","hole":"5sJs","board":"Ad5c3dKdTc","node":3605,"street":3,"player":1,"bucket":101,"probs":[0.93279507,0.00222524092,0.00091229974,0.0640673892],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"TsTd","board":"","node":0,"street":0,"player":0,"bucket":112,"probs":[0,0.0152688393,0.565433178,0.419297094,8.89314891e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"Ad8d","board":"9s3s8s","node":6,"street":1,"player":1,"bucket":128,"probs":[0.999974137,1.06136579e-05,1.52007149e-05,4.89284845e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k k b0.5 a","hole":"3h5h","board":"Jd7cQc6d","node":333,"street":2,"player":1,"bucket":20,"probs":[0.99999999,9.8189173e-09],"toks":["f","c"]}
+{"history":"r0.5 r1 r0.5 c b1 c b0.5 c a","hole":"7h5h","board":"Ac4c8h4h5c","node":26017,"street":3,"player":0,"bucket":104,"probs":[0.451608956,0.548391044],"toks":["f","c"]}
+{"history":"","hole":"7h2c","board":"","node":0,"street":0,"player":0,"bucket":5,"probs":[0.999991494,1.42329278e-09,6.11174063e-06,2.39277639e-06,4.29619346e-11],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"Qd7s","board":"QcAh7d","node":6,"street":1,"player":1,"bucket":45,"probs":[0.980348063,0.0140947456,0.0055564009,7.90088332e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 c","hole":"8s8d","board":"Kc3s2h5c","node":2147,"street":2,"player":1,"bucket":18,"probs":[0.971339739,0.0285631521,9.63993218e-05,7.09966556e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r1 c k k b0.5 r1 c k","hole":"Kc5s","board":"3cKs4s8hKh","node":10356,"street":3,"player":0,"bucket":189,"probs":[3.8224469e-06,0.0524174843,0.947578693],"toks":["k","b0.5","a"]}
+{"history":"","hole":"6c7c","board":"","node":0,"street":0,"player":0,"bucket":69,"probs":[6.3703256e-07,0.0531597189,0.541919252,0.404920389,2.90620845e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 r0.5 c","hole":"Qh5s","board":"KhTc8s","node":31435,"street":1,"player":1,"bucket":183,"probs":[0.999996948,1.3345996e-07,1.12283839e-06,1.79616324e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r0.5 r1 c b1 c k","hole":"2s9c","board":"Ac6h6c2h","node":16469,"street":2,"player":0,"bucket":24,"probs":[0.14426691,0.85573309],"toks":["k","a"]}
+{"history":"r1 c b1 c b0.5 c a","hole":"Qd9h","board":"4hKhAh3hQh","node":28278,"street":3,"player":0,"bucket":181,"probs":[0.653501137,0.346498863],"toks":["f","c"]}
+{"history":"r1","hole":"Ad3c","board":"","node":4,"street":0,"player":1,"bucket":25,"probs":[2.04807975e-05,0.99996374,9.34383652e-07,1.47505418e-05,9.41075594e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c b1","hole":"9h9d","board":"KhQdJd","node":26346,"street":1,"player":0,"bucket":117,"probs":[0.00412195933,0.995863305,1.45550132e-05,1.80766045e-07],"toks":["f","c","r1","a"]}
+{"history":"r0.5 r0.5 c k k","hole":"8s5s","board":"Qd3sAcTc","node":20512,"street":2,"player":1,"bucket":53,"probs":[0.984561785,0.0146718832,0.000763369332,2.96265572e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r1 c b0.5 c b0.5 c","hole":"8d9h","board":"3cAd8sAc6d","node":17135,"street":3,"player":1,"bucket":166,"probs":[0.0071777149,0.865364119,0.127458167],"toks":["k","b0.5","a"]}
+{"history":"","hole":"7cKh","board":"","node":0,"street":0,"player":0,"bucket":76,"probs":[7.34347475e-07,0.325470694,0.146930592,0.527597979,6.18221461e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c k","hole":"KhJs","board":"KsAhJd","node":26344,"street":1,"player":0,"bucket":132,"probs":[8.58885259e-07,0.220798902,0.779198633,1.60578708e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r0.5 r1 c k b0.5 c","hole":"8s8h","board":"3hAs4c5c","node":16322,"street":2,"player":1,"bucket":62,"probs":[0.395902167,0.603619454,0.000478379536],"toks":["k","b0.5","a"]}
+{"history":"r0.5 r0.5 c b0.5 c b1 r1 c a","hole":"7h7s","board":"Qd6s5d2hTd","node":21971,"street":3,"player":0,"bucket":126,"probs":[0.627854892,0.372145108],"toks":["f","c"]}
+{"history":"r1 a","hole":"5sKd","board":"","node":26343,"street":0,"player":0,"bucket":50,"probs":[0.999995641,4.35915088e-06],"toks":["f","c"]}
+{"history":"r0.5 c","hole":"5c8s","board":"9s8c6h","node":17827,"street":1,"player":1,"bucket":96,"probs":[0.99999749,1.4209532e-06,1.07827543e-06,1.09748165e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r0.5 c b1 c","hole":"Tc5d","board":"8cTd3hAh","node":25970,"street":2,"player":1,"bucket":174,"probs":[0.383438628,0.571127817,0.0454335544],"toks":["k","b0.5","a"]}
+{"history":"r0.5 c b1 r1 c b1 c","hole":"5d7s","board":"AhTc4sQd2s","node":20483,"street":3,"player":1,"bucket":8,"probs":[0.384461001,0.615538999],"toks":["k","a"]}
+{"history":"","hole":"7c9c","board":"","node":0,"street":0,"player":0,"bucket":96,"probs":[7.62676284e-08,1.60297657e-05,0.985031941,0.0149519274,2.59418814e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 c b1","hole":"Ad9h","board":"Ts6d8s","node":3721,"street":1,"player":0,"bucket":186,"probs":[5.77809483e-05,0.999918282,2.34754957e-05,4.61319909e-07],"toks":["f","c","r1","a"]}
+{"history":"r1 c b0.5 c","hole":"Ah4h","board":"TdJh9c2h","node":27649,"street":2,"player":1,"bucket":35,"probs":[0.0401225306,0.00834387814,0.95153357,2.15774618e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 r1 c k k a","hole":"AdTc","board":"9c8s8d3s4c","node":25192,"street":3,"player":0,"bucket":94,"probs":[0.999546278,0.000453721728],"toks":["f","c"]}
+{"history":"a","hole":"7hQs","board":"","node":5,"street":0,"player":1,"bucket":75,"probs":[0.999999948,5.21323281e-08],"toks":["f","c"]}
+{"history":"r1 c","hole":"3dAc","board":"7s8d3c","node":26340,"street":1,"player":1,"bucket":158,"probs":[0.997080029,0.00291896485,1.00529117e-06,8.26736501e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r1 c b1 c a","hole":"2s3s","board":"AhThQd8h","node":30582,"street":2,"player":0,"bucket":124,"probs":[0.999986833,1.31665569e-05],"toks":["f","c"]}
+{"history":"r0.5 c k k b1 c b1","hole":"9c5c","board":"3dAd6d8d8s","node":18232,"street":3,"player":0,"bucket":10,"probs":[0.999999882,6.60236737e-08,1.06572758e-08,4.08244122e-08],"toks":["f","c","r1","a"]}
+{"history":"c","hole":"6s8s","board":"","node":2,"street":0,"player":1,"bucket":82,"probs":[0.00014424394,0.110631996,0.889223701,5.89850445e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b1","hole":"KdQc","board":"6hAsKc","node":24219,"street":1,"player":0,"bucket":5,"probs":[0.974368053,0.0256238488,2.43743985e-06,5.66052601e-06],"toks":["f","c","r1","a"]}
+{"history":"r0.5 c b0.5 c","hole":"5sTd","board":"JhJcTs2h","node":19416,"street":2,"player":1,"bucket":114,"probs":[0.975066382,0.0249187847,8.03002893e-06,6.80375742e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c b0.5 c b0.5 r1 c a","hole":"4d4h","board":"7s7hAhJc6c","node":29411,"street":3,"player":0,"bucket":103,"probs":[0.821353821,0.178646179],"toks":["f","c"]}
+{"history":"","hole":"3d2d","board":"","node":0,"street":0,"player":0,"bucket":13,"probs":[5.86430508e-07,0.702927649,0.250777179,0.046294585,8.38761363e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 c","hole":"9cKc","board":"3c7h3h","node":30606,"street":1,"player":1,"bucket":15,"probs":[0.878207874,0.00518814574,0.116540002,6.39781704e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 r1 c b1 c a","hole":"4cTd","board":"3hTc3c4s","node":24150,"street":2,"player":0,"bucket":2,"probs":[9.23801553e-08,0.999999908],"toks":["f","c"]}
+{"history":"r0.5 r0.5 c b1 c k b1 c","hole":"6hTc","board":"3h4cKd4s7h","node":22219,"street":3,"player":1,"bucket":29,"probs":[0.921055864,0.0761663579,0.00277777778],"toks":["k","b0.5","a"]}
+{"history":"","hole":"9h3h","board":"","node":0,"street":0,"player":0,"bucket":92,"probs":[7.17807933e-06,0.973210505,0.00183138119,0.0249509353,2.5771247e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 c","hole":"Qs9d","board":"4c8hAs","node":3715,"street":1,"player":1,"bucket":195,"probs":[0.0154492566,0.843721359,0.140829233,1.51384995e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 c b1 c","hole":"6s9d","board":"2dTd2cKs","node":5939,"street":2,"player":1,"bucket":183,"probs":[0.999848171,8.8242243e-05,4.47132293e-05,1.88736222e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 r1 c b0.5 r1 c k k a","hole":"9hAc","board":"7dJd4d5cQs","node":24130,"street":3,"player":0,"bucket":60,"probs":[0.679141316,0.320858684],"toks":["f","c"]}
+{"history":"","hole":"9c6d","board":"","node":0,"street":0,"player":0,"bucket":59,"probs":[1.42285107e-06,8.58611709e-07,0.621214943,0.378782764,1.11977227e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 r0.5 c","hole":"As4d","board":"Th2cTd","node":6392,"street":1,"player":1,"bucket":185,"probs":[0.970002816,0.0113972309,0.0185999089,4.39928191e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k b1 c","hole":"3dAh","board":"3cQh3s6d","node":1398,"street":2,"player":1,"bucket":42,"probs":[0.975977033,0.0174875758,0.00645767524,7.77162878e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c b0.5 c b0.5 r1","hole":"QdAd","board":"6d5hTs3hTd","node":20278,"street":3,"player":1,"bucket":93,"probs":[0.995037631,0.000914913083,0.00404745561],"toks":["f","c","a"]}
+{"history":"","hole":"3c6s","board":"","node":0,"street":0,"player":0,"bucket":17,"probs":[0.000825996951,0.847713336,0.150921314,0.000539353602,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c k a","hole":"Ks6c","board":"9h8s4c","node":26351,"street":1,"player":1,"bucket":80,"probs":[0.999999996,4.09927416e-09],"toks":["f","c"]}
+{"history":"r0.5 c b1 c","hole":"9s7c","board":"QsQh3dTd","node":20051,"street":2,"player":1,"bucket":95,"probs":[0.999975649,2.31108584e-05,1.12381757e-06,1.15897202e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c b0.5 c","hole":"JhJc","board":"2c9s4h8sKc","node":20247,"street":3,"player":1,"bucket":156,"probs":[0.997356797,0.0018106245,0.000792115072,4.04634477e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"a","hole":"Kd7s","board":"","node":5,"street":0,"player":1,"bucket":76,"probs":[0.99999855,1.44956065e-06],"toks":["f","c"]}
+{"history":"c k b1","hole":"7dTd","board":"6cQh5s","node":12,"street":1,"player":0,"bucket":179,"probs":[0.999999779,6.69224975e-08,1.51094076e-07,2.86603494e-09],"toks":["f","c","r1","a"]}
+{"history":"c k b1 c","hole":"6dQs","board":"5c5dQc9h","node":2966,"street":2,"player":1,"bucket":129,"probs":[0.56861561,0.431265249,6.21402682e-05,5.7001207e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r1 c k k k b1 r1 c a","hole":"8d2c","board":"2hJc9cTh6d","node":16661,"street":3,"player":0,"bucket":79,"probs":[0.210987015,0.789012985],"toks":["f","c"]}
+{"history":"r1","hole":"6cJd","board":"","node":4,"street":0,"player":1,"bucket":61,"probs":[0.999998477,1.52187853e-06,4.00188039e-10,3.98549446e-10,3.98549446e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 r1 c","hole":"5d7c","board":"Qd6d2d","node":31736,"street":1,"player":1,"bucket":102,"probs":[0.00165562914,0.00827248718,0.988416255,0.00165562914],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 r1 c","hole":"3dKd","board":"6s2s4h2d","node":20375,"street":2,"player":1,"bucket":0,"probs":[0.909648727,0.0456602896,0.0446840381,6.94495335e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c b1 c a","hole":"5d7d","board":"JcKs9hJsQs","node":20328,"street":3,"player":0,"bucket":26,"probs":[0.999998311,1.68915693e-06],"toks":["f","c"]}
+{"history":"","hole":"7cJh","board":"","node":0,"street":0,"player":0,"bucket":74,"probs":[2.10771051e-06,1.21211131e-05,0.892993273,0.106992496,2.40779523e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c k b1","hole":"AdAc","board":"8h2dAh","node":20514,"street":1,"player":1,"bucket":129,"probs":[1.40381679e-06,0.972606744,0.0273482351,4.36173387e-05],"toks":["f","c","r1","a"]}
+{"history":"r1 r1 c b1 r1 c a","hole":"QdKh","board":"9cKcQc3d","node":31413,"street":2,"player":0,"bucket":47,"probs":[1.85374679e-06,0.999998146],"toks":["f","c"]}
+{"history":"c b0.5 c b0.5 c b0.5 r1 c","hole":"6cTh","board":"Kc3s3c4d8c","node":5608,"street":3,"player":1,"bucket":31,"probs":[0.220636829,0.508906389,0.264084133,0.00637264994],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Qs3h","board":"","node":0,"street":0,"player":0,"bucket":23,"probs":[2.25779702e-06,0.000700279733,0.211599123,0.787698331,8.29483924e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 r0.5 r0.5 c","hole":"AsKd","board":"Qc4s4h","node":8277,"street":1,"player":1,"bucket":167,"probs":[0.644959728,0.351574231,0.0034636494,2.39178414e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r1 c k k","hole":"6dJc","board":"Js4c6hTc","node":31742,"street":2,"player":1,"bucket":144,"probs":[0.999975296,1.89785452e-05,5.5891788e-06,1.3621858e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c k b0.5 c b1 c","hole":"3d4h","board":"2dKs7dAsQd","node":31000,"street":3,"player":1,"bucket":0,"probs":[0.583319407,0.416680593],"toks":["k","a"]}
+{"history":"r1 a","hole":"7sJc","board":"","node":26343,"street":0,"player":0,"bucket":74,"probs":[0.999999831,1.68593488e-07],"toks":["f","c"]}
+{"history":"c b1 c","hole":"4s5h","board":"Kd4hJs","node":12228,"street":1,"player":1,"bucket":60,"probs":[0.0587335129,0.898340036,0.042926423,2.84473311e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c k k","hole":"8cQd","board":"9d2c7c6s","node":28489,"street":2,"player":1,"bucket":100,"probs":[0.218802397,0.710122086,0.0710025449,7.29720684e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c k k b1 c b1","hole":"KsQh","board":"6c3s9h2s3h","node":12609,"street":3,"player":0,"bucket":73,"probs":[0.994159666,0.00248045301,0.00334961174,1.02697159e-05],"toks":["f","c","r1","a"]}
+{"history":"","hole":"2d7h","board":"","node":0,"street":0,"player":0,"bucket":5,"probs":[0.999991494,1.42329278e-09,6.11174063e-06,2.39277639e-06,4.29619346e-11],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"2sKd","board":"As2dJs","node":6,"street":1,"player":1,"bucket":158,"probs":[0.999655729,0.000344161205,1.0629774e-07,3.97532683e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 c b1","hole":"Kd6s","board":"Tc9dTh6h","node":27654,"street":2,"player":0,"bucket":115,"probs":[0.998780075,0.00121241708,7.47594121e-06,3.21440668e-08],"toks":["f","c","r1","a"]}
+{"history":"r1 r1 r1 c b1 c k k","hole":"Ts6c","board":"Qh3d5h5s8d","node":31912,"street":3,"player":1,"bucket":33,"probs":[0.275339625,0.724660375],"toks":["k","a"]}
+{"history":"","hole":"8h7s","board":"","node":0,"street":0,"player":0,"bucket":71,"probs":[9.80160707e-07,0.548994,0.351939013,0.0990659953,1.19636861e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k a","hole":"8sJd","board":"Tc4cJh","node":13,"street":1,"player":0,"bucket":74,"probs":[0.851330707,0.148669293],"toks":["f","c"]}
+{"history":"c b1 c k k a","hole":"Jd4c","board":"9c9hKhAh","node":12243,"street":2,"player":0,"bucket":8,"probs":[0.99999827,1.73009302e-06],"toks":["f","c"]}
+{"history":"r0.5 r0.5 r1 c b1 c k b0.5 c a","hole":"Ks7c","board":"5s6d2cJhJd","node":24178,"street":3,"player":0,"bucket":64,"probs":[0.921793399,0.078206601],"toks":["f","c"]}
+{"history":"","hole":"7dJc","board":"","node":0,"street":0,"player":0,"bucket":74,"probs":[2.10771051e-06,1.21211131e-05,0.892993273,0.106992496,2.40779523e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 c","hole":"Ah3d","board":"6c2h4h","node":28481,"street":1,"player":1,"bucket":165,"probs":[0.351917183,0.00223368646,0.645849131,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 r0.5 c k k k","hole":"4s9d","board":"4cQsJs6d","node":22399,"street":2,"player":0,"bucket":138,"probs":[0.999314509,0.000404850549,0.000280640719,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 c k b0.5 r1 c a","hole":"Kh6c","board":"9c8d4d8s3h","node":27769,"street":3,"player":0,"bucket":66,"probs":[0.999999358,6.41932906e-07],"toks":["f","c"]}
+{"history":"","hole":"6d9h","board":"","node":0,"street":0,"player":0,"bucket":59,"probs":[1.42285107e-06,8.58611709e-07,0.621214943,0.378782764,1.11977227e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c k b0.5 r1","hole":"4c2s","board":"Kh3cQc","node":26818,"street":1,"player":0,"bucket":34,"probs":[0.999999877,6.92477336e-08,5.36686349e-08],"toks":["f","c","a"]}
+{"history":"r0.5 r0.5 c b1 r1 c a","hole":"4d7c","board":"Jh6h8d6s","node":22328,"street":2,"player":0,"bucket":104,"probs":[0.998964473,0.00103552683],"toks":["f","c"]}
+{"history":"c b0.5 r1 c b0.5 c b1 c a","hole":"KdKh","board":"7c8c4s5s8s","node":11047,"street":3,"player":0,"bucket":140,"probs":[0.645467144,0.354532856],"toks":["f","c"]}
+{"history":"r0.5","hole":"Kc4s","board":"","node":3,"street":0,"player":1,"bucket":37,"probs":[8.19407325e-06,0.999990088,1.19470366e-08,1.70634324e-06,9.99720959e-11],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 r0.5 r0.5 c","hole":"3cTs","board":"6c3s6d","node":8277,"street":1,"player":1,"bucket":117,"probs":[0.993115304,0.00433751047,0.00254662705,5.58769338e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b0.5 c","hole":"9dAs","board":"8hQs6c4c","node":26817,"street":2,"player":1,"bucket":112,"probs":[0.999993771,4.76493947e-06,1.46398084e-06,3.75106336e-11],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b0.5 c b0.5 c a","hole":"Kc8s","board":"6c8d5cJhKs","node":31251,"street":3,"player":0,"bucket":188,"probs":[7.97596969e-08,0.99999992],"toks":["f","c"]}
+{"history":"","hole":"2h4s","board":"","node":0,"street":0,"player":0,"bucket":2,"probs":[0.999984568,8.33577635e-06,6.98143692e-06,1.1486053e-07,8.59311659e-11],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"2s6c","board":"4sKsKd","node":26340,"street":1,"player":1,"bucket":116,"probs":[0.999995147,4.81031999e-06,3.07240248e-08,1.18567819e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b0.5 c a","hole":"Ah6d","board":"4d7c4s7d","node":31169,"street":2,"player":0,"bucket":166,"probs":[0.99368989,0.00631010996],"toks":["f","c"]}
+{"history":"r1 r1 r0.5 c b0.5 c b0.5 c","hole":"6dKd","board":"9h9c5c4cAc","node":31694,"street":3,"player":1,"bucket":46,"probs":[0.914317707,0.0856822935],"toks":["k","a"]}
+{"history":"r1 a","hole":"TsKc","board":"","node":26343,"street":0,"player":0,"bucket":115,"probs":[0.999998406,1.59413913e-06],"toks":["f","c"]}
+{"history":"r0.5 c b1 r1 a","hole":"9h7c","board":"7sAc9s","node":20376,"street":1,"player":0,"bucket":113,"probs":[2.71353889e-07,0.999999729],"toks":["f","c"]}
+{"history":"c b1 c b1 c","hole":"7dJd","board":"6s4d7h2h","node":13988,"street":2,"player":1,"bucket":186,"probs":[0.942266835,0.0577257109,3.01673589e-06,4.437449e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b1 c k b0.5 r1 c a","hole":"AhJc","board":"AsQhQcQd6s","node":27375,"street":3,"player":0,"bucket":181,"probs":[4.09393674e-07,0.999999591],"toks":["f","c"]}
+{"history":"","hole":"9d7d","board":"","node":0,"street":0,"player":0,"bucket":96,"probs":[7.62676284e-08,1.60297657e-05,0.985031941,0.0149519274,2.59418814e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"6c3c","board":"Kh8h7h","node":26340,"street":1,"player":1,"bucket":92,"probs":[0.99999321,3.96100819e-07,6.37938611e-06,1.4970341e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c","hole":"5dQd","board":"2h2sKc9h","node":20051,"street":2,"player":1,"bucket":49,"probs":[0.99994182,9.55524197e-06,4.01714595e-05,8.45363842e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r1 r0.5 c b0.5 r1 c k k a","hole":"4c5s","board":"4dTcJh6cQc","node":11842,"street":3,"player":0,"bucket":75,"probs":[0.328951163,0.671048837],"toks":["f","c"]}
+{"history":"","hole":"2dJc","board":"","node":0,"street":0,"player":0,"bucket":9,"probs":[3.11280838e-06,0.999899108,3.98987223e-05,5.7879177e-05,1.69180253e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k k","hole":"Qc9c","board":"2h2s8s","node":10,"street":1,"player":0,"bucket":195,"probs":[0.0514296477,0.948460755,0.000109594798,2.73179877e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b1 c","hole":"Th8s","board":"As4h5cJs","node":2966,"street":2,"player":1,"bucket":45,"probs":[0.999946483,2.19203891e-05,3.09120764e-05,6.84628926e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 r1 c b0.5 c b0.5","hole":"9c6d","board":"9h5d8h6h7s","node":20461,"street":3,"player":0,"bucket":78,"probs":[0.629255674,0.00229607359,0.368448252],"toks":["f","c","a"]}
+{"history":"c","hole":"9h9s","board":"","node":2,"street":0,"player":1,"bucket":98,"probs":[1.09432081e-06,0.00191916746,0.998071629,8.10913459e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c k","hole":"6d6h","board":"9dJs7d","node":6,"street":1,"player":1,"bucket":21,"probs":[0.999926849,4.85796053e-05,2.45224199e-05,4.8507745e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k b1 r1 c","hole":"Ts8d","board":"ThKs2h2c","node":1866,"street":2,"player":1,"bucket":192,"probs":[0.998683209,0.000249125497,0.00106527946,2.3862877e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k k b1 c","hole":"8h2c","board":"8c8sJhJdAh","node":26716,"street":3,"player":1,"bucket":176,"probs":[1.67561862e-05,0.00331988795,0.996661491,1.86507746e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"AdQd","board":"","node":0,"street":0,"player":0,"bucket":166,"probs":[5.44835219e-09,0.0321040609,0.0181854111,0.949710487,3.52938232e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"Qh8s","board":"7sTh8c","node":26340,"street":1,"player":1,"bucket":96,"probs":[0.9999701,2.41663309e-05,5.72025457e-06,1.38370161e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c k k","hole":"Kd4h","board":"3sKs2c7h","node":20512,"street":2,"player":1,"bucket":92,"probs":[0.20350002,0.751918807,0.0445769363,4.23693274e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r1 c b0.5 r1 c b0.5 c k","hole":"3dJc","board":"3h6s4sKd5h","node":11116,"street":3,"player":0,"bucket":48,"probs":[0.677864081,0.322135919],"toks":["k","a"]}
+{"history":"","hole":"9hTc","board":"","node":0,"street":0,"player":0,"bucket":99,"probs":[8.36467767e-08,0.194353811,0.387299126,0.418346976,3.05163019e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c a","hole":"9h8c","board":"2hJdAs","node":17834,"street":1,"player":0,"bucket":54,"probs":[0.999999934,6.6372296e-08],"toks":["f","c"]}
+{"history":"r0.5 r0.5 r0.5 c k k","hole":"9c3h","board":"4c8c4s9h","node":22395,"street":2,"player":1,"bucket":191,"probs":[0.9376959,0.0598827895,0.000376771474,0.00204453916],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c k b1 r1 c b0.5 c","hole":"Kc2d","board":"Kh3c3d5h5s","node":13503,"street":3,"player":1,"bucket":149,"probs":[0.99999185,8.15000912e-06],"toks":["k","a"]}
+{"history":"a","hole":"9cTs","board":"","node":5,"street":0,"player":1,"bucket":99,"probs":[0.999997851,2.14935267e-06],"toks":["f","c"]}
+{"history":"r0.5 c a","hole":"7d4d","board":"4hJd4s","node":17834,"street":1,"player":0,"bucket":146,"probs":[4.59337176e-08,0.999999954],"toks":["f","c"]}
+{"history":"r1 c k k b1 a","hole":"9dQd","board":"2dAhKhJs","node":26718,"street":2,"player":1,"bucket":176,"probs":[0.998381877,0.00161812298],"toks":["f","c"]}
+{"history":"c k k k b0.5 c a","hole":"3dQs","board":"6sTs5sJh5h","node":337,"street":3,"player":0,"bucket":46,"probs":[0.999999936,6.38252461e-08],"toks":["f","c"]}
+{"history":"c","hole":"7h6d","board":"","node":2,"street":0,"player":1,"bucket":57,"probs":[0.211739948,0.00299503431,0.785264833,1.84044958e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c","hole":"2cAh","board":"4h5h4s","node":17827,"street":1,"player":1,"bucket":158,"probs":[0.999726416,0.000273562635,1.82829158e-08,3.35716216e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k","hole":"Jd6s","board":"8c2sTc3h","node":17835,"street":2,"player":1,"bucket":145,"probs":[0.969944975,0.00169127466,0.0283637502,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 r1 c b0.5 c","hole":"Td2s","board":"2d7s6cQdJd","node":28056,"street":3,"player":1,"bucket":88,"probs":[0.708264933,0.000178227205,0.29155684],"toks":["k","b0.5","a"]}
+{"history":"","hole":"Kc6s","board":"","node":0,"street":0,"player":0,"bucket":63,"probs":[1.81319805e-07,0.593960424,0.371820272,0.0342191189,3.48068296e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c k a","hole":"Ad6h","board":"9s6d3d","node":17838,"street":1,"player":1,"bucket":109,"probs":[0.999998763,1.23743894e-06],"toks":["f","c"]}
+{"history":"r1 c k b0.5 c k a","hole":"8d5s","board":"Th2cQdAc","node":26827,"street":2,"player":1,"bucket":53,"probs":[1,0],"toks":["f","c"]}
+{"history":"r1 c b0.5 c k b0.5 c","hole":"5s8h","board":"2hJh3c4s7s","node":27717,"street":3,"player":1,"bucket":0,"probs":[0.000781590242,0.735856594,0.263361815,0],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"4s9h","board":"","node":0,"street":0,"player":0,"bucket":33,"probs":[7.26178376e-06,0.99977794,0.000106417628,0.000108381008,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"8h7c","board":"Kh5s9s","node":6,"street":1,"player":1,"bucket":121,"probs":[0.997259559,0.00153160932,0.00120881302,1.87201549e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 r1 c a","hole":"2c8h","board":"8c3sJd5s","node":19841,"street":2,"player":0,"bucket":38,"probs":[0.627597255,0.372402745],"toks":["f","c"]}
+{"history":"r0.5 r0.5 c b0.5 r1 c k k b1","hole":"9hKc","board":"8cQc9d2c6s","node":21997,"street":3,"player":0,"bucket":142,"probs":[0.690180785,0.309799876,1.93387119e-05],"toks":["f","c","a"]}
+{"history":"a","hole":"5s3d","board":"","node":5,"street":0,"player":1,"bucket":16,"probs":[0.999999914,8.60537736e-08],"toks":["f","c"]}
+{"history":"r0.5 c","hole":"8h3s","board":"JdJs2s","node":17827,"street":1,"player":1,"bucket":89,"probs":[0.999998881,1.11831645e-06,3.61576746e-10,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 r1 c b1 c","hole":"Jc6d","board":"Ad9h5s7c","node":24146,"street":2,"player":1,"bucket":170,"probs":[0.931396798,0.000173580976,0.0684296212],"toks":["k","b0.5","a"]}
+{"history":"r1 c b1 c b1 r1 c a","hole":"2d5h","board":"As9s5d3hQh","node":28362,"street":3,"player":0,"bucket":104,"probs":[0.389737424,0.610262576],"toks":["f","c"]}
+{"history":"r0.5 r1","hole":"Tc7c","board":"","node":17829,"street":0,"player":0,"bucket":109,"probs":[8.76736414e-08,0.758616479,0.183302612,0.0580807766,4.51645517e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 r1 c k","hole":"6sAd","board":"8dJc2h","node":30305,"street":1,"player":0,"bucket":112,"probs":[0.00849117182,0.991498408,1.02374362e-05,1.82878737e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b1 c","hole":"6c4s","board":"Td9cAhQc","node":25245,"street":2,"player":1,"bucket":120,"probs":[0.999997505,1.42459181e-06,6.96182272e-07,3.74119283e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b0.5 c b0.5 r1 c","hole":"AdJd","board":"6cAc4dJs3s","node":21905,"street":3,"player":1,"bucket":190,"probs":[0.852553449,0.0229530904,0.12449346],"toks":["k","b0.5","a"]}
+{"history":"","hole":"5h2h","board":"","node":0,"street":0,"player":0,"bucket":39,"probs":[1.33906961e-06,0.350089631,0.432126261,0.217782768,2.01732128e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k k","hole":"6h2h","board":"9hTs6d","node":10,"street":1,"player":0,"bucket":199,"probs":[0.9598371,0.0401568738,6.01954782e-06,7.05617116e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k b1 r1 c b1 r1","hole":"7d6d","board":"TdTs5dQc","node":2089,"street":2,"player":1,"bucket":12,"probs":[0.999886644,2.23608596e-06,0.000111119613],"toks":["f","c","a"]}
+{"history":"r0.5 r1 c b1 c b1 c","hole":"KsKc","board":"7c9sTd2cKd","node":25354,"street":3,"player":1,"bucket":189,"probs":[4.76081639e-06,0.999995239],"toks":["k","a"]}
+{"history":"","hole":"9s5s","board":"","node":0,"street":0,"player":0,"bucket":94,"probs":[7.50408377e-07,0.635362568,0.331022739,0.0336139358,6.26692495e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 r1 c b1","hole":"7hKd","board":"Qd8hTc","node":30307,"street":1,"player":0,"bucket":80,"probs":[0.999718746,0.000248542152,3.27117629e-05],"toks":["f","c","a"]}
+{"history":"r1 c k k","hole":"Ah3c","board":"Ts7sTh6d","node":26348,"street":2,"player":1,"bucket":59,"probs":[0.999998417,4.43317044e-07,1.12325394e-06,1.68049639e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c b1 c b0.5 c b0.5","hole":"7h8s","board":"6c9dJc5sTd","node":29600,"street":3,"player":0,"bucket":192,"probs":[0,1.19815372e-07,0.99999988],"toks":["f","c","a"]}
+{"history":"","hole":"JdTc","board":"","node":0,"street":0,"player":0,"bucket":113,"probs":[1.90902169e-08,0.0951074351,0.715017831,0.189874692,2.28644526e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 r1 c","hole":"6c3s","board":"7d4s7c","node":23570,"street":1,"player":1,"bucket":13,"probs":[0.841706446,0.158078966,0.00020546024,9.1272941e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c b1","hole":"4c6h","board":"4dQcQhJc","node":20056,"street":2,"player":0,"bucket":150,"probs":[0.999990578,8.60603165e-06,0,8.15745316e-07],"toks":["f","c","r1","a"]}
+{"history":"r1 c k b0.5 c b1 r1 c a","hole":"7h3s","board":"8hQc9h3cQs","node":27127,"street":3,"player":0,"bucket":111,"probs":[0.821195266,0.178804734],"toks":["f","c"]}
+{"history":"","hole":"As3d","board":"","node":0,"street":0,"player":0,"bucket":25,"probs":[1.43505587e-07,0.980356505,0.0182069044,0.0014364405,6.50329414e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 r0.5 c","hole":"9h3d","board":"Qc4dAc","node":22389,"street":1,"player":1,"bucket":16,"probs":[0.997699829,0.00229608471,1.40151214e-06,2.68429981e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r1 r0.5 c b1 c","hole":"Jc4s","board":"9dAd2s2h","node":11858,"street":2,"player":1,"bucket":130,"probs":[0.99843122,0.00118717327,0.000381606564],"toks":["k","b0.5","a"]}
+{"history":"r1 r1 c b0.5 c k k","hole":"4cJc","board":"KdQc2cKc8d","node":31170,"street":3,"player":1,"bucket":191,"probs":[0.415650912,0.120568896,0.0438213453,0.419958847],"toks":["k","b0.5","b1","a"]}
+{"history":"a","hole":"6d9c","board":"","node":5,"street":0,"player":1,"bucket":59,"probs":[0.999999727,2.73093046e-07],"toks":["f","c"]}
+{"history":"r1 c a","hole":"KsTd","board":"3h5d2d","node":26347,"street":1,"player":0,"bucket":28,"probs":[0.979517928,0.0204820718],"toks":["f","c"]}
+{"history":"r0.5 r0.5 r1 c k b1 c a","hole":"5d2c","board":"Kh4sJcQs","node":23940,"street":2,"player":0,"bucket":196,"probs":[0.999999211,7.88641045e-07],"toks":["f","c"]}
+{"history":"r1 r1 r0.5 c b0.5 c k b0.5 c","hole":"AhQc","board":"Tc2c3c7sTh","node":31679,"street":3,"player":1,"bucket":93,"probs":[0.908588242,0.091411758],"toks":["k","a"]}
+{"history":"c b0.5","hole":"4c6s","board":"","node":7,"street":0,"player":0,"bucket":30,"probs":[0.00502662186,0.816350626,1.56582183e-05,0.17859477,1.2324028e-05],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 r0.5 c","hole":"9h5h","board":"3d6h9c","node":29662,"street":1,"player":1,"bucket":106,"probs":[0.878218736,0.0682731452,0.0534997675,8.35112125e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b0.5 c","hole":"3s5c","board":"7h7dJcQs","node":13537,"street":2,"player":1,"bucket":143,"probs":[0.999999279,3.54379189e-07,3.66447891e-07,0],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 c b1 c b1","hole":"Jc9d","board":"4d7s2d2cAc","node":2543,"street":3,"player":0,"bucket":51,"probs":[0.999998563,1.37412859e-06,2.93602874e-08,3.36431049e-08],"toks":["f","c","r1","a"]}
+{"history":"","hole":"KcAd","board":"","node":0,"street":0,"player":0,"bucket":155,"probs":[6.0523042e-10,0.0976915547,0.573947012,0.328359575,1.85704042e-06],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c","hole":"5h4c","board":"7s3h7h","node":20504,"street":1,"player":1,"bucket":25,"probs":[3.98757556e-05,0.999457009,0.00049929106,3.82401379e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 c","hole":"7cTd","board":"5sQsAs3h","node":19416,"street":2,"player":1,"bucket":1,"probs":[0.999981492,1.56838389e-05,2.54885026e-06,2.75779617e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c k k k b1 c","hole":"Kc4s","board":"3s4cAc8s2c","node":29776,"street":3,"player":1,"bucket":99,"probs":[0.999742321,0.000252435923,5.24295607e-06],"toks":["k","b0.5","a"]}
+{"history":"","hole":"6sJd","board":"","node":0,"street":0,"player":0,"bucket":61,"probs":[8.14636203e-07,3.41176026e-06,0.996247223,0.00374854883,1.48456504e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 r0.5 c","hole":"9c2s","board":"3h8h4s","node":29662,"street":1,"player":1,"bucket":160,"probs":[0.999993812,3.10637088e-06,3.08144006e-06,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 c a","hole":"Ts2c","board":"KsQh9h2h","node":24976,"street":2,"player":0,"bucket":59,"probs":[0.996508287,0.00349171317],"toks":["f","c"]}
+{"history":"r1 c k b1 c k k","hole":"Kc7s","board":"7c4s2sQd9d","node":27275,"street":3,"player":1,"bucket":138,"probs":[0.999978885,2.10457621e-05,5.11724854e-08,1.79959663e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1","hole":"Jd9c","board":"","node":4,"street":0,"player":1,"bucket":100,"probs":[1.85772545e-06,0.989114784,0.00174455741,0.00913878972,1.13916484e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r1 c b0.5 a","hole":"Qd7d","board":"Ks8h4c","node":24972,"street":1,"player":1,"bucket":3,"probs":[0.999999744,2.55833202e-07],"toks":["f","c"]}
+{"history":"c b1 r0.5 c k k","hole":"8h2d","board":"9cKc6s5d","node":14377,"street":2,"player":1,"bucket":74,"probs":[0.802345232,0.146978023,0.0506767447,0],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b1 c b0.5 c k","hole":"Jh2d","board":"5d7h5c5s4c","node":14163,"street":3,"player":0,"bucket":40,"probs":[0.00032474913,0.00041531325,0.928430895,0.0708290429],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"7dJc","board":"","node":0,"street":0,"player":0,"bucket":74,"probs":[2.10771051e-06,1.21211131e-05,0.892993273,0.106992496,2.40779523e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 c b1 a","hole":"3hJc","board":"5h6s2d","node":31312,"street":1,"player":1,"bucket":168,"probs":[1,0],"toks":["f","c"]}
+{"history":"c k b1 c","hole":"As6h","board":"9h3d4hTh","node":2966,"street":2,"player":1,"bucket":190,"probs":[0.869593436,0.0737987063,0.0566078574,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r1 c b1 c k k","hole":"9cTh","board":"9d6s7dAsAh","node":26315,"street":3,"player":1,"bucket":163,"probs":[0.918336775,0.0816632252],"toks":["k","a"]}
+{"history":"","hole":"4d2s","board":"","node":0,"street":0,"player":0,"bucket":2,"probs":[0.999984568,8.33577635e-06,6.98143692e-06,1.1486053e-07,8.59311659e-11],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"6s9d","board":"ThAc7s","node":26340,"street":1,"player":1,"bucket":168,"probs":[0.61956866,0.348383708,0.0320476321,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r1 c b1 c a","hole":"Kc8d","board":"Ah4s2sKd","node":31911,"street":2,"player":0,"bucket":139,"probs":[5.93334246e-07,0.999999407],"toks":["f","c"]}
+{"history":"r0.5 r1 c k k b0.5 c a","hole":"3d2s","board":"8hJc6h2d5d","node":24424,"street":3,"player":0,"bucket":75,"probs":[0.906924813,0.0930751873],"toks":["f","c"]}
+{"history":"r1 r1 r0.5 a","hole":"4cQc","board":"","node":31436,"street":0,"player":0,"bucket":132,"probs":[0.568181818,0.431818182],"toks":["f","c"]}
+{"history":"r1 r0.5 r0.5 c b0.5 a","hole":"TsQs","board":"Qd5d4c","node":30093,"street":1,"player":1,"bucket":74,"probs":[0.13446981,0.86553019],"toks":["f","c"]}
+{"history":"r1 c k b1 c","hole":"5hTc","board":"Jd6d9h3c","node":27268,"street":2,"player":1,"bucket":53,"probs":[0.999992245,7.13106072e-06,5.87096528e-07,3.65763046e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b0.5 r1 c b1 c","hole":"5hQs","board":"9h9cQd7s2d","node":22093,"street":3,"player":1,"bucket":164,"probs":[0.653708631,0.346291369],"toks":["k","a"]}
+{"history":"","hole":"JdTd","board":"","node":0,"street":0,"player":0,"bucket":125,"probs":[2.34507721e-08,0.000586532318,0.550034653,0.449378776,1.58311012e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 c k","hole":"Js8c","board":"AcJdQd","node":3719,"street":1,"player":0,"bucket":96,"probs":[0.959822357,0.0401693809,7.95261479e-06,3.09543882e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b1 c","hole":"5sQd","board":"7dTd6sQc","node":31310,"street":2,"player":1,"bucket":114,"probs":[0.672599419,0.307142774,0.0188280977,0.001429709],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 c b0.5 c b1","hole":"Jh3d","board":"2s5cQd7d6d","node":25109,"street":3,"player":0,"bucket":22,"probs":[0.998602701,0,0.00139729866],"toks":["f","c","a"]}
+{"history":"","hole":"Jh8c","board":"","node":0,"street":0,"player":0,"bucket":87,"probs":[1.57758853e-07,0.47167367,0.142289907,0.386036262,2.97579421e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"Jc9c","board":"Ks6s4h","node":6,"street":1,"player":1,"bucket":19,"probs":[0.996697045,0.00165940951,0.00164353898,6.42205167e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r1 c b1 c","hole":"3dAh","board":"TsAc7dTd","node":30579,"street":2,"player":1,"bucket":92,"probs":[0.749847375,0.250152625],"toks":["k","a"]}
+{"history":"r0.5 c b1 c k b1 c","hole":"Ts8d","board":"7dTcAcKsAd","node":20194,"street":3,"player":1,"bucket":144,"probs":[0.999488835,0.000486207434,2.49580441e-05,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5","hole":"8hTd","board":"","node":3,"street":0,"player":1,"bucket":86,"probs":[1.44001614e-06,0.946757068,2.87660405e-05,0.053212725,5.16381344e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 c b1 r1 a","hole":"QhTc","board":"Ad8c6d","node":31411,"street":1,"player":0,"bucket":195,"probs":[1,0],"toks":["f","c"]}
+{"history":"c b0.5 r0.5 c b0.5 c k a","hole":"Qd5s","board":"3c6sJdTc","node":7559,"street":2,"player":1,"bucket":45,"probs":[1,0],"toks":["f","c"]}
+{"history":"r1 r0.5 r1 c k k b0.5 c","hole":"Ah7c","board":"JdKh8d3dQs","node":30394,"street":3,"player":1,"bucket":59,"probs":[0.000266105902,0.0442244547,0.955509439],"toks":["k","b0.5","a"]}
+{"history":"","hole":"9d7d","board":"","node":0,"street":0,"player":0,"bucket":96,"probs":[7.62676284e-08,1.60297657e-05,0.985031941,0.0149519274,2.59418814e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"5d6s","board":"Kc8cQh","node":26340,"street":1,"player":1,"bucket":196,"probs":[0.999991114,8.78132172e-06,1.03539824e-07,1.60781957e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c","hole":"7h8c","board":"4dAsJd9d","node":20051,"street":2,"player":1,"bucket":145,"probs":[0.916350461,0.0836313525,1.78069562e-05,3.79300876e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 r1 c k b1 c a","hole":"Jc9h","board":"6h7dAsQd4c","node":20446,"street":3,"player":0,"bucket":47,"probs":[0.969569075,0.0304309247],"toks":["f","c"]}
+{"history":"","hole":"3hQd","board":"","node":0,"street":0,"player":0,"bucket":23,"probs":[2.25779702e-06,0.000700279733,0.211599123,0.787698331,8.29483924e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 c k","hole":"Jc5s","board":"5h3c7d","node":3719,"street":1,"player":0,"bucket":36,"probs":[0.988202683,0.0117960962,1.09696976e-06,1.24071219e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 c","hole":"8dKh","board":"4d4c8h6c","node":19416,"street":2,"player":1,"bucket":191,"probs":[0.983909534,0.0160634621,2.63704067e-05,6.33215425e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c k b1 c k b0.5 c k a","hole":"2h9s","board":"KdTh7s9c9h","node":30062,"street":3,"player":1,"bucket":181,"probs":[0,1],"toks":["f","c"]}
+{"history":"r0.5","hole":"9h7c","board":"","node":3,"street":0,"player":1,"bucket":72,"probs":[1.58001256e-06,0.999971824,1.5307924e-05,1.12860215e-05,2.24510559e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"ThKc","board":"9hAd2h","node":26340,"street":1,"player":1,"bucket":151,"probs":[0.999967529,3.19936537e-05,4.77234244e-07,1.33360782e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 c a","hole":"7s9h","board":"TdKdAdJs","node":2153,"street":2,"player":0,"bucket":96,"probs":[0.999999594,4.05594179e-07],"toks":["f","c"]}
+{"history":"c b0.5 c b1 r1 c b0.5 c k b0.5","hole":"Qc8d","board":"AhAs7c9s6c","node":6352,"street":3,"player":1,"bucket":66,"probs":[0.926275543,0.0736541142,7.03432752e-05],"toks":["f","c","a"]}
+{"history":"r1","hole":"Kc5c","board":"","node":4,"street":0,"player":1,"bucket":146,"probs":[4.22731221e-06,0.999738964,0.000210842466,4.59603726e-05,5.55793119e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 c a","hole":"Ah5h","board":"Ac5dQh","node":28488,"street":1,"player":0,"bucket":146,"probs":[0,1],"toks":["f","c"]}
+{"history":"r0.5 r1 c b1 r1 c a","hole":"4h7d","board":"QdAd8d8c","node":25372,"street":2,"player":0,"bucket":5,"probs":[0.999901079,9.89213505e-05],"toks":["f","c"]}
+{"history":"r1 r0.5 r0.5 c k k k k a","hole":"5dKh","board":"4sTdQd4cKd","node":29683,"street":3,"player":0,"bucket":156,"probs":[0.0684801716,0.931519828],"toks":["f","c"]}
+{"history":"","hole":"4h8d","board":"","node":0,"street":0,"player":0,"bucket":32,"probs":[6.1999554e-07,0.991456343,0.00799862184,0.000544414641,3.36621847e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"KcAs","board":"3s5s5c","node":26340,"street":1,"player":1,"bucket":167,"probs":[0.998548935,0.00144971386,1.33585718e-06,1.50102307e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c k k b0.5 a","hole":"JhAs","board":"Ac3dTh7d","node":29805,"street":2,"player":1,"bucket":15,"probs":[5.12042366e-08,0.999999949],"toks":["f","c"]}
+{"history":"c k b0.5 c k k a","hole":"9hQs","board":"4d6h5c3c8c","node":2161,"street":3,"player":0,"bucket":7,"probs":[0.999999989,1.06780235e-08],"toks":["f","c"]}
+{"history":"","hole":"Ah2s","board":"","node":0,"street":0,"player":0,"bucket":12,"probs":[3.50789494e-07,0.206239209,0.451889206,0.341871228,6.60806168e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c k","hole":"3c3d","board":"6h6sAs","node":17831,"street":1,"player":0,"bucket":114,"probs":[0.999999264,6.79093433e-07,5.47738304e-08,2.11975517e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b1 r1 c k","hole":"3cQs","board":"Tc9sAs9c","node":25371,"street":2,"player":0,"bucket":137,"probs":[0.0860665339,0.913933466],"toks":["k","a"]}
+{"history":"c b1 c k k k b0.5 c b1 a","hole":"8s4s","board":"2h5s8c3d9h","node":12354,"street":3,"player":1,"bucket":138,"probs":[0.408990411,0.591009589],"toks":["f","c"]}
+{"history":"","hole":"9s7s","board":"","node":0,"street":0,"player":0,"bucket":96,"probs":[7.62676284e-08,1.60297657e-05,0.985031941,0.0149519274,2.59418814e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"Ac6d","board":"As8d5c","node":26340,"street":1,"player":1,"bucket":42,"probs":[0.986714759,0.0132842153,1.02217985e-06,3.47367273e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 r1 c","hole":"Kd3d","board":"8hThKcKs","node":27973,"street":2,"player":1,"bucket":144,"probs":[0.315281693,0.68004952,0.00463141516,3.73722721e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r1 c b0.5 c b1 c a","hole":"9c7d","board":"Ks3cQd4h2h","node":17163,"street":3,"player":0,"bucket":20,"probs":[1,0],"toks":["f","c"]}
+{"history":"a","hole":"QdTs","board":"","node":5,"street":0,"player":1,"bucket":114,"probs":[0.999998314,1.68561897e-06],"toks":["f","c"]}
+{"history":"r0.5 c","hole":"9dJs","board":"KdJcKs","node":17827,"street":1,"player":1,"bucket":176,"probs":[0.992913723,0.00575326678,0.00133300149,8.96342623e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 r1 c a","hole":"4hAh","board":"Qd6h9s4d","node":2644,"street":2,"player":0,"bucket":97,"probs":[0.999938498,6.15016904e-05],"toks":["f","c"]}
+{"history":"c b0.5 r0.5 r1 c b1 c k k","hole":"9dKc","board":"7c8hKdKh9s","node":10039,"street":3,"player":1,"bucket":199,"probs":[0.720125969,0.201675083,0.0781989474],"toks":["k","b0.5","a"]}
+{"history":"","hole":"Tc9d","board":"","node":0,"street":0,"player":0,"bucket":99,"probs":[8.36467767e-08,0.194353811,0.387299126,0.418346976,3.05163019e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"Ts4c","board":"8h6h4d","node":26340,"street":1,"player":1,"bucket":21,"probs":[0.97489138,0.0250456546,6.29122543e-05,5.33696392e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r1 c b0.5 c","hole":"8hJh","board":"Qh2sJd7h","node":30518,"street":2,"player":1,"bucket":70,"probs":[0.42857299,0.551057567,0.0203694427],"toks":["k","b0.5","a"]}
+{"history":"r0.5 r0.5 r0.5 c b1 c k b0.5 c a","hole":"9d7s","board":"8h9c9h8dQh","node":23467,"street":3,"player":0,"bucket":193,"probs":[0.00456964211,0.995430358],"toks":["f","c"]}
+{"history":"a","hole":"Qd4c","board":"","node":5,"street":0,"player":1,"bucket":36,"probs":[0.999999834,1.65967216e-07],"toks":["f","c"]}
+{"history":"r1 r0.5 r1 c b1","hole":"Jc2d","board":"5dTcKc","node":30307,"street":1,"player":0,"bucket":48,"probs":[1,0,0],"toks":["f","c","a"]}
+{"history":"r1 c b0.5 r1 c a","hole":"8c9h","board":"5d3cJhTd","node":27978,"street":2,"player":0,"bucket":148,"probs":[0.999996557,3.44336e-06],"toks":["f","c"]}
+{"history":"r1 c b1 r1 c k b0.5 c a","hole":"9h7c","board":"9s3c3h2cJc","node":28422,"street":3,"player":0,"bucket":137,"probs":[0.396398168,0.603601832],"toks":["f","c"]}
+{"history":"","hole":"5dTd","board":"","node":0,"street":0,"player":0,"bucket":107,"probs":[1.16254501e-06,0.116466838,0.883270451,0.000261530078,1.88990415e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 r0.5 r1 c b0.5 r1 a","hole":"6d7c","board":"Jh7dKc","node":10012,"street":1,"player":0,"bucket":36,"probs":[0.5,0.5],"toks":["f","c"]}
+{"history":"r1 c k k","hole":"KdQd","board":"Jd3sKh4d","node":26348,"street":2,"player":1,"bucket":99,"probs":[0.999989083,8.80177912e-06,2.09757304e-06,1.71825582e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c k b0.5 r1 c b0.5 c a","hole":"4dQc","board":"6cTdQs5c3s","node":29073,"street":3,"player":0,"bucket":162,"probs":[3.50759658e-07,0.999999649],"toks":["f","c"]}
+{"history":"","hole":"TdAc","board":"","node":0,"street":0,"player":0,"bucket":116,"probs":[3.77311469e-09,0.174150474,0.417939984,0.407909366,1.721882e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"3dAs","board":"Qh4d9c","node":6,"street":1,"player":1,"bucket":155,"probs":[0.995790561,0.00420837152,1.06748916e-06,2.16707012e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r0.5 c b1 c","hole":"Ac2s","board":"2h6h4sQd","node":25970,"street":2,"player":1,"bucket":87,"probs":[0.99918046,5.33585447e-05,0.000766181218],"toks":["k","b0.5","a"]}
+{"history":"c b0.5 c b1 c b0.5 c","hole":"6d5s","board":"3s3c7s7h4c","node":6135,"street":3,"player":1,"bucket":162,"probs":[0.575703285,0.424031769,0.000254736292,1.02098603e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Qd9h","board":"","node":0,"street":0,"player":0,"bucket":101,"probs":[2.77386171e-07,0.591349849,0.408632736,1.71348422e-05,2.72327817e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k b0.5 a","hole":"Th6c","board":"7cQcTs","node":2149,"street":1,"player":1,"bucket":115,"probs":[0.957213348,0.0427866522],"toks":["f","c"]}
+{"history":"r1 r0.5 r0.5 c b0.5 c","hole":"3h8c","board":"7h4cAcJs","node":30091,"street":2,"player":1,"bucket":23,"probs":[0.999822603,0.000167550654,4.92319811e-06,4.92319811e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 c b1 c","hole":"8cTd","board":"Qs9dTh6dQd","node":27920,"street":3,"player":1,"bucket":150,"probs":[0.999930387,2.81119168e-05,4.03284004e-05,1.17246109e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"7s8d","board":"","node":0,"street":0,"player":0,"bucket":71,"probs":[9.80160707e-07,0.548994,0.351939013,0.0990659953,1.19636861e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 r0.5 c","hole":"8h5c","board":"Qc8cAh","node":22389,"street":1,"player":1,"bucket":70,"probs":[0.99955653,0.00043185485,2.95419579e-07,1.1319451e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b0.5 c","hole":"4dKh","board":"8h4c5h9c","node":26817,"street":2,"player":1,"bucket":87,"probs":[0.999997337,4.24110708e-07,2.22401371e-06,1.49612837e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r1 c b1 c k k k","hole":"6s9h","board":"QcQdQs8dKs","node":26317,"street":3,"player":0,"bucket":50,"probs":[0.312714505,0.687285495],"toks":["k","a"]}
+{"history":"","hole":"4cKd","board":"","node":0,"street":0,"player":0,"bucket":37,"probs":[7.28409275e-07,0.0168564539,0.977347053,0.0057957571,7.96480392e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 c","hole":"QdQc","board":"Ah3hAs","node":30606,"street":1,"player":1,"bucket":156,"probs":[1.1110445e-06,0.0229117102,0.977086301,8.77967227e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b1 r1 c b1","hole":"9h6d","board":"6c6hAd8c","node":3438,"street":2,"player":0,"bucket":154,"probs":[6.38982349e-08,0.124290558,0.524159998,0.35154938],"toks":["f","c","r1","a"]}
+{"history":"r1 r1 c b0.5 r1 c k k","hole":"8sKd","board":"Qc7hKh2c9s","node":31291,"street":3,"player":1,"bucket":170,"probs":[0.383537977,0.616462023],"toks":["k","a"]}
+{"history":"","hole":"2s7h","board":"","node":0,"street":0,"player":0,"bucket":5,"probs":[0.999991494,1.42329278e-09,6.11174063e-06,2.39277639e-06,4.29619346e-11],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k b0.5","hole":"Ks3c","board":"5h2h3h","node":11,"street":1,"player":0,"bucket":108,"probs":[2.68418718e-06,0.957225183,0.0427721163,1.68553963e-08],"toks":["f","c","r1","a"]}
+{"history":"r0.5 r1 r1 c k b1 c k a","hole":"8hKh","board":"3cQd7dKs","node":26232,"street":2,"player":1,"bucket":30,"probs":[8.52333262e-06,0.999991477],"toks":["f","c"]}
+{"history":"c b1 r1 r1 c k b1 c k k a","hole":"9hTs","board":"QsKh9s5d6s","node":17759,"street":3,"player":0,"bucket":127,"probs":[0.000285147859,0.999714852],"toks":["f","c"]}
+{"history":"","hole":"8dKc","board":"","node":0,"street":0,"player":0,"bucket":89,"probs":[1.87900748e-07,0.200884211,0.788949774,0.0101658259,8.30843528e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"JcTs","board":"9h6sAc","node":26340,"street":1,"player":1,"bucket":149,"probs":[0.919431748,0.0383477241,0.0422205201,8.11187818e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r0.5 r1 c b0.5 c k","hole":"2sTh","board":"Kd4s6cAc","node":16408,"street":2,"player":0,"bucket":45,"probs":[0.00679132549,0.989897764,0.00331091085],"toks":["k","b0.5","a"]}
+{"history":"r1 r1 c b0.5 r1 c k k","hole":"8d8h","board":"5sJs4sKdTs","node":31291,"street":3,"player":1,"bucket":65,"probs":[0.848307937,0.151692063],"toks":["k","a"]}
+{"history":"r0.5","hole":"4hKh","board":"","node":3,"street":0,"player":1,"bucket":145,"probs":[9.49368487e-07,0.992791751,1.24432915e-08,0.00720712421,1.63349015e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 r0.5 c","hole":"Kd4d","board":"Kh9dKs","node":22389,"street":1,"player":1,"bucket":166,"probs":[0.768723291,0.199910476,0.0313593943,6.83855212e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k b1 c k","hole":"5hJc","board":"JsTc5c3h","node":1401,"street":2,"player":0,"bucket":144,"probs":[5.83665278e-08,0.166155116,0.833844325,5.00680039e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c k b1 c b0.5 c","hole":"Td8s","board":"2c8c9hJdQs","node":31110,"street":3,"player":1,"bucket":184,"probs":[6.44800427e-06,0.999993552],"toks":["k","a"]}
+{"history":"","hole":"AsJd","board":"","node":0,"street":0,"player":0,"bucket":129,"probs":[1.83508473e-10,0.00681904387,0.855286562,0.137894308,8.58353793e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"As3s","board":"Ad7hQc","node":26340,"street":1,"player":1,"bucket":42,"probs":[0.986714759,0.0132842153,1.02217985e-06,3.47367273e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 c b1 r1","hole":"7c6d","board":"AsTcQc6h","node":19760,"street":2,"player":1,"bucket":94,"probs":[1,0,0],"toks":["f","c","a"]}
+{"history":"r1 c b1 c b0.5 r1 c","hole":"8sQh","board":"AcQc8c2s7s","node":28308,"street":3,"player":1,"bucket":181,"probs":[0.963546914,0.0364530862],"toks":["k","a"]}
+{"history":"r0.5","hole":"AdTs","board":"","node":3,"street":0,"player":1,"bucket":116,"probs":[4.71375082e-09,0.238628373,8.02569358e-05,0.761291309,5.61728883e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 r0.5 c","hole":"As7d","board":"TdTh5h","node":31435,"street":1,"player":1,"bucket":185,"probs":[0.999905215,8.61370355e-05,7.17823297e-06,1.46987792e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 c b1","hole":"8h9h","board":"JcKs8d3c","node":2152,"street":2,"player":0,"bucket":18,"probs":[0.911856302,0.0875863062,0.000557369177,2.26079312e-08],"toks":["f","c","r1","a"]}
+{"history":"r0.5 r1 c k k k k","hole":"6s2c","board":"3hKc9hKd5s","node":24229,"street":3,"player":1,"bucket":3,"probs":[1.1128141e-06,0.00879493862,0.991203933,1.60404971e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"a","hole":"KcJs","board":"","node":5,"street":0,"player":1,"bucket":128,"probs":[0.999996098,3.90207216e-06],"toks":["f","c"]}
+{"history":"r1 c a","hole":"2cTh","board":"Kd7cJh","node":26347,"street":1,"player":0,"bucket":138,"probs":[0.999999942,5.79283826e-08],"toks":["f","c"]}
+{"history":"r0.5 c k k","hole":"Ah6s","board":"TdKs2h6c","node":17835,"street":2,"player":1,"bucket":109,"probs":[0.998431663,0.00156630923,2.00461552e-06,2.36400776e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c k b1 c b1 c a","hole":"Jd8d","board":"6cAdJc6d2c","node":24933,"street":3,"player":0,"bucket":141,"probs":[0.547004478,0.452995522],"toks":["f","c"]}
+{"history":"","hole":"KcTh","board":"","node":0,"street":0,"player":0,"bucket":115,"probs":[0,0.258177819,0.551886863,0.18993527,4.8227666e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"Qc4h","board":"8dJcAc","node":17827,"street":1,"player":1,"bucket":58,"probs":[0.997064621,0.00247562179,0.000459747974,9.66215433e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c","hole":"3cJd","board":"JcQs2d7s","node":20051,"street":2,"player":1,"bucket":10,"probs":[0.999851343,6.8565281e-07,0.000146181163,1.79036516e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b0.5 c b0.5 c k","hole":"2s3s","board":"5sAsTcQd5h","node":21860,"street":3,"player":0,"bucket":28,"probs":[1.63956039e-06,0.334940492,0.41363961,0.251418259],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Tc2c","board":"","node":0,"street":0,"player":0,"bucket":104,"probs":[3.25221839e-07,0.996418673,0.00352242163,5.85804392e-05,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 c","hole":"2cAd","board":"2d9dKd","node":30606,"street":1,"player":1,"bucket":0,"probs":[0.999984311,7.23237123e-07,1.47814643e-05,1.84424876e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b1 c b0.5 r1","hole":"AhJc","board":"Js2s6dQc","node":28273,"street":2,"player":1,"bucket":61,"probs":[0.998499412,0.00105590067,0.000444687017],"toks":["f","c","a"]}
+{"history":"c b1 c b0.5 c b0.5 c","hole":"4h6h","board":"Td3d6s9sTc","node":13733,"street":3,"player":1,"bucket":137,"probs":[0.97494375,4.18661574e-06,0.0250519363,1.26630448e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 a","hole":"TcJc","board":"","node":17830,"street":0,"player":0,"bucket":125,"probs":[0.999997579,2.42075091e-06],"toks":["f","c"]}
+{"history":"r1 r1 r1 c","hole":"9d6c","board":"8c4sKh","node":31736,"street":1,"player":1,"bucket":89,"probs":[0.999995791,4.16806348e-06,4.09625973e-08,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r1 c k b1 c k","hole":"Jd3h","board":"Ks3sKh6d","node":30497,"street":2,"player":0,"bucket":166,"probs":[0.199793918,0.800206082],"toks":["k","a"]}
+{"history":"c b0.5 c b1 c b1 r1 c","hole":"5hAh","board":"8d7hKhJhJc","node":6246,"street":3,"player":1,"bucket":193,"probs":[1.14436872e-05,0.999988556],"toks":["k","a"]}
+{"history":"","hole":"8dJc","board":"","node":0,"street":0,"player":0,"bucket":87,"probs":[1.57758853e-07,0.47167367,0.142289907,0.386036262,2.97579421e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"4s6s","board":"9s3c2h","node":17827,"street":1,"player":1,"bucket":6,"probs":[0.997414259,0.0023954608,0.0001902797,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b1 c b0.5 a","hole":"4cTd","board":"2dTcAc6d","node":31383,"street":2,"player":1,"bucket":174,"probs":[2.70795408e-07,0.999999729],"toks":["f","c"]}
+{"history":"c k b1 r1 c k k","hole":"Qc4h","board":"5h6dQd8s3c","node":3440,"street":3,"player":1,"bucket":159,"probs":[0.342847839,0.656219349,0.000294380919,0.000638430709],"toks":["k","b0.5","b1","a"]}
+{"history":"r1","hole":"Kc4s","board":"","node":4,"street":0,"player":1,"bucket":37,"probs":[0.99467385,0.00532254289,2.69707909e-06,9.1016198e-07,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 r0.5 c b0.5","hole":"AcQh","board":"7c4c2h","node":31438,"street":1,"player":0,"bucket":186,"probs":[0.292177584,0.622593057,0.0852293587],"toks":["f","c","a"]}
+{"history":"r0.5 c b1 c b0.5","hole":"2d3h","board":"8h5h2sKh","node":20055,"street":2,"player":0,"bucket":193,"probs":[3.61125113e-05,0.785577344,0.214386509,3.50261437e-08],"toks":["f","c","r1","a"]}
+{"history":"r0.5 c k k b1 r1 c","hole":"Ac2d","board":"Ad4cQc5d7d","node":18287,"street":3,"player":1,"bucket":153,"probs":[0.999999621,1.80403368e-07,0,1.985001e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"6s9s","board":"","node":0,"street":0,"player":0,"bucket":95,"probs":[1.94977402e-07,0.167056588,0.768746519,0.0641966948,3.51429611e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c b1","hole":"QhTc","board":"2h6d5h","node":20510,"street":1,"player":0,"bucket":93,"probs":[0.845151262,0.000201683233,0.154647038,1.63338921e-08],"toks":["f","c","r1","a"]}
+{"history":"c k b0.5 c","hole":"Js8c","board":"7cAs8d5s","node":2147,"street":2,"player":1,"bucket":18,"probs":[0.971339739,0.0285631521,9.63993218e-05,7.09966556e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 c b0.5 c a","hole":"4h5c","board":"6h7c9dQs9h","node":19666,"street":3,"player":0,"bucket":6,"probs":[1,0],"toks":["f","c"]}
+{"history":"c a","hole":"AdTc","board":"","node":9,"street":0,"player":0,"bucket":116,"probs":[0.726945407,0.273054593],"toks":["f","c"]}
+{"history":"r0.5 c","hole":"Jc4s","board":"7sAhQs","node":17827,"street":1,"player":1,"bucket":183,"probs":[0.999999608,3.78767276e-07,1.31394233e-08,5.84997359e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 c","hole":"6h5d","board":"3c3h4sTh","node":19416,"street":2,"player":1,"bucket":136,"probs":[0.0036469921,0.199571431,0.796780664,9.13285543e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k k b0.5 c","hole":"Qc8c","board":"7sQd6sJcAs","node":331,"street":3,"player":1,"bucket":145,"probs":[1.64332857e-05,0.999982137,1.31404195e-06,1.15346135e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"5h3d","board":"","node":0,"street":0,"player":0,"bucket":16,"probs":[3.64307598e-06,0.000666372608,0.433126323,0.566203657,3.99261425e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 c k b1 a","hole":"Qc3d","board":"Qh4s9d","node":31040,"street":1,"player":0,"bucket":29,"probs":[0.0275668161,0.972433184],"toks":["f","c"]}
+{"history":"c k b1 c","hole":"9h8d","board":"TcQcJsQd","node":2966,"street":2,"player":1,"bucket":187,"probs":[0.00142653241,0.543969909,0.454558121,4.54373877e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c k b1 c b0.5 c k","hole":"Qs6c","board":"2h2s9sJs4c","node":30074,"street":3,"player":0,"bucket":45,"probs":[0.177039675,0.822960325],"toks":["k","a"]}
+{"history":"","hole":"3dAh","board":"","node":0,"street":0,"player":0,"bucket":25,"probs":[1.43505587e-07,0.980356505,0.0182069044,0.0014364405,6.50329414e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 r1 c a","hole":"6c6h","board":"ThKs4h","node":10108,"street":1,"player":0,"bucket":171,"probs":[0.999983928,1.60716018e-05],"toks":["f","c"]}
+{"history":"c b0.5 r0.5 r0.5 c b0.5 c","hole":"7d4d","board":"Th2h5h4s","node":9032,"street":2,"player":1,"bucket":117,"probs":[0.999828613,0.000119057169,0,5.23303099e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b1 c k b0.5 r1 c a","hole":"8cTs","board":"8s8h5c6dKc","node":28207,"street":3,"player":0,"bucket":185,"probs":[1.62616195e-07,0.999999837],"toks":["f","c"]}
+{"history":"","hole":"8c6h","board":"","node":0,"street":0,"player":0,"bucket":58,"probs":[2.93776188e-07,0.057842011,0.448146263,0.494011433,4.29606905e-11],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c b1","hole":"AhKd","board":"4dJsTd","node":17833,"street":1,"player":0,"bucket":192,"probs":[2.16487703e-06,0.997786453,0.00221123433,1.47720838e-07],"toks":["f","c","r1","a"]}
+{"history":"r0.5 r1 c b0.5 c","hole":"5h6d","board":"Tc8h2sQd","node":24970,"street":2,"player":1,"bucket":198,"probs":[0.999998139,5.53855484e-07,1.15230372e-06,1.54698107e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 r1 c b0.5 c a","hole":"8dQd","board":"2c7s7d2d5c","node":28060,"street":3,"player":0,"bucket":69,"probs":[0.960768183,0.0392318172],"toks":["f","c"]}
+{"history":"c","hole":"Jc2d","board":"","node":2,"street":0,"player":1,"bucket":9,"probs":[0.985386011,7.13402321e-07,5.80220201e-08,0.014613218],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c","hole":"AdTs","board":"9s3h5d","node":17827,"street":1,"player":1,"bucket":15,"probs":[0.999999931,4.89576428e-08,1.65723731e-08,3.06332598e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 c a","hole":"2s3h","board":"6dJhKdAc","node":2153,"street":2,"player":0,"bucket":196,"probs":[0.999999889,1.10777658e-07],"toks":["f","c"]}
+{"history":"r1 r0.5 c b1 r1 c k k k a","hole":"9c2s","board":"KcKd6s2d7d","node":29646,"street":3,"player":1,"bucket":108,"probs":[0.885609893,0.114390107],"toks":["f","c"]}
+{"history":"","hole":"Js7c","board":"","node":0,"street":0,"player":0,"bucket":74,"probs":[2.10771051e-06,1.21211131e-05,0.892993273,0.106992496,2.40779523e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c b0.5","hole":"Kh3d","board":"4h9h7c","node":26345,"street":1,"player":0,"bucket":28,"probs":[0.981397069,0.0176004819,0.00100237081,7.81014653e-08],"toks":["f","c","r1","a"]}
+{"history":"r1 r0.5 c b0.5 r1 c","hole":"3h5s","board":"2s3cJs8s","node":29450,"street":2,"player":1,"bucket":77,"probs":[0.00179678885,0.0617612562,0.936441955],"toks":["k","b0.5","a"]}
+{"history":"c k b1 r1 c b1 r1 c","hole":"JsQd","board":"5s2h5dAd9c","node":3692,"street":3,"player":1,"bucket":73,"probs":[0.12736145,0.87263855],"toks":["k","a"]}
+{"history":"","hole":"As6c","board":"","node":0,"street":0,"player":0,"bucket":64,"probs":[1.52934589e-09,0.185780324,0.642516362,0.171703304,9.41114964e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c k","hole":"As8s","board":"5cQs3s","node":17831,"street":1,"player":0,"bucket":63,"probs":[7.9850715e-06,0.518985456,0.481006521,3.86267719e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 r1 c b0.5","hole":"3sAh","board":"4sJdTh9s","node":2642,"street":2,"player":0,"bucket":147,"probs":[0.627214045,0.0504625665,0.322323042,3.45885448e-07],"toks":["f","c","r1","a"]}
+{"history":"r0.5 r1 c b1 c b0.5 c","hole":"Qc3s","board":"6s8sKsQh8c","node":25329,"street":3,"player":1,"bucket":142,"probs":[0.999995158,4.35882422e-07,4.40650002e-06],"toks":["k","b0.5","a"]}
+{"history":"r1","hole":"4sJh","board":"","node":4,"street":0,"player":1,"bucket":35,"probs":[0.9999999,6.9799687e-08,2.32089131e-08,5.38208716e-09,1.34970322e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c a","hole":"Qc4s","board":"7d9s8h","node":17834,"street":1,"player":0,"bucket":69,"probs":[0.999999104,8.96291445e-07],"toks":["f","c"]}
+{"history":"c k b1 r1 c b0.5 a","hole":"8cKd","board":"2sAdAc5c","node":3607,"street":2,"player":1,"bucket":87,"probs":[0.989133555,0.0108664454],"toks":["f","c"]}
+{"history":"r0.5 c b0.5 c k b1 c","hole":"4c9c","board":"Tc3hAsJc8s","node":19583,"street":3,"player":1,"bucket":33,"probs":[0.032891237,0.662089759,0.305019004,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5","hole":"9h3h","board":"","node":3,"street":0,"player":1,"bucket":92,"probs":[3.35579286e-06,0.999991152,3.54704056e-09,5.48554704e-06,3.54704056e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c b0.5","hole":"2h6s","board":"2cAd6c","node":26345,"street":1,"player":0,"bucket":113,"probs":[3.28097473e-09,0.307244023,0.692579237,0.000176736676],"toks":["f","c","r1","a"]}
+{"history":"r1 c b1 c a","hole":"5sAs","board":"7d7h4c9c","node":28106,"street":2,"player":0,"bucket":33,"probs":[0.99999634,3.65965906e-06],"toks":["f","c"]}
+{"history":"r0.5 c b0.5 c k k k","hole":"6cAd","board":"KhJh8c4c8h","node":19427,"street":3,"player":0,"bucket":86,"probs":[0.99999976,1.51129738e-07,8.37506499e-08,5.45457657e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Js6d","board":"","node":0,"street":0,"player":0,"bucket":61,"probs":[8.14636203e-07,3.41176026e-06,0.996247223,0.00374854883,1.48456504e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b1 r0.5 c","hole":"QdTd","board":"4d3cJd","node":14369,"street":1,"player":1,"bucket":119,"probs":[0.659716834,0.339644724,0.000638442525,0],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b1 c","hole":"AdQc","board":"5hTc8hAc","node":2966,"street":2,"player":1,"bucket":15,"probs":[0.000702658641,0.21843343,0.780284957,0.000578955044],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k b0.5 r1 c k k","hole":"9s2h","board":"4h6cJsAdTd","node":1077,"street":3,"player":1,"bucket":31,"probs":[0.986691211,0.013306814,1.87382726e-06,1.0109239e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5","hole":"9dQd","board":"","node":17828,"street":0,"player":0,"bucket":137,"probs":[3.40330617e-09,0.984646326,0.00448491349,0.0108687518,4.91020823e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"Kc3d","board":"Th4s9d","node":26340,"street":1,"player":1,"bucket":46,"probs":[0.999997272,2.13860262e-06,5.89256104e-07,0],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b1 c","hole":"8h6s","board":"5h6cTsJc","node":2966,"street":2,"player":1,"bucket":65,"probs":[0.998349549,0.00146992633,0.000129703049,5.08218388e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c k k b1 r1 c","hole":"6d2d","board":"8sQs8d9h4d","node":28797,"street":3,"player":1,"bucket":11,"probs":[0.964002139,0.0359978614],"toks":["k","a"]}
+{"history":"a","hole":"8hTh","board":"","node":5,"street":0,"player":1,"bucket":110,"probs":[0.999996964,3.03559325e-06],"toks":["f","c"]}
+{"history":"r1 r1 c","hole":"9s8c","board":"3d4s6h","node":30606,"street":1,"player":1,"bucket":150,"probs":[0.0341908518,0.236345006,0.72946414,1.46801629e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 r1 c b1","hole":"3sAd","board":"3hTh8sTd","node":27977,"street":2,"player":0,"bucket":109,"probs":[0.987626822,9.22850013e-05,0.0122808926],"toks":["f","c","a"]}
+{"history":"r1 r1 c b1 c b1 c a","hole":"4h5c","board":"As2dJh3d2s","node":31398,"street":3,"player":0,"bucket":192,"probs":[0,1],"toks":["f","c"]}
+{"history":"","hole":"TcQd","board":"","node":0,"street":0,"player":0,"bucket":114,"probs":[2.1479399e-10,0.710433662,0.269667795,0.0198985101,3.28213395e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"2s7c","board":"7s3h8c","node":26340,"street":1,"player":1,"bucket":70,"probs":[0.961792057,0.0382078466,9.12234397e-08,4.84162884e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c","hole":"Ad4d","board":"5s2s8c6c","node":20051,"street":2,"player":1,"bucket":151,"probs":[0.878539522,0.0384775613,0.0829829164,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r0.5 c b0.5 c k k","hole":"2dKs","board":"8cTdJhKd4h","node":31655,"street":3,"player":1,"bucket":161,"probs":[0.527596735,0.459474654,0.0129286109],"toks":["k","b0.5","a"]}
+{"history":"c","hole":"9dTs","board":"","node":2,"street":0,"player":1,"bucket":99,"probs":[0.0871181971,0.00364326803,0.909238477,5.76190203e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c","hole":"4d6c","board":"8c3cTc","node":26340,"street":1,"player":1,"bucket":102,"probs":[0.913405868,0.086593917,2.0088978e-08,1.94876965e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b0.5 r1 c k a","hole":"7hKs","board":"7s7cQh9c","node":21994,"street":2,"player":1,"bucket":154,"probs":[0,1],"toks":["f","c"]}
+{"history":"r0.5 c b0.5 c b1 c b0.5","hole":"2h4s","board":"2d7dAh3hQd","node":19763,"street":3,"player":0,"bucket":78,"probs":[0.677377238,0.00224218314,0.0124741069,0.307906472],"toks":["f","c","r1","a"]}
+{"history":"a","hole":"6h7h","board":"","node":5,"street":0,"player":1,"bucket":69,"probs":[0.999999762,2.38004394e-07],"toks":["f","c"]}
+{"history":"c b1 r1 r0.5 c b0.5","hole":"2dJs","board":"5h5c9d","node":17326,"street":1,"player":0,"bucket":100,"probs":[0.999989665,5.16755807e-06,5.16755807e-06],"toks":["f","c","a"]}
+{"history":"c b0.5 c b0.5 c","hole":"3sQh","board":"5sKhTs7s","node":5304,"street":2,"player":1,"bucket":123,"probs":[0.130984417,0.839817843,0.0291892707,8.46882153e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c k k b1 r1 c k a","hole":"2h7h","board":"4d2c3s2dQs","node":30879,"street":3,"player":1,"bucket":183,"probs":[0,1],"toks":["f","c"]}
+{"history":"","hole":"9s9h","board":"","node":0,"street":0,"player":0,"bucket":98,"probs":[2.61482036e-11,0.0180797202,0.659848925,0.322070604,7.50655237e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"5h8c","board":"Ac2d5s","node":17827,"street":1,"player":1,"bucket":104,"probs":[0.974874348,0.0248156186,0.000310011029,2.20922641e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r0.5 c b1 c","hole":"Ac2c","board":"7h6cAdAh","node":25970,"street":2,"player":1,"bucket":144,"probs":[0.25770356,0.500055747,0.242240694],"toks":["k","b0.5","a"]}
+{"history":"c k b0.5 c k k","hole":"Qc2s","board":"Ac2hQs4s3h","node":2154,"street":3,"player":1,"bucket":153,"probs":[0.0118088891,0.00387612056,0.984314924,6.65005684e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"9c5d","board":"","node":0,"street":0,"player":0,"bucket":46,"probs":[3.76478269e-06,1.87593831e-05,0.684171825,0.315805643,8.63306412e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 r0.5 c","hole":"Ts9h","board":"4dJh7s","node":22389,"street":1,"player":1,"bucket":91,"probs":[0.671272106,0.253119391,0.075608503,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b0.5 c","hole":"TsAs","board":"3d2hKh9s","node":31163,"street":2,"player":1,"bucket":125,"probs":[0.999969487,3.07139794e-06,2.74406755e-05,1.33767062e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c k k k b1 c k","hole":"3h5s","board":"7d3dJsJhAh","node":24368,"street":3,"player":0,"bucket":118,"probs":[0.99985454,1.04429965e-06,4.55779207e-08,0.000144370586],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"QdJs","board":"","node":0,"street":0,"player":0,"bucket":127,"probs":[1.4165034e-10,0.0417570063,0.954889135,0.00335384271,1.53913106e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 r0.5 c a","hole":"2s6d","board":"4h7dAd","node":29667,"street":1,"player":0,"bucket":75,"probs":[1,0],"toks":["f","c"]}
+{"history":"c k k b1 r1 c b1","hole":"7cKc","board":"3d6h6sTd","node":1870,"street":2,"player":0,"bucket":132,"probs":[0.999965517,1.29446113e-05,3.32092047e-06,1.82173953e-05],"toks":["f","c","r1","a"]}
+{"history":"r1 c b0.5 r1 c b1 c","hole":"4c8c","board":"6c5c4sAs9h","node":28081,"street":3,"player":1,"bucket":83,"probs":[0.8803226,0.1196774],"toks":["k","a"]}
+{"history":"a","hole":"5h6h","board":"","node":5,"street":0,"player":1,"bucket":55,"probs":[0.999997032,2.96812063e-06],"toks":["f","c"]}
+{"history":"c k","hole":"AdTs","board":"6s7sJc","node":6,"street":1,"player":1,"bucket":186,"probs":[0.999986975,9.52078181e-06,3.50417634e-06,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 c a","hole":"7d8d","board":"2cTsAd6c","node":27655,"street":2,"player":0,"bucket":46,"probs":[0.999998378,1.622378e-06],"toks":["f","c"]}
+{"history":"c b1 r0.5 r1 c b1 c k k a","hole":"2c8d","board":"2d3s3c8cTc","node":16474,"street":3,"player":0,"bucket":134,"probs":[0.362743913,0.637256087],"toks":["f","c"]}
+{"history":"","hole":"AdKh","board":"","node":0,"street":0,"player":0,"bucket":155,"probs":[6.0523042e-10,0.0976915547,0.573947012,0.328359575,1.85704042e-06],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"TdQd","board":"KsJcKc","node":17827,"street":1,"player":1,"bucket":192,"probs":[0.999991364,8.27966261e-06,3.16103915e-07,3.98463889e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 r1 c k k a","hole":"6d9c","board":"6sQh3s9s","node":23583,"street":2,"player":0,"bucket":122,"probs":[1.04380066e-06,0.999998956],"toks":["f","c"]}
+{"history":"r0.5 r0.5 r1 c k b0.5 c k b0.5 c","hole":"5sTc","board":"6d8hKc2h3d","node":23833,"street":3,"player":1,"bucket":18,"probs":[0,0.187977078,0.812022922],"toks":["k","b0.5","a"]}
+{"history":"","hole":"4c8c","board":"","node":0,"street":0,"player":0,"bucket":80,"probs":[1.35747254e-06,0.916845959,0.0827946568,0.000358022818,4.15651255e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"As9s","board":"AhJcJd","node":17827,"street":1,"player":1,"bucket":42,"probs":[0.999711937,0.000286270056,1.69454404e-06,9.88423092e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b1 c b1","hole":"7c9c","board":"2s6d8s2d","node":31315,"street":2,"player":0,"bucket":58,"probs":[0.999997371,6.7699458e-08,2.56118242e-06],"toks":["f","c","a"]}
+{"history":"r0.5 r0.5 c b1 c k b0.5 r1 c","hole":"Kc3c","board":"8d5h7h5c8s","node":22204,"street":3,"player":1,"bucket":89,"probs":[0.897961521,0.102038479],"toks":["k","a"]}
+{"history":"","hole":"9h5c","board":"","node":0,"street":0,"player":0,"bucket":46,"probs":[3.76478269e-06,1.87593831e-05,0.684171825,0.315805643,8.63306412e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 r0.5 c","hole":"4cKh","board":"8cJc8d","node":31435,"street":1,"player":1,"bucket":112,"probs":[0.999998291,1.58290808e-07,1.4667212e-06,8.41743446e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r0.5 c k k a","hole":"8d2h","board":"3h9h4s5h","node":25407,"street":2,"player":0,"bucket":194,"probs":[0.999359549,0.000640450877],"toks":["f","c"]}
+{"history":"c b1 c k b1 c k b1 r1 c a","hole":"Kh7s","board":"6sJdQsAc2h","node":13314,"street":3,"player":0,"bucket":69,"probs":[0.98989899,0.0101010101],"toks":["f","c"]}
+{"history":"r1 r1","hole":"JhQs","board":"","node":26342,"street":0,"player":0,"bucket":127,"probs":[0,0.0281201049,0.971827447,4.97839072e-05,2.66385559e-06],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 c k b0.5 a","hole":"3d8s","board":"ThAsAc","node":28816,"street":1,"player":0,"bucket":16,"probs":[1,0],"toks":["f","c"]}
+{"history":"c b0.5 c b0.5 c","hole":"6dQs","board":"Kd6cQd7s","node":5304,"street":2,"player":1,"bucket":44,"probs":[4.60214308e-05,0.00569103735,0.994256137,6.80383797e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r1 c b0.5 c k b0.5 c b0.5 a","hole":"Ad8d","board":"9s5hTcAs2c","node":10939,"street":3,"player":1,"bucket":171,"probs":[0.768124377,0.231875623],"toks":["f","c"]}
+{"history":"c","hole":"JsJh","board":"","node":2,"street":0,"player":1,"bucket":126,"probs":[5.25202156e-08,0.0170656592,0.982930518,3.76985876e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c","hole":"4c2s","board":"5d4sKh","node":12228,"street":1,"player":1,"bucket":79,"probs":[0.989707426,0.0102924098,1.56094578e-07,7.98389888e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 r1 c k","hole":"4c7d","board":"2s6h5c8s","node":25184,"street":2,"player":0,"bucket":154,"probs":[0.153442902,0.80462913,0.0419279684],"toks":["k","b0.5","a"]}
+{"history":"r0.5 r1 c b0.5 c k b0.5 c a","hole":"QhKc","board":"JsTsTcTh2h","node":25032,"street":3,"player":0,"bucket":100,"probs":[0.9782033,0.0217967001],"toks":["f","c"]}
+{"history":"r0.5","hole":"Qc8c","board":"","node":3,"street":0,"player":1,"bucket":136,"probs":[1.48006802e-06,0.961704909,0.00504200816,0.0332512558,3.47400735e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 c","hole":"2h9c","board":"5c4hJs","node":3715,"street":1,"player":1,"bucket":66,"probs":[0.990510339,1.037084e-05,0.009473442,5.84785414e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 r1 c","hole":"Jc3c","board":"AhKhKsQs","node":20375,"street":2,"player":1,"bucket":103,"probs":[0.999708636,4.23265911e-05,0.000241558946,7.47826633e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b0.5 c k k a","hole":"Ac2s","board":"8dTsQd7hKd","node":31177,"street":3,"player":0,"bucket":57,"probs":[0.999998609,1.39085687e-06],"toks":["f","c"]}
+{"history":"","hole":"2s5d","board":"","node":0,"street":0,"player":0,"bucket":3,"probs":[0.999489492,0.000410656912,1.70459669e-05,8.28040931e-05,6.43034294e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c k","hole":"2s5c","board":"7s3c4h","node":17831,"street":1,"player":0,"bucket":170,"probs":[4.85995153e-07,0.431736971,0.568262538,5.40119959e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 r0.5 c b0.5 r1 c","hole":"9d4d","board":"Kh3h4hTh","node":23356,"street":2,"player":1,"bucket":8,"probs":[0.997915887,0.001026489,0.00105762419],"toks":["k","b0.5","a"]}
+{"history":"r0.5 r1 r0.5 c b1 c b0.5 c a","hole":"8cTc","board":"Jc7c5hKhJs","node":26017,"street":3,"player":0,"bucket":55,"probs":[0.999996491,3.50937303e-06],"toks":["f","c"]}
+{"history":"","hole":"4d5h","board":"","node":0,"street":0,"player":0,"bucket":29,"probs":[1.09327739e-06,0.634675935,0.346879281,0.0184436893,1.79750599e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b1 c a","hole":"AsAh","board":"6cTcQs","node":12235,"street":1,"player":0,"bucket":156,"probs":[0.373690357,0.626309643],"toks":["f","c"]}
+{"history":"r0.5 r1 c b1 c","hole":"2hQs","board":"Ad8s7s7h","node":25245,"street":2,"player":1,"bucket":84,"probs":[0.999987524,1.0981513e-06,1.05312522e-05,8.46162647e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r1 r0.5 c b0.5 c k k b0.5","hole":"Qs8h","board":"9c3h6c5hJh","node":17547,"street":3,"player":0,"bucket":26,"probs":[0.304132966,2.98905408e-06,0.695864044],"toks":["f","c","a"]}
+{"history":"","hole":"5d7d","board":"","node":0,"street":0,"player":0,"bucket":68,"probs":[1.22322504e-06,0.0158480852,0.398994357,0.585156334,8.13960642e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b1 r0.5 r0.5 c b1","hole":"JhJd","board":"4c8c3c","node":15554,"street":1,"player":0,"bucket":39,"probs":[0.890401167,0.107243066,0.00235576664],"toks":["f","c","a"]}
+{"history":"c b0.5 c k k","hole":"6c8d","board":"5cQcAh3d","node":3723,"street":2,"player":1,"bucket":124,"probs":[0.913553337,0.0796051274,0.00684091624,6.18863671e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k k b1 c k b1","hole":"4sAd","board":"Kh4d3d5s9h","node":463,"street":3,"player":1,"bucket":105,"probs":[0.000610021219,0.974329022,1.15507736e-05,0.0250494063],"toks":["f","c","r1","a"]}
+{"history":"r0.5 a","hole":"Jc6d","board":"","node":17830,"street":0,"player":0,"bucket":61,"probs":[1,4.28644714e-10],"toks":["f","c"]}
+{"history":"r1 r0.5 c b0.5","hole":"Ah4h","board":"4dJhKc","node":28486,"street":1,"player":0,"bucket":2,"probs":[6.17580034e-08,0.999998742,1.18769809e-06,8.27991096e-09],"toks":["f","c","r1","a"]}
+{"history":"c b1 r0.5 c b1 c","hole":"8cQd","board":"2cQh6h9c","node":15401,"street":2,"player":1,"bucket":92,"probs":[0.803714678,0.192129986,0.00415533549,0],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b1 c b0.5 c","hole":"5sJs","board":"4c6d8hKhAs","node":14160,"street":3,"player":1,"bucket":44,"probs":[0.615941696,0.148981911,0.156330811,0.0787455817],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5","hole":"7sQs","board":"","node":7,"street":0,"player":0,"bucket":135,"probs":[0.0525798182,0.888510415,0.0158868222,0.0415778688,0.00144507611],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 c k b0.5 a","hole":"Jh4c","board":"9s9d5h","node":30893,"street":1,"player":0,"bucket":100,"probs":[0.999779594,0.00022040587],"toks":["f","c"]}
+{"history":"r0.5 c k b1 r1 c b0.5","hole":"Ks9s","board":"AhJcTd8h","node":19290,"street":2,"player":0,"bucket":126,"probs":[0.999957881,3.36106222e-05,8.50834148e-06],"toks":["f","c","a"]}
+{"history":"c k b0.5 r1 c k b1 r1 c","hole":"2hAd","board":"TcKs5dQcTs","node":2817,"street":3,"player":1,"bucket":89,"probs":[0.221553875,0.778446125],"toks":["k","a"]}
+{"history":"r0.5","hole":"5d3s","board":"","node":3,"street":0,"player":1,"bucket":16,"probs":[1.75223426e-05,0.999621847,1.44098666e-05,0.000346132962,8.7355347e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r1 r0.5 c b0.5","hole":"8d3d","board":"4s5dKd","node":25397,"street":1,"player":0,"bucket":126,"probs":[3.54638902e-06,0.999753068,0.000189271207,5.41148912e-05],"toks":["f","c","r1","a"]}
+{"history":"r0.5 r1 r1 c k b1 c k","hole":"KsKd","board":"Qd5s7c3c","node":26229,"street":2,"player":0,"bucket":2,"probs":[0.829694521,0.170305479],"toks":["k","a"]}
+{"history":"r0.5 c b0.5 c b1 c","hole":"6s5c","board":"4hAhAdKd3c","node":19759,"street":3,"player":1,"bucket":2,"probs":[0.000447260044,0.677121042,0.164311843,0.158119855],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"9s4c","board":"","node":0,"street":0,"player":0,"bucket":33,"probs":[7.26178376e-06,0.99977794,0.000106417628,0.000108381008,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"6sTc","board":"8c4cKh","node":6,"street":1,"player":1,"bucket":54,"probs":[0.997803759,0.00203593275,0.000160305547,2.58377494e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k k","hole":"Kd7c","board":"9s4s9d5d","node":26348,"street":2,"player":1,"bucket":132,"probs":[0.99999347,5.56529194e-06,9.64001907e-07,7.98469635e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r0.5 c b1 c k b0.5 c k","hole":"9h9c","board":"6d6cThJc2h","node":26001,"street":3,"player":0,"bucket":131,"probs":[0.627314427,0.372685573],"toks":["k","a"]}
+{"history":"","hole":"Ah2s","board":"","node":0,"street":0,"player":0,"bucket":12,"probs":[3.50789494e-07,0.206239209,0.451889206,0.341871228,6.60806168e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 c","hole":"4dKd","board":"7s8cTc","node":28481,"street":1,"player":1,"bucket":194,"probs":[0.0751533243,0.48340798,0.44143797,7.25207337e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b0.5 c k","hole":"3c9d","board":"JhKc3d4s","node":13540,"street":2,"player":0,"bucket":138,"probs":[0.99999302,5.57173552e-07,4.07441828e-07,6.01568217e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b0.5 r1 c b1 c","hole":"Ah9c","board":"Td5hAs7d3d","node":13969,"street":3,"player":1,"bucket":161,"probs":[0.998755535,0.00124446529],"toks":["k","a"]}
+{"history":"c","hole":"9d5c","board":"","node":2,"street":0,"player":1,"bucket":46,"probs":[0.904676798,3.4220557e-09,0.0953231953,3.1862443e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c","hole":"6dQd","board":"JsTs3c","node":29662,"street":1,"player":1,"bucket":33,"probs":[0.999657561,0.000340863021,0,1.57644834e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c b1 r1 c","hole":"Ac6h","board":"6cJdAh9h","node":14264,"street":2,"player":1,"bucket":144,"probs":[0.616760665,0.31942947,0.0153708315,0.0484390336],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 c k k","hole":"6h9h","board":"5hQdKs2h4d","node":19423,"street":3,"player":1,"bucket":18,"probs":[0.0632594075,0.201740306,0.734998773,1.51344698e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"4dAc","board":"","node":0,"street":0,"player":0,"bucket":38,"probs":[3.70886669e-07,0.32604104,0.548091808,0.125866646,1.36282635e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"5h8c","board":"2h7s9d","node":17827,"street":1,"player":1,"bucket":10,"probs":[0.998955459,3.35538033e-06,0.0010411837,2.05424321e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c b1 r1 c","hole":"5hJs","board":"3s4d7sTs","node":29637,"street":2,"player":1,"bucket":75,"probs":[0.000294632154,0.999705368],"toks":["k","a"]}
+{"history":"r0.5 r1 r0.5 c b1 c b0.5 c","hole":"Qs6d","board":"2sKhTs5s9h","node":26014,"street":3,"player":1,"bucket":45,"probs":[0.485117346,0.514882654],"toks":["k","a"]}
+{"history":"","hole":"3hJd","board":"","node":0,"street":0,"player":0,"bucket":22,"probs":[3.51268346e-06,0.22167618,0.0549738629,0.723346417,2.81161305e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"9sQh","board":"Ts5sTc","node":26340,"street":1,"player":1,"bucket":136,"probs":[0.962579568,0.0373924929,2.79348602e-05,3.9074781e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k","hole":"5sTh","board":"4sQcJd7h","node":17835,"street":2,"player":1,"bucket":45,"probs":[0.999999758,2.35534247e-07,4.36643683e-09,1.74246015e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 r1 c b1 c a","hole":"2s5d","board":"5hKd8cQd3h","node":28084,"street":3,"player":0,"bucket":106,"probs":[0.783306694,0.216693306],"toks":["f","c"]}
+{"history":"","hole":"8c7h","board":"","node":0,"street":0,"player":0,"bucket":71,"probs":[9.80160707e-07,0.548994,0.351939013,0.0990659953,1.19636861e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"Jh4s","board":"5s9s2h","node":6,"street":1,"player":1,"bucket":179,"probs":[0.999987648,7.67138743e-06,4.67999659e-06,3.81472908e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k b1 r1 c b0.5 a","hole":"7dTs","board":"8dAh5cQh","node":19371,"street":2,"player":1,"bucket":95,"probs":[0.295454545,0.704545455],"toks":["f","c"]}
+{"history":"c b0.5 c b1 c k b1 r1 c k","hole":"Ks4d","board":"6s9cJcAcKd","node":6120,"street":3,"player":0,"bucket":144,"probs":[0.292857183,0.707142817],"toks":["k","a"]}
+{"history":"a","hole":"KcAd","board":"","node":5,"street":0,"player":1,"bucket":155,"probs":[8.27637224e-09,0.999999992],"toks":["f","c"]}
+{"history":"r1 c","hole":"Ks3c","board":"6d2h7c","node":26340,"street":1,"player":1,"bucket":46,"probs":[0.999997272,2.13860262e-06,5.89256104e-07,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b0.5 r1 c","hole":"QsJd","board":"Kc9c6s3s","node":31287,"street":2,"player":1,"bucket":151,"probs":[0.999969194,3.08056298e-05],"toks":["k","a"]}
+{"history":"r0.5 r1 c k b0.5 c k b0.5 c b0.5 a","hole":"7c5d","board":"5cAhKs6cQh","node":24627,"street":3,"player":1,"bucket":90,"probs":[0.947368421,0.0526315789],"toks":["f","c"]}
+{"history":"a","hole":"4dJc","board":"","node":5,"street":0,"player":1,"bucket":35,"probs":[0.999999953,4.67533369e-08],"toks":["f","c"]}
+{"history":"r0.5 r1 c b1","hole":"2h6h","board":"Ts5dQc","node":24219,"street":1,"player":0,"bucket":75,"probs":[1,4.86442328e-10,0,0],"toks":["f","c","r1","a"]}
+{"history":"r0.5 c b1 c","hole":"Jc5c","board":"Jd3sQd9d","node":20051,"street":2,"player":1,"bucket":32,"probs":[0.997669041,0.00219998866,0.000112813942,1.81562439e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b0.5 c b1 c","hole":"Jd2c","board":"Ts4d7s6d3d","node":19759,"street":3,"player":1,"bucket":4,"probs":[0.439140824,0.374591588,0.186267588,0],"toks":["k","b0.5","b1","a"]}
+{"history":"c","hole":"4h3h","board":"","node":2,"street":0,"player":1,"bucket":27,"probs":[0.357848672,0.0013537078,0.640796693,9.27364664e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r1 c","hole":"8sTc","board":"5cQc3c","node":31736,"street":1,"player":1,"bucket":190,"probs":[0.959152128,0.0179212806,0,0.0229265913],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b1 c b0.5","hole":"KcTc","board":"Ts3s9dAh","node":27272,"street":2,"player":0,"bucket":80,"probs":[2.44408577e-07,0.999962373,4.36264796e-08,3.73390133e-05],"toks":["f","c","r1","a"]}
+{"history":"r0.5 c b0.5 c b0.5 c b0.5 a","hole":"3h6c","board":"Ks5h8s7hKh","node":19698,"street":3,"player":1,"bucket":9,"probs":[1,0],"toks":["f","c"]}
+{"history":"r0.5","hole":"5sJs","board":"","node":3,"street":0,"player":1,"bucket":120,"probs":[4.56767643e-07,0.928186344,1.43296384e-05,0.0717987125,1.57493501e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 r0.5 c b1 a","hole":"9h6c","board":"JdThKd","node":8002,"street":1,"player":1,"bucket":48,"probs":[0.578571429,0.421428571],"toks":["f","c"]}
+{"history":"r1 c k b0.5 c","hole":"7d8s","board":"6s5dJcKd","node":26817,"street":2,"player":1,"bucket":58,"probs":[0.955000562,0.0438320074,0.00116743111,0],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 c k b0.5 c k b0.5 r1 c b1","hole":"8s9h","board":"2h6sThKcAd","node":4348,"street":3,"player":0,"bucket":39,"probs":[0.999996137,1.9315572e-06,1.9315572e-06],"toks":["f","c","a"]}
+{"history":"","hole":"4h9h","board":"","node":0,"street":0,"player":0,"bucket":93,"probs":[1.06772833e-06,0.877038868,0.122758675,0.00020138643,2.98176611e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k b1 a","hole":"QsTc","board":"Qh8d2s","node":2968,"street":1,"player":1,"bucket":156,"probs":[0.0451576719,0.954842328],"toks":["f","c"]}
+{"history":"c b1 r1 c b1 c","hole":"2dKd","board":"6hKs2hTh","node":17198,"street":2,"player":1,"bucket":91,"probs":[0.0311149273,0.488872236,0.301640075,0.178372762],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r0.5 c b0.5 c k k","hole":"Td6d","board":"Ks3dAh9h3h","node":31655,"street":3,"player":1,"bucket":46,"probs":[0.999896164,0.000102337558,1.49882854e-06],"toks":["k","b0.5","a"]}
+{"history":"r0.5 r1","hole":"JsAh","board":"","node":17829,"street":0,"player":0,"bucket":129,"probs":[0,0.995187229,0.00481076024,0,2.01122056e-06],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k b0.5","hole":"AhAd","board":"2dTsJc","node":11,"street":1,"player":0,"bucket":62,"probs":[3.38822856e-09,0.993486376,0.00650512908,8.49201139e-06],"toks":["f","c","r1","a"]}
+{"history":"r1 r0.5 r0.5 c b0.5 c a","hole":"AcTs","board":"3d8dTh9h","node":30097,"street":2,"player":0,"bucket":163,"probs":[0.953754006,0.0462459941],"toks":["f","c"]}
+{"history":"r1 c b0.5 c k b1 c","hole":"6h6c","board":"TsQd8h3d5h","node":27792,"street":3,"player":1,"bucket":114,"probs":[0.999979863,1.21421727e-05,4.89208779e-07,7.50513808e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Kh6h","board":"","node":0,"street":0,"player":0,"bucket":147,"probs":[4.64074068e-09,0.00111320478,0.998534438,0.000352324572,2.79299907e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b1 c a","hole":"5h3h","board":"6sQd8d","node":12235,"street":1,"player":0,"bucket":56,"probs":[1,0],"toks":["f","c"]}
+{"history":"r0.5 r1 r0.5 c b1 c a","hole":"Qs8d","board":"8s9hKhAh","node":25974,"street":2,"player":0,"bucket":94,"probs":[0.999865849,0.000134150637],"toks":["f","c"]}
+{"history":"c b1 r1 c b1 r1 c k k a","hole":"Kd6d","board":"7cAdQdJc8d","node":17305,"street":3,"player":0,"bucket":199,"probs":[4.26571661e-05,0.999957343],"toks":["f","c"]}
+{"history":"r1","hole":"7c4c","board":"","node":4,"street":0,"player":1,"bucket":67,"probs":[3.10336455e-05,0.999180815,4.12412054e-07,0.000787696584,4.24250108e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c k","hole":"Tc9h","board":"As3hAh","node":17831,"street":1,"player":0,"bucket":149,"probs":[0.375636952,0.402410294,0.221952754,7.43423012e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b1 c b1","hole":"Qs4d","board":"Jd2sKc4s","node":22117,"street":2,"player":0,"bucket":65,"probs":[0.882775299,0.117222086,2.61420233e-06],"toks":["f","c","a"]}
+{"history":"r1 c k b0.5 c b0.5 c a","hole":"7s9c","board":"9h5dKsKh2s","node":27019,"street":3,"player":0,"bucket":165,"probs":[0.992753193,0.00724680679],"toks":["f","c"]}
+{"history":"r0.5","hole":"3cJc","board":"","node":3,"street":0,"player":1,"bucket":118,"probs":[1.92017728e-06,0.999885435,4.92107813e-08,0.000112586261,9.58512567e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c k","hole":"6s6c","board":"2s4d7d","node":20508,"street":1,"player":0,"bucket":11,"probs":[0.976003333,0.000759837212,0.0232368288,9.70223993e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c b1 c","hole":"6d8d","board":"QsKcAs3c","node":30238,"street":2,"player":1,"bucket":53,"probs":[0.995661605,0.00224980429,0.00208859052],"toks":["k","b0.5","a"]}
+{"history":"r0.5 r0.5 r1 c b0.5 c b0.5 c b0.5","hole":"Th3d","board":"Kd2h4cAs5s","node":24086,"street":3,"player":0,"bucket":184,"probs":[7.26031464e-08,2.42648732e-06,0.999997501],"toks":["f","c","a"]}
+{"history":"","hole":"5sQs","board":"","node":0,"street":0,"player":0,"bucket":133,"probs":[5.36999277e-08,0.0586832667,0.941259419,5.72591332e-05,1.07070461e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r1 c","hole":"4s6h","board":"Ad7dQh","node":24213,"street":1,"player":1,"bucket":7,"probs":[0.999989775,3.74731293e-07,9.81235722e-06,3.77941282e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c b0.5 c b1","hole":"4s9h","board":"8cTh7s2s","node":30096,"street":2,"player":0,"bucket":58,"probs":[0.983735349,0.0162556133,9.03736782e-06],"toks":["f","c","a"]}
+{"history":"c b0.5 c b0.5 c k b0.5 r1 c","hole":"4c5h","board":"8s2dQsTdAc","node":5432,"street":3,"player":1,"bucket":3,"probs":[0.0523953538,0.256191841,0.12372715,0.567685655],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Kc2s","board":"","node":0,"street":0,"player":0,"bucket":11,"probs":[2.62264734e-06,0.268847994,0.347892661,0.383256679,4.27740387e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c b1","hole":"ThJd","board":"JcQhTs","node":17833,"street":1,"player":0,"bucket":188,"probs":[1.92509457e-08,0.999760679,0.000237809313,1.49233379e-06],"toks":["f","c","r1","a"]}
+{"history":"r1 c b1 r1 c","hole":"8s4c","board":"4dKh2cJh","node":28376,"street":2,"player":1,"bucket":16,"probs":[0.99900141,0.000555305139,0.000178134699,0.000265150042],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c k k b0.5 c b0.5 r1","hole":"6c9h","board":"Jh2dTsAcAd","node":12542,"street":3,"player":1,"bucket":50,"probs":[0.999969709,1.94318313e-05,1.0859532e-05],"toks":["f","c","a"]}
+{"history":"","hole":"7hTd","board":"","node":0,"street":0,"player":0,"bucket":73,"probs":[6.48576982e-07,0.00140297709,0.300237163,0.698359208,3.27721193e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c","hole":"5s3h","board":"Ac4h6d","node":20504,"street":1,"player":1,"bucket":88,"probs":[0.0426886041,0.346095416,0.611202128,1.38515004e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c k k b1","hole":"3cAs","board":"7s4cQh2h","node":30620,"street":2,"player":0,"bucket":0,"probs":[0.332308976,0.00383357943,0.268264626,0.395592818],"toks":["f","c","r1","a"]}
+{"history":"r1 c k b1 c b0.5 c b1","hole":"7d6d","board":"4dThKs6c3h","node":27445,"street":3,"player":0,"bucket":124,"probs":[0.332101999,0.667888518,9.48251845e-06],"toks":["f","c","a"]}
+{"history":"a","hole":"KcQc","board":"","node":5,"street":0,"player":1,"bucket":153,"probs":[0.675685005,0.324314995],"toks":["f","c"]}
+{"history":"r0.5 c","hole":"7cAh","board":"Qc6s4c","node":17827,"street":1,"player":1,"bucket":35,"probs":[0.999998391,1.60774777e-06,6.71377788e-10,1.07183262e-10],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 r1 c k b1 c k a","hole":"5h4s","board":"5d2dQc2s","node":31869,"street":2,"player":1,"bucket":166,"probs":[0,1],"toks":["f","c"]}
+{"history":"r0.5 r1 c k k b0.5 r1 c","hole":"5hQs","board":"Qd4c2d5s7s","node":24466,"street":3,"player":1,"bucket":185,"probs":[0.998762689,0.000949326181,0.000287985217],"toks":["k","b0.5","a"]}
+{"history":"","hole":"Ad4c","board":"","node":0,"street":0,"player":0,"bucket":38,"probs":[3.70886669e-07,0.32604104,0.548091808,0.125866646,1.36282635e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 r1 c","hole":"KdKc","board":"4hQdTc","node":30303,"street":1,"player":1,"bucket":62,"probs":[0.70276335,0.277882359,0.0193426066,1.16847813e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b0.5 c","hole":"9dJs","board":"Kh7cKs5c","node":26817,"street":2,"player":1,"bucket":134,"probs":[0.990034491,0.00142749607,0.00853797635,3.67180046e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b1 c b0.5 r1 c","hole":"8d3d","board":"5sTcQsAcQc","node":27476,"street":3,"player":1,"bucket":31,"probs":[0.00215223289,0.997847767],"toks":["k","a"]}
+{"history":"","hole":"2d4d","board":"","node":0,"street":0,"player":0,"bucket":26,"probs":[1.36955701e-06,0.999732165,0.000235963301,3.04999051e-05,2.42996987e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 r1 c k","hole":"5s6c","board":"Qs5hTc","node":31738,"street":1,"player":0,"bucket":60,"probs":[0.999923014,7.94604963e-06,2.68581407e-06,6.63543789e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b1 c a","hole":"7sTs","board":"8dJdKd7d","node":2972,"street":2,"player":0,"bucket":36,"probs":[0.999998968,1.03190103e-06],"toks":["f","c"]}
+{"history":"c k k k b0.5 r1 c","hole":"6c2s","board":"Jh9s2d8c3d","node":391,"street":3,"player":1,"bucket":80,"probs":[0.999997237,2.39100579e-06,3.36275954e-07,3.59813806e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"a","hole":"5s9c","board":"","node":5,"street":0,"player":1,"bucket":46,"probs":[0.999991644,8.3555216e-06],"toks":["f","c"]}
+{"history":"r1 r0.5 r1 c","hole":"KsJd","board":"Th9s9d","node":30303,"street":1,"player":1,"bucket":97,"probs":[0.781550178,0.218447195,2.62647224e-06,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b1 r1 c","hole":"JcAh","board":"8h3s6s3c","node":22324,"street":2,"player":1,"bucket":88,"probs":[0.990139643,0.0091814508,0.000678906176],"toks":["k","b0.5","a"]}
+{"history":"c b0.5 r1 c b0.5 c b0.5 r1 c a","hole":"7c9c","board":"KdJs4sQc3s","node":11031,"street":3,"player":0,"bucket":34,"probs":[0.999943872,5.61277468e-05],"toks":["f","c"]}
+{"history":"c","hole":"7s9s","board":"","node":2,"street":0,"player":1,"bucket":96,"probs":[5.84095152e-05,0.00907692564,0.990864621,4.42692324e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r0.5 c k","hole":"KhKs","board":"3d7s8c","node":14373,"street":1,"player":0,"bucket":156,"probs":[0.00104766284,0.410480328,0.588072543,0.00039946627],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 c a","hole":"4cTs","board":"3hKhJd5d","node":24976,"street":2,"player":0,"bucket":45,"probs":[0.999999357,6.42549928e-07],"toks":["f","c"]}
+{"history":"r0.5 r0.5 c k k k k","hole":"KhJc","board":"6hQhTh9s2s","node":20520,"street":3,"player":1,"bucket":190,"probs":[0.811132783,0.00277751424,0.163376235,0.0227134675],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"3c6c","board":"","node":0,"street":0,"player":0,"bucket":53,"probs":[1.16725656e-06,1.65183542e-05,0.62597299,0.374009314,9.83898234e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c","hole":"Kd8d","board":"6s2dQc","node":20504,"street":1,"player":1,"bucket":195,"probs":[0.418712871,0.470679969,0.110606265,8.95070887e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b0.5 r1 c","hole":"Ts7c","board":"3hJc8hKc","node":21985,"street":2,"player":1,"bucket":171,"probs":[0.997718814,0.0019043344,3.62192927e-05,0.000340632576],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 c k b0.5 r1 c","hole":"Qd4c","board":"7d3hKd8h8c","node":2275,"street":3,"player":1,"bucket":65,"probs":[0.999677118,0.000276450268,4.57940089e-05,6.37371378e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 r1","hole":"Ah9c","board":"","node":24215,"street":0,"player":1,"bucket":103,"probs":[0.999627849,0.000372089364,6.12142656e-08],"toks":["f","c","a"]}
+{"history":"c k b0.5","hole":"Ts9s","board":"3c9c6c","node":11,"street":1,"player":0,"bucket":77,"probs":[4.31717079e-07,0.907592903,0.0924066419,2.37106683e-08],"toks":["f","c","r1","a"]}
+{"history":"c b0.5 r0.5 c b1 c k b0.5","hole":"6dQd","board":"8cJcTcKd","node":8008,"street":2,"player":1,"bucket":165,"probs":[0.999086648,1.81315223e-05,0.00087886134,1.63592682e-05],"toks":["f","c","r1","a"]}
+{"history":"r0.5 c k b0.5 r1 c b1 c k","hole":"8s7d","board":"Qc5s4s3cAc","node":18934,"street":3,"player":0,"bucket":2,"probs":[0,0.107729627,0.892270373],"toks":["k","b0.5","a"]}
+{"history":"a","hole":"5s2s","board":"","node":5,"street":0,"player":1,"bucket":39,"probs":[0.99999921,7.89772847e-07],"toks":["f","c"]}
+{"history":"c k k","hole":"Td6d","board":"Ts5c8d","node":10,"street":1,"player":0,"bucket":41,"probs":[0.00314491272,0.991492148,0.0053629325,6.6599782e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c b0.5 c","hole":"Ks6h","board":"9d7h5sQs","node":29238,"street":2,"player":1,"bucket":76,"probs":[0.988396204,0.000107697213,0.011495388,7.10857525e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k b0.5 c b1 c k","hole":"2dTd","board":"7dTs8h9sQh","node":973,"street":3,"player":0,"bucket":92,"probs":[0.905037804,2.56187664e-06,0.00353096551,0.0914286687],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1","hole":"5cTh","board":"","node":8,"street":0,"player":0,"bucket":47,"probs":[0.826067278,0.00107661489,0.170650253,0.000339279556,0.00186657489],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k b1 a","hole":"AhTd","board":"5d3h8c","node":2968,"street":1,"player":1,"bucket":15,"probs":[1,0],"toks":["f","c"]}
+{"history":"c b0.5 r1 r0.5 c k b1 c a","hole":"JhQh","board":"AdJdTsAs","node":11652,"street":2,"player":0,"bucket":30,"probs":[0.0247737117,0.975226288],"toks":["f","c"]}
+{"history":"r0.5 c b0.5 c b0.5 r1 c k b0.5 a","hole":"2sKd","board":"KhJdQdQhQc","node":19732,"street":3,"player":0,"bucket":180,"probs":[0.00140056022,0.99859944],"toks":["f","c"]}
+{"history":"","hole":"QcJc","board":"","node":0,"street":0,"player":0,"bucket":139,"probs":[2.36579282e-11,0.00432259106,0.810082332,0.18559501,6.62835138e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 r0.5 c","hole":"5c4d","board":"2sKh7d","node":6392,"street":1,"player":1,"bucket":64,"probs":[0.999923013,7.47167311e-05,2.13516059e-06,1.35198904e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c b1","hole":"As6s","board":"Tc4cQc8h","node":20056,"street":2,"player":0,"bucket":25,"probs":[0.999993938,4.38228889e-06,7.64639793e-07,9.15413837e-07],"toks":["f","c","r1","a"]}
+{"history":"r1 c k k b0.5 c b0.5 r1 a","hole":"9dKd","board":"3c3hTh5h8s","node":26658,"street":3,"player":0,"bucket":66,"probs":[1,0],"toks":["f","c"]}
+{"history":"a","hole":"3d4s","board":"","node":5,"street":0,"player":1,"bucket":15,"probs":[0.999999993,6.65838362e-09],"toks":["f","c"]}
+{"history":"r0.5 c","hole":"8sTs","board":"3sTdJs","node":17827,"street":1,"player":1,"bucket":49,"probs":[0.999025528,0.000112437456,0.000861941351,9.29901481e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k a","hole":"8d4c","board":"5cJsTd8c","node":17842,"street":2,"player":0,"bucket":135,"probs":[0.992504252,0.00749574834],"toks":["f","c"]}
+{"history":"r0.5 c b0.5 c k k","hole":"Ac5c","board":"Js8cTs7s4c","node":19423,"street":3,"player":1,"bucket":42,"probs":[0.957212872,0.0152471372,0.0275399905,0],"toks":["k","b0.5","b1","a"]}
+{"history":"c a","hole":"9cJh","board":"","node":9,"street":0,"player":0,"bucket":100,"probs":[0.999999977,2.25917142e-08],"toks":["f","c"]}
+{"history":"r0.5 c","hole":"4h3d","board":"9c4dAd","node":17827,"street":1,"player":1,"bucket":61,"probs":[0.994732833,0.00468738983,0.000579774268,3.15305171e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c k b1 c","hole":"6d7h","board":"9dTcAh5d","node":31038,"street":2,"player":1,"bucket":74,"probs":[0.999740034,0.000249894094,8.45689061e-06,1.61541464e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c b1 r1 c","hole":"8c2d","board":"3hQs9cJhKh","node":20358,"street":3,"player":1,"bucket":31,"probs":[0.00577860193,0.994221398],"toks":["k","a"]}
+{"history":"","hole":"QcKh","board":"","node":0,"street":0,"player":0,"bucket":141,"probs":[5.4042754e-09,0.0464486381,0.536772787,0.416778556,1.2951125e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 r0.5 c k","hole":"8d5s","board":"9hAcQd","node":31437,"street":1,"player":0,"bucket":87,"probs":[0.999341583,0.000527355878,1.63826999e-05,0.000114678899],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c k k","hole":"ThAd","board":"2dKc5sKs","node":30614,"street":2,"player":1,"bucket":118,"probs":[0.471421499,0.324332053,0.204246293,1.55098032e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k k b1 c b0.5 r1","hole":"QcTh","board":"6hJsAc4s3s","node":18052,"street":3,"player":1,"bucket":45,"probs":[0.997943224,0.0020567761,0],"toks":["f","c","a"]}
+{"history":"","hole":"5hQh","board":"","node":0,"street":0,"player":0,"bucket":133,"probs":[5.36999277e-08,0.0586832667,0.941259419,5.72591332e-05,1.07070461e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c a","hole":"4h7d","board":"AsAh7h","node":20511,"street":1,"player":0,"bucket":18,"probs":[0.99999914,8.60158457e-07],"toks":["f","c"]}
+{"history":"r0.5 r1 c k b0.5 c","hole":"8s4s","board":"Td8h3hKd","node":24546,"street":2,"player":1,"bucket":65,"probs":[0.999728141,1.19396723e-06,0.000270605669,5.92491684e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c k k k b0.5 r1 c","hole":"2hJd","board":"JsJh3sAs8d","node":29761,"street":3,"player":1,"bucket":181,"probs":[0.0561099363,0.943890064],"toks":["k","a"]}
+{"history":"","hole":"QcAc","board":"","node":0,"street":0,"player":0,"bucket":166,"probs":[5.44835219e-09,0.0321040609,0.0181854111,0.949710487,3.52938232e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"ThQh","board":"Td3d3h","node":17827,"street":1,"player":1,"bucket":74,"probs":[0.988276403,0.0111545619,0.00056903187,3.22653122e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 r1 c","hole":"QcTh","board":"9cAd6c9d","node":20375,"street":2,"player":1,"bucket":49,"probs":[0.994002881,0.00518684848,0.000807119609,3.15052395e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 c b1 c k b0.5","hole":"7s5h","board":"Ac7c3c8sJh","node":25161,"street":3,"player":1,"bucket":100,"probs":[0.0552120614,0.870683637,0.0741043017],"toks":["f","c","a"]}
+{"history":"","hole":"Ts8h","board":"","node":0,"street":0,"player":0,"bucket":86,"probs":[9.45624808e-07,0.597993167,0.390322212,0.0116836587,1.7443496e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"JsAd","board":"2c6s4s","node":17827,"street":1,"player":1,"bucket":15,"probs":[0.999999931,4.89576428e-08,1.65723731e-08,3.06332598e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k b1 c","hole":"Td9s","board":"2s8h2hKh","node":18963,"street":2,"player":1,"bucket":45,"probs":[0.999985543,9.22840468e-06,5.22819748e-06,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 c b1 c b1","hole":"2sQh","board":"Ts3s5c6d5h","node":27925,"street":3,"player":0,"bucket":40,"probs":[0.997662805,1.54808743e-07,0.00233703972],"toks":["f","c","a"]}
+{"history":"c","hole":"5dAs","board":"","node":2,"street":0,"player":1,"bucket":51,"probs":[0.0296427864,0.00132554276,0.969015043,1.66282595e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c","hole":"As5c","board":"7d4h4d","node":17827,"street":1,"player":1,"bucket":185,"probs":[0.989922879,0.00984225822,0.000234858735,4.19952735e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 c b1 c","hole":"KdJc","board":"As5s3s4c","node":5939,"street":2,"player":1,"bucket":93,"probs":[0.999950662,1.34625463e-05,3.10106126e-05,4.86482805e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k k k b0.5 c k","hole":"6hAd","board":"8d3h7hJsQd","node":26420,"street":3,"player":0,"bucket":62,"probs":[0.999976575,5.48947118e-06,7.87510574e-06,1.00600021e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"5s9c","board":"","node":0,"street":0,"player":0,"bucket":46,"probs":[3.76478269e-06,1.87593831e-05,0.684171825,0.315805643,8.63306412e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c b1","hole":"9cJh","board":"3c8dKs","node":26346,"street":1,"player":0,"bucket":149,"probs":[0.0950091298,0.904989704,3.54840464e-08,1.13071244e-06],"toks":["f","c","r1","a"]}
+{"history":"r0.5 r0.5 c b0.5 c","hole":"Qd7c","board":"Ac7dJd3c","node":21661,"street":2,"player":1,"bucket":109,"probs":[0.905495783,0.0944010629,0.00010243798,7.15921574e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 c b0.5 c","hole":"3c6s","board":"JdAc2dTs2h","node":27845,"street":3,"player":1,"bucket":28,"probs":[0.998237186,0.000551856636,0.00120576628,5.19127337e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"4d3c","board":"","node":0,"street":0,"player":0,"bucket":15,"probs":[0.00311338782,0.173791194,0.43237562,0.390719798,2.34291099e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"AsQs","board":"9hAd8h","node":6,"street":1,"player":1,"bucket":156,"probs":[0.98012001,0.0198294148,5.05439476e-05,3.10993853e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c k b1 r1 c","hole":"6d3c","board":"Ad8d6h5h","node":13432,"street":2,"player":1,"bucket":55,"probs":[0.75594943,0.0154868024,0.228526661,3.71063833e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k b1 c","hole":"5sKs","board":"4s8c5cQh8d","node":18227,"street":3,"player":1,"bucket":144,"probs":[0.870125047,0.129874293,4.04173766e-07,2.56056764e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Qc5h","board":"","node":0,"street":0,"player":0,"bucket":49,"probs":[1.27872289e-06,4.05198199e-05,0.999746703,0.000211474656,2.41588553e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r1 r0.5 c b1 a","hole":"KdKh","board":"5cKc2s","node":31712,"street":1,"player":1,"bucket":129,"probs":[0,1],"toks":["f","c"]}
+{"history":"r0.5 c b0.5 c b0.5","hole":"3c3h","board":"JcJd8d6h","node":19420,"street":2,"player":0,"bucket":39,"probs":[0.971572823,0.0284266812,3.72705972e-07,1.22667329e-07],"toks":["f","c","r1","a"]}
+{"history":"c k k b0.5 c b1 r1 c","hole":"Jd4d","board":"3s8h3c9cKc","node":1030,"street":3,"player":1,"bucket":45,"probs":[0.994647269,0.00525156999,7.934821e-05,2.18129843e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5","hole":"KsKh","board":"","node":3,"street":0,"player":1,"bucket":154,"probs":[2.37696563e-09,1.56192403e-09,0.0036107369,0.996389258,1.10563045e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c k","hole":"5hKs","board":"5dJh3s","node":17831,"street":1,"player":0,"bucket":70,"probs":[0.855142482,0.144857137,3.75743817e-07,5.59365851e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r1 c k k","hole":"6sQc","board":"TdQhAd3d","node":30309,"street":2,"player":1,"bucket":179,"probs":[0.993591474,0.00640774704,5.27120762e-07,2.51953685e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r1 c k k b1 c b1","hole":"6cJd","board":"8h3d2c8d3h","node":16731,"street":3,"player":0,"bucket":64,"probs":[0.999998673,5.18875793e-07,8.07782632e-07],"toks":["f","c","a"]}
+{"history":"r1 a","hole":"Kc6c","board":"","node":26343,"street":0,"player":0,"bucket":147,"probs":[0.998203165,0.00179683516],"toks":["f","c"]}
+{"history":"r0.5 r1 r0.5 c a","hole":"2c4s","board":"3h8h6s","node":25399,"street":1,"player":0,"bucket":67,"probs":[0.999610592,0.0003894081],"toks":["f","c"]}
+{"history":"r1 r1 c b1 c b0.5","hole":"Qs8c","board":"Ts4sJh8d","node":31314,"street":2,"player":0,"bucket":199,"probs":[8.8555554e-09,0.643647346,0.356352645],"toks":["f","c","a"]}
+{"history":"c b1 r1 r0.5 c k k b1 c a","hole":"Ts7s","board":"9hTh5dKc6d","node":17442,"street":3,"player":0,"bucket":146,"probs":[0.996907205,0.00309279461],"toks":["f","c"]}
+{"history":"","hole":"3sJc","board":"","node":0,"street":0,"player":0,"bucket":22,"probs":[3.51268346e-06,0.22167618,0.0549738629,0.723346417,2.81161305e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c","hole":"8sKc","board":"5s9cTd","node":17827,"street":1,"player":1,"bucket":195,"probs":[0.991526113,0.0071918476,0.00128203742,2.23055407e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 r1 c k b1","hole":"KsJd","board":"JhQd8dTd","node":20383,"street":2,"player":1,"bucket":158,"probs":[0.080116036,0.811381683,0.108502281],"toks":["f","c","a"]}
+{"history":"c k k b1 c b0.5 r1 c","hole":"Ks9s","board":"8h3dAcKd2h","node":1726,"street":3,"player":1,"bucket":152,"probs":[0.999883878,6.06734124e-05,2.53298886e-06,5.29160945e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 a","hole":"Qs2d","board":"","node":26343,"street":0,"player":0,"bucket":10,"probs":[1,0],"toks":["f","c"]}
+{"history":"r0.5 r1 r1 c","hole":"3sAs","board":"7s2s9c","node":26035,"street":1,"player":1,"bucket":63,"probs":[0.999526115,0.000473511268,3.4833903e-07,2.54191564e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 c b0.5 c","hole":"7c9c","board":"6s6cQc9d","node":5304,"street":2,"player":1,"bucket":98,"probs":[0.947906657,0.0176201538,0.0344671115,6.07781673e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 c b0.5 r1 c k","hole":"QhQd","board":"Kh9h8s4h7h","node":27895,"street":3,"player":0,"bucket":190,"probs":[6.3832302e-07,0.303627993,0.696371369],"toks":["k","b0.5","a"]}
+{"history":"r0.5 r1 a","hole":"3sJd","board":"","node":24216,"street":0,"player":1,"bucket":22,"probs":[1,0],"toks":["f","c"]}
+{"history":"r0.5 c a","hole":"4s8h","board":"7hAdTs","node":17834,"street":1,"player":0,"bucket":51,"probs":[0.99999999,1.03346561e-08],"toks":["f","c"]}
+{"history":"r0.5 r1 c b1 c","hole":"2dJc","board":"5dAdJh9s","node":25245,"street":2,"player":1,"bucket":10,"probs":[0.999767604,0.000231438607,3.16526219e-07,6.40774853e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k k b1 r1 c","hole":"5dJh","board":"6cKh3sJsQc","node":18287,"street":3,"player":1,"bucket":127,"probs":[0.999341878,0.000657743173,0,3.78899081e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"6d5s","board":"","node":0,"street":0,"player":0,"bucket":43,"probs":[1.664913e-06,0.500036016,0.376653152,0.123309168,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"5d9h","board":"3c9d4d","node":26340,"street":1,"player":1,"bucket":106,"probs":[0.952754024,0.047126478,0.000119471326,2.66857941e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k b1 r1 c a","hole":"5h5d","board":"7c9h6hJc","node":19292,"street":2,"player":0,"bucket":156,"probs":[0.99998616,1.38397958e-05],"toks":["f","c"]}
+{"history":"r0.5 c b1 c b1 r1 c a","hole":"AcTh","board":"Kh3d7s2h9d","node":20361,"street":3,"player":0,"bucket":72,"probs":[0.981382626,0.0186173745],"toks":["f","c"]}
+{"history":"r1 r1","hole":"9d9s","board":"","node":26342,"street":0,"player":0,"bucket":98,"probs":[4.65892278e-08,0.999975876,5.65668669e-06,9.64012646e-06,8.78081904e-06],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c k","hole":"6c7s","board":"9s4sKs","node":17831,"street":1,"player":0,"bucket":102,"probs":[0.852379289,0.147055744,0.000564963639,3.92239164e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 c b0.5 c a","hole":"6sKh","board":"QsAc6hAd","node":5310,"street":2,"player":0,"bucket":174,"probs":[0.999997005,2.99546812e-06],"toks":["f","c"]}
+{"history":"r1 r1 c b0.5 c b0.5 c","hole":"AhTd","board":"Kh8h3h7cKs","node":31247,"street":3,"player":1,"bucket":91,"probs":[0.972703972,0.00137858597,0.0259174425],"toks":["k","b0.5","a"]}
+{"history":"","hole":"6sAs","board":"","node":0,"street":0,"player":0,"bucket":160,"probs":[1.34911584e-07,0.000123312117,0.999195319,0.000681125142,1.0916966e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 c k","hole":"6cTh","board":"Ah3hAd","node":28485,"street":1,"player":0,"bucket":19,"probs":[0.100754375,0.822633561,0.0766120484,1.5339752e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c b1 c","hole":"7cQs","board":"5c6s7d2s","node":20051,"street":2,"player":1,"bucket":186,"probs":[0.903076035,0.0965282596,0.000395705794,0],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c b1 c b0.5 c","hole":"9hAs","board":"3d4c4s5c2h","node":29597,"street":3,"player":1,"bucket":148,"probs":[0.99985462,4.42911492e-05,0.000101089051],"toks":["k","b0.5","a"]}
+{"history":"a","hole":"6sKc","board":"","node":5,"street":0,"player":1,"bucket":63,"probs":[0.999998007,1.99315176e-06],"toks":["f","c"]}
+{"history":"r1 c","hole":"Qd4c","board":"3s7s3h","node":26340,"street":1,"player":1,"bucket":80,"probs":[0.999996483,2.77473833e-06,7.40832217e-07,1.34464036e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b1 c","hole":"9h2s","board":"AdQc4hTh","node":2966,"street":2,"player":1,"bucket":45,"probs":[0.999946483,2.19203891e-05,3.09120764e-05,6.84628926e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b0.5 r1 c b1 c a","hole":"Ah8d","board":"5h4s4cKcKd","node":27252,"street":3,"player":0,"bucket":124,"probs":[0.131232643,0.868767357],"toks":["f","c"]}
+{"history":"","hole":"8sQs","board":"","node":0,"street":0,"player":0,"bucket":136,"probs":[1.03426512e-08,9.22823453e-06,0.680045651,0.319944768,3.42193792e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"Ks7s","board":"2c3d2s","node":26340,"street":1,"player":1,"bucket":35,"probs":[0.911666074,0.0735416219,0.0147922953,8.48220887e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c b0.5 c","hole":"9h4c","board":"2dAd8hQc","node":31163,"street":2,"player":1,"bucket":53,"probs":[0.99999486,1.92691418e-06,1.83071609e-06,1.38257369e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c b0.5 r1 c b0.5 c a","hole":"3c9c","board":"Tc4h7d9d6d","node":25229,"street":3,"player":0,"bucket":108,"probs":[0.289386844,0.710613156],"toks":["f","c"]}
+{"history":"r0.5","hole":"3sTc","board":"","node":3,"street":0,"player":1,"bucket":21,"probs":[0.997528702,0.00247127988,1.50209849e-08,1.69569088e-09,1.24387906e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c k b0.5","hole":"Ah9s","board":"4d7sQs","node":17836,"street":1,"player":1,"bucket":15,"probs":[0.00204211253,0.997957805,6.57189773e-08,1.63877462e-08],"toks":["f","c","r1","a"]}
+{"history":"r1 r1 c k k","hole":"5c8d","board":"6d8c4dJs","node":30614,"street":2,"player":1,"bucket":38,"probs":[0.988860191,0.0111389894,7.60243814e-07,5.97418688e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k k b1 c","hole":"9c4h","board":"5c9hQsThQc","node":26716,"street":3,"player":1,"bucket":138,"probs":[0.999996315,3.11038606e-06,3.8521266e-07,1.8984637e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"Ac4s","board":"","node":0,"street":0,"player":0,"bucket":38,"probs":[3.70886669e-07,0.32604104,0.548091808,0.125866646,1.36282635e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 r1 c a","hole":"3cAh","board":"3dTc8c","node":23575,"street":1,"player":0,"bucket":158,"probs":[0.552455206,0.447544794],"toks":["f","c"]}
+{"history":"r1 r1 r1 c k b1 c","hole":"9hQh","board":"3sAc9d6h","node":31864,"street":2,"player":1,"bucket":139,"probs":[0.00126205234,0.998737948],"toks":["k","a"]}
+{"history":"r0.5 r1 r1 c k b1 c k k a","hole":"QdTs","board":"2cJc4c3s7d","node":26234,"street":3,"player":0,"bucket":33,"probs":[0.999888143,0.000111856823],"toks":["f","c"]}
+{"history":"","hole":"8sTh","board":"","node":0,"street":0,"player":0,"bucket":86,"probs":[9.45624808e-07,0.597993167,0.390322212,0.0116836587,1.7443496e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r1 c","hole":"9cQs","board":"AsQc4s","node":24213,"street":1,"player":1,"bucket":41,"probs":[0.00585971039,0.994096153,4.41040068e-05,3.30720524e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 c k k","hole":"AcKd","board":"6hQd7c8s","node":12236,"street":2,"player":1,"bucket":78,"probs":[0.999953349,4.52953257e-05,1.34698471e-06,8.39302252e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r1 c k b0.5 c b0.5 c k b0.5","hole":"8hTs","board":"QdQc3d7dJc","node":30981,"street":3,"player":1,"bucket":49,"probs":[0.522247916,0,0.477752084],"toks":["f","c","a"]}
+{"history":"","hole":"9dJh","board":"","node":0,"street":0,"player":0,"bucket":100,"probs":[4.40922278e-08,0.375224759,0.428076845,0.196698352,1.12098133e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 c a","hole":"Tc6s","board":"JcAd9d","node":17834,"street":1,"player":0,"bucket":138,"probs":[0.999997854,2.14638418e-06],"toks":["f","c"]}
+{"history":"r0.5 r1 r1 c b1 c a","hole":"5cKc","board":"JcTd6c4c","node":26314,"street":2,"player":0,"bucket":42,"probs":[0,1],"toks":["f","c"]}
+{"history":"r1 r0.5 r1 c b1 c k k k a","hole":"Jh4h","board":"TcAs7s6h2d","node":30588,"street":3,"player":1,"bucket":28,"probs":[1,0],"toks":["f","c"]}
+{"history":"r0.5 r0.5","hole":"4d7s","board":"","node":17828,"street":0,"player":0,"bucket":31,"probs":[0.998821113,0.00117886858,1.86143055e-08,0,2.22375374e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"5d4c","board":"ThJc4d","node":26340,"street":1,"player":1,"bucket":199,"probs":[0.996566392,0.00343309526,4.97997614e-07,1.51104877e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 r1 c","hole":"8dKc","board":"6hJc6cQc","node":27973,"street":2,"player":1,"bucket":142,"probs":[0.922367452,0.0776150327,1.06490777e-05,6.86573659e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b1 r1 c b1 r1 c k a","hole":"Ts2s","board":"KdKsJsTc4h","node":3697,"street":3,"player":1,"bucket":140,"probs":[0.248458808,0.751541192],"toks":["f","c"]}
+{"history":"","hole":"Qd8d","board":"","node":0,"street":0,"player":0,"bucket":136,"probs":[1.03426512e-08,9.22823453e-06,0.680045651,0.319944768,3.42193792e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 c b1","hole":"6d2c","board":"8cAcTh","node":3721,"street":1,"player":0,"bucket":196,"probs":[0.999999996,3.35353365e-09,0,4.12051852e-10],"toks":["f","c","r1","a"]}
+{"history":"c b1 r0.5 r1 c k b1 c","hole":"3d2h","board":"9d9h3sAs","node":16383,"street":2,"player":1,"bucket":150,"probs":[0.896110617,0.103889383],"toks":["k","a"]}
+{"history":"r1 r1 r1 c b1 c k k","hole":"Ad9s","board":"As5d3hTd6h","node":31912,"street":3,"player":1,"bucket":168,"probs":[0.0379864114,0.962013589],"toks":["k","a"]}
+{"history":"c","hole":"9c9d","board":"","node":2,"street":0,"player":1,"bucket":98,"probs":[1.09432081e-06,0.00191916746,0.998071629,8.10913459e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r1 r0.5 c","hole":"9sTh","board":"6s8h6d","node":17323,"street":1,"player":1,"bucket":91,"probs":[0.287068999,0.712930956,2.22296835e-08,2.22296835e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 c k b1 c a","hole":"Kc3c","board":"Th7s6s2s","node":18969,"street":2,"player":0,"bucket":96,"probs":[0.999999974,2.55202208e-08],"toks":["f","c"]}
+{"history":"c b0.5 r1 c b0.5 c b0.5 r1 c","hole":"6c5h","board":"4hTdJs5s2h","node":11028,"street":3,"player":1,"bucket":121,"probs":[0.378570421,0.621429579],"toks":["k","a"]}
+{"history":"","hole":"AsJh","board":"","node":0,"street":0,"player":0,"bucket":129,"probs":[1.83508473e-10,0.00681904387,0.855286562,0.137894308,8.58353793e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c b0.5 c","hole":"8d6c","board":"3sAd7c","node":3715,"street":1,"player":1,"bucket":20,"probs":[0.236565359,0.762971823,0.000460811452,2.00700139e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 c b1 c b1","hole":"2d9c","board":"9dTdKdAc","node":29518,"street":2,"player":0,"bucket":86,"probs":[0.999979144,1.33963381e-05,7.46003824e-06],"toks":["f","c","a"]}
+{"history":"c b1 r1 c k k b1 r1 c","hole":"6d9d","board":"Ac8s2d3d9s","node":16762,"street":3,"player":1,"bucket":146,"probs":[0.240998318,0.759001682],"toks":["k","a"]}
+{"history":"r0.5 a","hole":"7h4h","board":"","node":17830,"street":0,"player":0,"bucket":67,"probs":[0.999998971,1.02919133e-06],"toks":["f","c"]}
+{"history":"c b1 r0.5 r1 c a","hole":"2s8s","board":"8d6d5s","node":16196,"street":1,"player":0,"bucket":96,"probs":[0.00383025989,0.99616974],"toks":["f","c"]}
+{"history":"r1 r0.5 c b0.5 c b0.5 a","hole":"9sQh","board":"2sJh4cKh","node":29374,"street":2,"player":1,"bucket":151,"probs":[0.99999994,5.98493178e-08],"toks":["f","c"]}
+{"history":"r1 r0.5 c b0.5 c b0.5 c","hole":"Td5s","board":"Kd4cKhQs7s","node":29372,"street":3,"player":1,"bucket":47,"probs":[0.058560925,0.295450886,0.175193264,0.470794925],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"5dJs","board":"","node":0,"street":0,"player":0,"bucket":48,"probs":[1.7186318e-06,8.01814144e-05,0.998970449,0.00094764339,7.87024311e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 r0.5 c","hole":"4h2h","board":"7d6cTc","node":28481,"street":1,"player":1,"bucket":127,"probs":[0.994356357,0.00547855059,8.25463911e-05,8.25463911e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r1 c b1 c a","hole":"Qc9s","board":"Qs2cAc3c","node":11139,"street":2,"player":0,"bucket":111,"probs":[3.15000867e-05,0.9999685],"toks":["f","c"]}
+{"history":"r0.5 c b1 r1 c k k","hole":"7dTh","board":"Td8c2h4dAs","node":20381,"street":3,"player":1,"bucket":148,"probs":[0.995417256,0,0.00161449788,0.00296824594],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"4sTh","board":"","node":0,"street":0,"player":0,"bucket":34,"probs":[1.43058863e-06,0.0289827957,0.758279319,0.212736453,1.57138476e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"9sAc","board":"6c5c5h","node":26340,"street":1,"player":1,"bucket":76,"probs":[0.997830539,0.00216941161,4.66549141e-08,2.47339926e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k k b1","hole":"Ts5d","board":"JhTc2h3s","node":20,"street":2,"player":0,"bucket":34,"probs":[2.39099774e-06,0.999994138,3.46503188e-06,5.4720726e-09],"toks":["f","c","r1","a"]}
+{"history":"r1 c b0.5 r1 c b1 c","hole":"3dTs","board":"Tc6h9d4h8d","node":28081,"street":3,"player":1,"bucket":131,"probs":[0.989815287,0.0101847125],"toks":["k","a"]}
+{"history":"r0.5 r0.5","hole":"7d5s","board":"","node":17828,"street":0,"player":0,"bucket":44,"probs":[5.02023087e-06,0.999989398,2.66363555e-06,2.91841465e-06,0],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r1 c","hole":"3hTc","board":"JdTs2s","node":26340,"street":1,"player":1,"bucket":147,"probs":[0.98769437,0.0123054187,4.21445016e-08,1.69369914e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b1 r1 c b1","hole":"8hJc","board":"4h8sAd2s","node":28380,"street":2,"player":0,"bucket":38,"probs":[0.490887623,0.106207153,0.402905223],"toks":["f","c","a"]}
+{"history":"c k k b0.5 c b1 c k","hole":"8hTs","board":"Td8cAhQc9d","node":973,"street":3,"player":0,"bucket":148,"probs":[0.873665001,0.00164018034,0.124693378,1.44023433e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"","hole":"4d5s","board":"","node":0,"street":0,"player":0,"bucket":29,"probs":[1.09327739e-06,0.634675935,0.346879281,0.0184436893,1.79750599e-09],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r1 c","hole":"TsKh","board":"Ks2d3s","node":24213,"street":1,"player":1,"bucket":156,"probs":[0.0521737409,0.0218525508,0.925963684,1.00243702e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"c k b0.5 c","hole":"5c9h","board":"5h4dJs3d","node":2147,"street":2,"player":1,"bucket":135,"probs":[0.999971458,2.50330653e-05,2.37559072e-06,1.13377658e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 r0.5 r0.5 c b0.5 c b0.5 c k","hole":"Qh2s","board":"2dTc5hAs3h","node":30177,"street":3,"player":0,"bucket":70,"probs":[0.0129672207,0.451321752,0.535711027],"toks":["k","b0.5","a"]}
+{"history":"","hole":"7d3d","board":"","node":0,"street":0,"player":0,"bucket":66,"probs":[5.13374541e-07,0.981404631,0.0181424437,0.000452411906,4.29454202e-10],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k a","hole":"9dKd","board":"8dJs5s","node":13,"street":1,"player":0,"bucket":105,"probs":[0.999999899,1.00527833e-07],"toks":["f","c"]}
+{"history":"r1 r0.5 c b1 c b1","hole":"7hJd","board":"9c8s3h3c","node":29518,"street":2,"player":0,"bucket":171,"probs":[0.999999594,2.02842102e-07,2.02842102e-07],"toks":["f","c","a"]}
+{"history":"r0.5 r0.5 r0.5 c k k k b0.5 c","hole":"3c4c","board":"2s7d6sJcQs","node":22464,"street":3,"player":1,"bucket":0,"probs":[0.00607099784,0.993877376,2.58131131e-05,2.58131131e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"a","hole":"6s5d","board":"","node":5,"street":0,"player":1,"bucket":43,"probs":[0.999999985,1.52552907e-08],"toks":["f","c"]}
+{"history":"r1 r1 r0.5 c b0.5","hole":"Ah9c","board":"9s2dQs","node":31438,"street":1,"player":0,"bucket":110,"probs":[1.32137312e-05,0.999957205,2.9581331e-05],"toks":["f","c","a"]}
+{"history":"c k k b1 r1 c","hole":"2h4d","board":"6dKh8d7c","node":1866,"street":2,"player":1,"bucket":196,"probs":[0.999998301,1.55091858e-06,7.38532656e-08,7.38532656e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"c b0.5 r1 c b1 c k k","hole":"7s6d","board":"4dAdKc4sJh","node":11140,"street":3,"player":1,"bucket":39,"probs":[0.94921041,0.0414639533,0.00929816001,2.7477023e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"a","hole":"2hQh","board":"","node":5,"street":0,"player":1,"bucket":130,"probs":[0.999999711,2.88890757e-07],"toks":["f","c"]}
+{"history":"r0.5 r1 c","hole":"8h4d","board":"7dQs5h","node":24213,"street":1,"player":1,"bucket":10,"probs":[6.42666713e-06,0.00154153516,0.998451841,1.97541509e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 c a","hole":"8s9c","board":"Kc9hAd6c","node":27655,"street":2,"player":0,"bucket":18,"probs":[0.412631409,0.587368591],"toks":["f","c"]}
+{"history":"r0.5 r1 c k b1 r1 c k k","hole":"4d7s","board":"Kd2d6d8sQs","node":24949,"street":3,"player":1,"bucket":11,"probs":[0.998281987,0.00171801325],"toks":["k","a"]}
+{"history":"a","hole":"Kc7c","board":"","node":5,"street":0,"player":1,"bucket":148,"probs":[0.999998622,1.37844455e-06],"toks":["f","c"]}
+{"history":"r1 c","hole":"9s7d","board":"Ts3s7h","node":26340,"street":1,"player":1,"bucket":145,"probs":[0.983492101,0.0165077912,1.01947863e-07,5.99603572e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k k a","hole":"Qh8h","board":"AdKs6d8d","node":26355,"street":2,"player":0,"bucket":40,"probs":[0.999999975,2.45047678e-08],"toks":["f","c"]}
+{"history":"r0.5 r1 c b1 c b1 c","hole":"8d2s","board":"AcKhTh4dQc","node":25354,"street":3,"player":1,"bucket":34,"probs":[0.501433845,0.498566155],"toks":["k","a"]}
+{"history":"a","hole":"Jh2h","board":"","node":5,"street":0,"player":1,"bucket":117,"probs":[0.999999919,8.05769778e-08],"toks":["f","c"]}
+{"history":"c b0.5 r0.5 r0.5 c","hole":"2s4c","board":"5d6h3d","node":8277,"street":1,"player":1,"bucket":132,"probs":[0.580107324,0.240683892,0.179206862,1.92227351e-06],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 r1 c","hole":"5d6s","board":"AsJh3s2d","node":27973,"street":2,"player":1,"bucket":90,"probs":[0.994646959,0.00456196603,0.000753346814,3.77279485e-05],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c b0.5 r1 c b1 c","hole":"QcTd","board":"8hKcKh3c8c","node":28081,"street":3,"player":1,"bucket":114,"probs":[0.92383674,0.0761632595],"toks":["k","a"]}
+{"history":"r1","hole":"Kd2s","board":"","node":4,"street":0,"player":1,"bucket":11,"probs":[0.999999847,4.67468762e-08,7.82369217e-09,1.87576123e-08,7.95718258e-08],"toks":["f","c","r0.5","r1","a"]}
+{"history":"r0.5 r0.5 c","hole":"8dAd","board":"9sJc4h","node":20504,"street":1,"player":1,"bucket":43,"probs":[0.310483383,0.68524504,0.00427139472,1.82122964e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"c k k b0.5 c","hole":"8s7h","board":"7cKc3c4d","node":579,"street":2,"player":1,"bucket":40,"probs":[0.985689954,0.0143099116,1.20830233e-07,1.37992729e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r0.5 c b1 c k b0.5 c","hole":"6h2c","board":"8h3h9c8c3c","node":22168,"street":3,"player":1,"bucket":13,"probs":[0.248287474,0.742149015,0.00907307504,0.000490436488],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1","hole":"3s5s","board":"","node":8,"street":0,"player":0,"bucket":40,"probs":[0.000860741102,0.0144162006,5.44740522e-05,0.984161285,0.000507299129],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"ThKc","board":"9h9c4s","node":6,"street":1,"player":1,"bucket":151,"probs":[0.999997639,2.33764136e-06,2.21414737e-08,1.16754742e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"c b1 r1 c k k","hole":"Ac5s","board":"7sTs3c3d","node":16502,"street":2,"player":1,"bucket":103,"probs":[0.866920204,0.030610981,0.102468652,1.63469603e-07],"toks":["k","b0.5","b1","a"]}
+{"history":"r1 c k b0.5 c k b0.5 c","hole":"Js3d","board":"2dQd5sJh4d","node":26885,"street":3,"player":1,"bucket":139,"probs":[0.999999365,5.83826604e-07,4.0480701e-09,4.70794071e-08],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5","hole":"QcAc","board":"","node":3,"street":0,"player":1,"bucket":166,"probs":[1.96315962e-09,1.72423307e-06,0.00983446594,0.99016291,8.97968484e-07],"toks":["f","c","r0.5","r1","a"]}
+{"history":"c k","hole":"2hKs","board":"Ad2s3s","node":6,"street":1,"player":1,"bucket":61,"probs":[0.995396078,0.00460234141,1.577131e-06,3.84967706e-09],"toks":["k","b0.5","b1","a"]}
+{"history":"r0.5 r1 c k b0.5 c k b0.5","hole":"KsKh","board":"AdQsTc8s","node":24554,"street":2,"player":1,"bucket":80,"probs":[7.42795003e-06,0.999991487,0,1.08540249e-06],"toks":["f","c","r1","a"]}
+{"history":"r0.5 c b0.5 c b0.5 c a","hole":"Jd9d","board":"TcQc5c7s5s","node":19666,"street":3,"player":0,"bucket":46,"probs":[0.99999995,4.96799194e-08],"toks":["f","c"]}

@@ -1,0 +1,7 @@
+$ bp serve --preset small --flop 200 --turn 200 --river 200 --bins 50 --abs-seed 7 --cache ~/.gpo/overnight/cache --ckpt ~/.gpo/eval/final.bin --parity-dump 1000 --out tests/fixtures/blueprint-web-parity.jsonl
+$ npx tsx sim/blueprint-parity.ts web --fixture tests/fixtures/blueprint-web-parity.jsonl
+web parity: 1000 infosets (passing per street 250/250/250/250), bucket and tokens exact, max |dp| 2.692e-3 (per street 2.39e-3 / 2.55e-3 / 2.53e-3 / 2.69e-3; bound 1/255 = 3.922e-3), 0 mismatches
+
+$ bp serve (same flags) --parity-dump 40000 --seed 11 --out parity-40k.jsonl  (fixture not committed, 7.4 MB)
+$ npx tsx sim/blueprint-parity.ts web --fixture parity-40k.jsonl
+web parity: 40000 infosets (passing per street 10000/10000/10000/10000), bucket and tokens exact, max |dp| 2.941e-3 (per street 2.87e-3 / 2.68e-3 / 2.94e-3 / 2.88e-3; bound 1/255 = 3.922e-3), 0 mismatches

@@ -45,6 +45,31 @@ Then **Load unpacked** the `dist/` folder.
 - **Equity:** a perfect-hash 7-card evaluator (ported from [phevaluator](https://github.com/HenryRLee/PokerHandEvaluator), Apache-2.0) feeding a Monte-Carlo equity calculator.
 - **Exploits:** per-opponent tracking and bounded exploitative adjustments (postflop).
 
+## Engine flags
+Optional engine features sit behind flags in `src/core/engine-flags.ts`. The defaults live in `DEFAULT_ENGINE_FLAGS` there, each with the measurement behind it. In Node (sims, benches, tests) the variable `GPO_ENGINE_FLAGS` overrides them, for example `GPO_ENGINE_FLAGS=+BLUEPRINT` (turn one on, keep the rest) or `GPO_ENGINE_FLAGS=none`. The browser build has no environment, so the extension always runs the compiled-in defaults.
+
+| Flag | Default | What it does |
+| --- | --- | --- |
+| `FIX_LIVE_VILLAINS` | on | counts only villains still in the hand |
+| `RANGE_TRACKER` | off | villain ranges narrowed by each action |
+| `MULTIWAY_EQUITY` | off | multiway equity against all live villains at once |
+| `DEFENSE` | off | pot-odds and minimum-defense fold/call/raise when facing a bet |
+| `SUBGAME_SOLVER` | on | real-time range-vs-range solve on heads-up turn and river |
+| `BLUEPRINT` | off | heads-up decisions from the trained C++ blueprint, run in the browser |
+
+### Turning on the blueprint bot (`BLUEPRINT`)
+1. In `src/core/engine-flags.ts`, set `BLUEPRINT: true` in `DEFAULT_ENGINE_FLAGS`.
+2. Run `npm run build` and load `dist/` unpacked. The build copies the blueprint assets from `blueprint/web/` to `dist/blueprint/` (7.35 MB of gzipped files; about 31 MB once loaded).
+3. At a heads-up table the engine plays the blueprint's average strategy and the decision's reasoning starts with `blueprint`. Multiway tables, effective stacks outside 50 to 200 big blinds, missing assets and any betting line the abstract tree cannot follow go to the normal engine path instead.
+
+What the shipped blueprint is: the overnight checkpoint (12,749,175,749 MCCFR iterations, small betting tree, 200 flop, turn and river buckets, trained at 100 big blinds). Flop and turn buckets come from the trainer's own tables and river buckets are computed per decision with the trainer's exact arithmetic. Checks, all from 2026-10-09 (raw output in `sim/results/2026-10-09/bp-web/`):
+
+- Parity with the C++ trainer: on 1,000 infosets from `bp serve --parity-dump` (the committed fixture) and on a further 40,000, every node, bucket and action list matched exactly and the largest probability difference was 0.0029, inside the export's 1/255 rounding. `npx tsx sim/blueprint-parity.ts web --fixture tests/fixtures/blueprint-web-parity.jsonl`
+- Speed in Node: assets load in about 40 ms (zlib); decisions take 0.01 ms at the median and 0.14 ms at the 95th percentile (river decisions 0.13 ms and 0.21 ms, since they compute hand strength against all 990 opposing hands). `GPO_ENGINE_FLAGS=+BLUEPRINT npx tsx sim/latency.ts 1000 1 --seats 2 --field tag`
+- Against the original bot (`swarm/base`), heads-up duplicate, 3,000 deals per seed, seeds fixed in advance: +26.74 bb/100 (95% CI +/- 20.20) on seed 7 and +25.79 bb/100 (+/- 19.29) on seed 101, with 0 illegal actions in 24,786 decisions. `npx tsx sim/match.ts --a . --flags-a +BLUEPRINT --b <original checkout> --mode hu --deals 3000 --seed 7 --workers 4`
+
+To ship a newer checkpoint, export it with `blueprint/bin/bp export` and then run `npx tsx blueprint/scripts/export-web.ts --policy <file.gpobp> --abs <cache>/abs-<id>.bin`, which rewrites `blueprint/web/`.
+
 ## Verification
 Correctness is checked by a test suite (531 tests, all passing), including:
 - The hand evaluator enumerated over **all 2,598,960 five-card hands**, asserting the category counts match the textbook distribution exactly and that there are 7,462 distinct hand-strength classes.

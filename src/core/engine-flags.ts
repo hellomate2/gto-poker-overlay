@@ -28,6 +28,13 @@
 //                      range-vs-range DCFR subgame solver (solver/subgame.ts) on
 //                      tracker ranges; any ineligible spot, error or unconverged
 //                      solve falls back to the normal path.
+//   BLUEPRINT          Heads-up decisions come from the trained C++ blueprint's
+//                      average strategy, played entirely in the browser
+//                      (src/core/blueprint/engine-bridge.ts over the assets in
+//                      blueprint/web, copied to dist/blueprint by the build).
+//                      Multiway tables, stacks outside 50 to 200 BB, missing
+//                      assets and any history the abstract tree cannot follow
+//                      fall back to the normal path.
 //
 // Defaults are set from the sim/match.ts measurements recorded in
 // sim/INTEGRATION.md (see the comment on DEFAULT_ENGINE_FLAGS). In Node the environment variable GPO_ENGINE_FLAGS
@@ -40,7 +47,8 @@ export type EngineFlagName =
   | 'RANGE_TRACKER'
   | 'MULTIWAY_EQUITY'
   | 'DEFENSE'
-  | 'SUBGAME_SOLVER';
+  | 'SUBGAME_SOLVER'
+  | 'BLUEPRINT';
 
 export type EngineFlags = Record<EngineFlagName, boolean>;
 
@@ -50,6 +58,7 @@ export const ENGINE_FLAG_NAMES: readonly EngineFlagName[] = [
   'MULTIWAY_EQUITY',
   'DEFENSE',
   'SUBGAME_SOLVER',
+  'BLUEPRINT',
 ];
 
 // Defaults for main (2026-10-09, updated 05:15 PDT). Evidence in sim/INTEGRATION.md
@@ -83,12 +92,21 @@ export const ENGINE_FLAG_NAMES: readonly EngineFlagName[] = [
 //   DEFENSE OFF: it beats base against three of four probes but loses heads-up:
 //     +22.61 +/- 18.49 bb/100 for base on seed 1 and +16.59 +/- 18.45 on seed 101.
 //   MULTIWAY_EQUITY OFF: over-folds multiway (+268.73 +/- 204.22 bb/100 for base).
+//   BLUEPRINT OFF (added 2026-10-09): the pre-registered heads-up test passed. With
+//     +BLUEPRINT on top of these defaults, against the original bot (swarm/base,
+//     sim/match.ts --mode hu, 3000 deals per seed): +26.74 +/- 20.20 bb/100 (seed 7)
+//     and +25.79 +/- 19.29 (seed 101), 0 illegal actions in 24,786 decisions
+//     (sim/results/2026-10-09/bp-web/). It stays off until it has been checked live:
+//     it replays the scraped action log (same open question on log order as
+//     RANGE_TRACKER; replays that do not match the table fall back to the normal path),
+//     and the asset fetch has not run in a real Chrome profile yet.
 export const DEFAULT_ENGINE_FLAGS: Readonly<EngineFlags> = Object.freeze({
   FIX_LIVE_VILLAINS: true,
   RANGE_TRACKER: false,
   MULTIWAY_EQUITY: false,
   DEFENSE: false,
   SUBGAME_SOLVER: true,
+  BLUEPRINT: false,
 });
 export const ENGINE_FLAGS: EngineFlags = { ...DEFAULT_ENGINE_FLAGS };
 

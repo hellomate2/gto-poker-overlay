@@ -60,7 +60,16 @@ export interface BlueprintDecision {
   history?: string[];
   probs?: number[];
   toks?: string[];
+  /** Every abstract action at the decision mapped to its real action, with its probability. */
+  options?: BlueprintOption[];
   fallback?: string;
+}
+
+export interface BlueprintOption {
+  token: string;
+  prob: number;
+  action: BlueprintDecision['action'];
+  toAmount?: number;
 }
 
 export interface BlueprintAgentStats {
@@ -218,7 +227,10 @@ export class BlueprintAgent {
 
   /** Abstract history for the real state (exposed for tests). */
   mapHistory(state: GameState): { ok: true; toks: string[]; abs: AbsState; real: RealReplay } | { ok: false; why: string } {
-    const key = `${state.tableId}#${state.handNumber}`;
+    // Hole cards are part of the key, so a table whose hand counter does not
+    // advance still starts a fresh memo for a new hand.
+    const hc = state.heroCards;
+    const key = `${state.tableId}#${state.handNumber}#${hc ? hc.map(c => c.rank + c.suit).join('') : ''}`;
     if (key !== this.handKey) { this.handKey = key; this.memo.clear(); }
     if (state.players.length !== 2) return { ok: false, why: 'not heads-up' };
     const heroSeat = state.heroIndex === state.dealerIndex ? 0 : 1;
@@ -305,32 +317,38 @@ export class BlueprintAgent {
     const act = legal[pick];
     const street = STREETS[curStreet];
     this.memo.set(`${curStreet}:${(state.actionHistory[street] ?? []).length}`, act.tok);
-    const out: BlueprintDecision = { action: 'check', token: act.tok, history: m.toks, probs: ans.probs, toks: ans.toks };
+    const options: BlueprintOption[] = legal.map((a, i) => ({ token: a.tok, prob: ans.probs[i], ...this.realAction(state, real, heroSeat, a) }));
+    return { ...options[pick], token: act.tok, history: m.toks, probs: ans.probs, toks: ans.toks, options };
+  }
 
+  /**
+   * Map an abstract action at the decision to a legal real action: the same
+   * pot fraction and the tree's sizing rule applied to the real pot, clamped
+   * into [minTo, maxTo], all-in when it reaches the stack.
+   */
+  private realAction(
+    state: GameState, real: RealReplay, heroSeat: number, act: AbsAction,
+  ): { action: BlueprintDecision['action']; toAmount?: number } {
+    const hero = state.players[state.heroIndex];
     const oppSeat = 1 - heroSeat;
     const mine = real.c[heroSeat], theirs = real.c[oppSeat], maxc = Math.max(mine, theirs);
     const toCall = maxc - mine;
     const pot = real.c[0] + real.c[1];
     const maxTo = hero.currentBet + hero.stack;  // street-level all-in
     const minTo = state.minRaise;                 // street-level raise-to floor
-    if (act.kind === 'fold') { out.action = toCall > 0 ? 'fold' : 'check'; return out; }
-    if (act.kind === 'check' || act.kind === 'call') { out.action = toCall > 0 ? 'call' : 'check'; return out; }
-    if (maxTo <= maxc - real.streetBase) { out.action = toCall > 0 ? 'call' : 'check'; return out; }
-    if (act.kind === 'allin') {
-      out.action = 'allin';
-      out.toAmount = maxTo;
-      return out;
-    }
+    const passive = { action: toCall > 0 ? 'call' as const : 'check' as const };
+    if (act.kind === 'fold') return { action: toCall > 0 ? 'fold' : 'check' };
+    if (act.kind === 'check' || act.kind === 'call') return passive;
+    if (maxTo <= maxc - real.streetBase) return passive;
+    if (act.kind === 'allin') return { action: 'allin', toAmount: maxTo };
     const f = fracOfToken(act.tok);
-    if (f === null) { out.action = toCall > 0 ? 'call' : 'check'; return out; }
+    if (f === null) return passive;
     let toTotal: number;
     if (toCall === 0) toTotal = mine + Math.max(state.bigBlind, Math.round(f * pot));
     else toTotal = maxc + Math.max(real.lastInc, Math.round(f * (pot + toCall)));
     let toStreet = toTotal - real.streetBase;
     if (toStreet < minTo) toStreet = minTo;
-    if (toStreet >= maxTo) { out.action = 'allin'; out.toAmount = maxTo; return out; }
-    out.action = 'raise';
-    out.toAmount = toStreet;
-    return out;
+    if (toStreet >= maxTo) return { action: 'allin', toAmount: maxTo };
+    return { action: 'raise', toAmount: toStreet };
   }
 }

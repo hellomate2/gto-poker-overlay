@@ -17,7 +17,8 @@ import './fake-idb';
 import { playRingHand, RingConfig, SeatAgent, makeRng, mixSeed, shuffledDeck } from './ring';
 import { makeBotAgent, makeOpponent, EngineCtor } from './agents';
 import { DecisionEngine } from '../src/core/engine';
-import { describeEngineFlags } from '../src/core/engine-flags';
+import { describeEngineFlags, ENGINE_FLAGS } from '../src/core/engine-flags';
+import { getWebBlueprint, lastLoadMs } from '../src/core/blueprint/web-assets';
 import { GameState, BotDecision } from '../src/types/poker';
 import { DEFAULT_FIELD } from './ring-run';
 
@@ -30,6 +31,7 @@ const samples: Sample[] = [];
 
 function pathOf(d: BotDecision, s: GameState): string {
   const r = d.reasoning || '';
+  if (r.startsWith('blueprint ')) return 'blueprint';
   if (s.street === 'preflop') return 'preflop';
   if (r.includes('[subgame]')) return 'subgame';
   if (r.includes('[defense]')) return 'defense';
@@ -56,7 +58,7 @@ function quantile(xs: number[], q: number): number {
 }
 
 function row(label: string, xs: number[]): string {
-  const f = (x: number) => (Number.isFinite(x) ? x.toFixed(1).padStart(7) : '      -');
+  const f = (x: number) => (Number.isFinite(x) ? x.toFixed(2).padStart(7) : '      -');
   return `${label.padEnd(14)} n=${String(xs.length).padStart(5)}  p50 ${f(quantile(xs, 0.5))}  p95 ${f(quantile(xs, 0.95))}  p99 ${f(quantile(xs, 0.99))}  max ${f(xs.length ? Math.max(...xs) : NaN)} ms`;
 }
 
@@ -69,6 +71,13 @@ async function main(): Promise<void> {
   const seats = parseInt(opt('seats', '6'), 10);
   const field = opt('field', DEFAULT_FIELD.join(',')).split(',');
 
+  // BLUEPRINT: load the assets before the clock starts and report the load
+  // separately, so the first decision does not carry it.
+  if (ENGINE_FLAGS.BLUEPRINT) {
+    const tl = performance.now();
+    const web = await getWebBlueprint();
+    realLog(`blueprint assets loaded in ${(performance.now() - tl).toFixed(0)} ms (loader ${lastLoadMs} ms): ${web.meta.abstraction.id}, iteration ${web.meta.iterations}`);
+  }
   const bot = makeBotAgent('BOT', { engineClass: TimedEngine as unknown as EngineCtor });
   const opps: SeatAgent[] = [];
   for (let s = 1; s < seats; s++) {

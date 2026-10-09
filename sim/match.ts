@@ -64,7 +64,7 @@ import { playRingHand, RingConfig, SeatAgent, SeatView, makeRng, mixSeed, shuffl
 import { makeBotAgent, makeOpponent, archetypeNames, EngineCtor } from './agents';
 import { PressureStats, emptyPressure, accumulatePressure, addPressure, pressureLines, pressureDiffLines, Running, bb100WithCI } from './stats';
 import { DEFAULT_FIELD } from './ring-run';
-import { makeSeatAgent, ClosableSeat } from './seat-agents';
+import { makeSeatAgent, ClosableSeat, withEngineValidator } from './seat-agents';
 
 const BB = 20, SB = 10, START_BB = 100;
 const JSON_TAG = '@@MATCH_JSON@@';
@@ -150,8 +150,8 @@ export async function runMatchShard(
 ): Promise<ShardResult> {
   // Seat agents: DecisionEngine by default, or another agent kind by spec.
   const repoDir = resolve(__dirname, '..');
-  const botA: ClosableSeat = opts.aAgent ? await makeSeatAgent(opts.aAgent, 'A', engA, repoDir) : makeBotAgent('A', { engineClass: engA });
-  const botB: ClosableSeat = opts.bAgent ? await makeSeatAgent(opts.bAgent, 'B', engB, repoDir) : makeBotAgent('B', { engineClass: engB });
+  const botA: ClosableSeat = opts.aAgent ? await makeSeatAgent(opts.aAgent, 'A', engA, repoDir) : withEngineValidator(makeBotAgent('A', { engineClass: engA }));
+  const botB: ClosableSeat = opts.bAgent ? await makeSeatAgent(opts.bAgent, 'B', engB, repoDir) : withEngineValidator(makeBotAgent('B', { engineClass: engB }));
   const pressureA = emptyPressure(), pressureB = emptyPressure();
   const deals: DealResult[] = [];
   const cfg: RingConfig = { bb: BB, sb: SB, startStackBB: opts.startBB ?? START_BB, rng: () => { throw new Error('deck is always supplied'); } };

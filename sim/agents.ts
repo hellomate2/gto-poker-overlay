@@ -82,6 +82,8 @@ export function makeBotAgent(
       }
     },
   };
+  // The engine instance, for agents that report its stats (sim/seat-agents.ts).
+  Object.assign(agent, { engine });
   if (exploit) {
     agent.observe = async (finalState: GameState) => {
       try { await engine.processCompletedHand?.(finalState); } catch { /* tracking is best-effort */ }

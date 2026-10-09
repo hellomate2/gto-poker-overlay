@@ -1,0 +1,36 @@
+{
+  "format": "gpo-blueprint-web",
+  "version": 1,
+  "abstraction": {
+    "id": "f200-t200-r200-b50-s7",
+    "buckets": [
+      169,
+      200,
+      200,
+      200
+    ]
+  },
+  "iterations": 12749175749,
+  "tree_config": "name=holdem-small;streets=4;stack=10000;blind=50,100;min_bet=100;s0:first=0,max_raises=3,bet=0.5/1,raise=0.5/1,allin=1,capped_allin=1;s1:first=1,max_raises=2,bet=0.5/1,raise=1,allin=1,capped_allin=1;s2:first=1,max_raises=2,bet=0.5/1,raise=1,allin=1,capped_allin=1;s3:first=1,max_raises=2,bet=0.5/1,raise=1,allin=1,capped_allin=1",
+  "files": {
+    "policy": {
+      "file": "policy.gpobp.gz",
+      "bytes": 7279665
+    },
+    "flop": {
+      "file": "flop.u8.gz",
+      "bytes": 2327130,
+      "boards": 1755
+    },
+    "turn": {
+      "file": "turn.u8.gz",
+      "bytes": 21788832,
+      "boards": 16432
+    },
+    "boards": {
+      "file": "boards.u32.gz",
+      "bytes": 72748
+    }
+  },
+  "note": "bp export of ~/.gpo/eval/final.bin (overnight run, small tree, 200/200/200 buckets), 2026-10-09"
+}

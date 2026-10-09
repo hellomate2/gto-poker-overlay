@@ -1,0 +1,48 @@
+$ npx tsx sim/match.ts --a /Users/rg/Downloads/gpo-wt/bp-ext --flags-a +BLUEPRINT --b /Users/rg/Downloads/gto-poker-overlay --mode hu --deals 3000 --seed 7 --workers 4
+start Fri Oct  9 10:58:33 PDT 2026 | 10:58  up 1 day, 15:07, 1 user, load averages: 6.28 7.23 7.85
+=== MATCH (heads-up duplicate, 3000 deals x 2 seatings = 6000 hands), seed 7, 100bb, blinds 10/20 ===
+flags: A = +BLUEPRINT, B = (inherited)
+A = /Users/rg/Downloads/gpo-wt/bp-ext (master/bp-ext@9d6ac7e+dirty)
+B = /Users/rg/Downloads/gto-poker-overlay (swarm/base@b39bc8b)
+A vs B: +26.74 bb/100 for A, 95% CI ±20.20  (sd per deal pair 11.29 bb)
+  -> A is better (CI excludes 0)
+  fold-to-raise (postflop)   A 65.4% (34/52)          B 53.7% (66/123)         A-B +11.7pp ±15.6
+  fold-to-flop-bet           A 38.9% (336/863)        B 79.0% (754/955)        A-B -40.0pp ±4.2
+  fold-to-turn-barrel        A 40.5% (106/262)        B 59.7% (40/67)          A-B -19.2pp ±13.2
+  fold-to-river-bet          A 43.9% (130/296)        B 81.8% (351/429)        A-B -37.9pp ±6.7
+  turn barrel                A 47.0% (77/164)         B 55.6% (262/471)        A-B -8.7pp ±8.9
+  river barrel               A 56.2% (50/89)          B 56.7% (152/268)        A-B -0.5pp ±11.9
+(91s wall, 65.8 games/s)
+  agent A: engine: 3156 decisions, 0 illegal; blueprint answered 3152 of 3156, passed on {"agent: committed: abstract all-in was called, real chips behind":4}
+  agent B: engine: 3439 decisions, 3 illegal
+  agent A: engine: 3068 decisions, 0 illegal; blueprint answered 3068 of 3068, passed on {}
+  agent B: engine: 3394 decisions, 4 illegal
+  agent A: engine: 3049 decisions, 0 illegal; blueprint answered 3048 of 3049, passed on {"agent: committed: abstract all-in was called, real chips behind":1}
+  agent B: engine: 3331 decisions, 1 illegal
+  agent A: engine: 3217 decisions, 0 illegal; blueprint answered 3216 of 3217, passed on {"agent: committed: abstract all-in was called, real chips behind":1}
+  agent B: engine: 3536 decisions, 3 illegal
+end Fri Oct  9 11:00:05 PDT 2026 | 11:00  up 1 day, 15:08, 1 user, load averages: 9.40 8.02 8.09
+$ npx tsx sim/match.ts --a /Users/rg/Downloads/gpo-wt/bp-ext --flags-a +BLUEPRINT --b /Users/rg/Downloads/gto-poker-overlay --mode hu --deals 3000 --seed 101 --workers 4
+start Fri Oct  9 11:00:05 PDT 2026 | 11:00  up 1 day, 15:08, 1 user, load averages: 9.40 8.02 8.09
+=== MATCH (heads-up duplicate, 3000 deals x 2 seatings = 6000 hands), seed 101, 100bb, blinds 10/20 ===
+flags: A = +BLUEPRINT, B = (inherited)
+A = /Users/rg/Downloads/gpo-wt/bp-ext (master/bp-ext@9d6ac7e+dirty)
+B = /Users/rg/Downloads/gto-poker-overlay (swarm/base@b39bc8b)
+A vs B: +25.79 bb/100 for A, 95% CI ±19.29  (sd per deal pair 10.78 bb)
+  -> A is better (CI excludes 0)
+  fold-to-raise (postflop)   A 63.0% (34/54)          B 47.7% (52/109)         A-B +15.3pp ±15.9
+  fold-to-flop-bet           A 43.7% (366/838)        B 78.1% (736/942)        A-B -34.5pp ±4.3
+  fold-to-turn-barrel        A 45.5% (90/198)         B 66.7% (42/63)          A-B -21.2pp ±13.6
+  fold-to-river-bet          A 46.1% (125/271)        B 80.2% (320/399)        A-B -34.1pp ±7.1
+  turn barrel                A 40.7% (70/172)         B 47.2% (199/422)        A-B -6.5pp ±8.8
+  river barrel               A 53.2% (42/79)          B 51.8% (115/222)        A-B +1.4pp ±12.8
+(76s wall, 79.1 games/s)
+  agent A: engine: 3136 decisions, 0 illegal; blueprint answered 3136 of 3136, passed on {}
+  agent B: engine: 3469 decisions, 1 illegal
+  agent A: engine: 3060 decisions, 0 illegal; blueprint answered 3055 of 3060, passed on {"agent: committed: abstract all-in was called, real chips behind":5}
+  agent B: engine: 3361 decisions, 4 illegal
+  agent A: engine: 2990 decisions, 0 illegal; blueprint answered 2987 of 2990, passed on {"agent: committed: abstract all-in was called, real chips behind":3}
+  agent B: engine: 3360 decisions, 2 illegal
+  agent A: engine: 3110 decisions, 0 illegal; blueprint answered 3106 of 3110, passed on {"agent: committed: abstract all-in was called, real chips behind":4}
+  agent B: engine: 3451 decisions, 4 illegal
+end Fri Oct  9 11:01:21 PDT 2026 | 11:01  up 1 day, 15:10, 1 user, load averages: 8.12 8.06 8.10

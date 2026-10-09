@@ -11,10 +11,16 @@
 //           bucket and average strategy) and replay each through the TS
 //           ServeClient (TS card objects -> request -> bp serve). Bucket,
 //           tokens and probabilities must match.
+//   web     The same fixture through the in-browser runtime
+//           (src/core/blueprint/web-*.ts over the blueprint/web assets, no
+//           `bp serve`): bucket and tokens must match exactly, probabilities
+//           within the export's quantization (bytes summing to 255, so each
+//           probability is off by less than 1/255).
 //
 // Usage:
 //   npx tsx sim/blueprint-parity.ts tree   [--bin B] [--flags "..."]
 //   npx tsx sim/blueprint-parity.ts policy --fixture F --ckpt C [--bin B] [--flags "..."]
+//   npx tsx sim/blueprint-parity.ts web    --fixture F [--dir blueprint/web]
 // Exit code 0 only when every check passes.
 // ============================================================
 
@@ -26,6 +32,9 @@ import {
   parseTreeDescription, rootState, legalActions, applyAction, AbsState, walkTokens,
 } from '../src/core/blueprint/abstract-tree';
 import { ServeClient, DEFAULT_BP_FLAGS } from './blueprint-serve';
+import { loadWebBlueprint } from '../src/core/blueprint/web-blueprint';
+import { nodeAssetReader } from '../src/core/blueprint/web-assets';
+import { cardToId } from '../src/core/cfr/card-utils';
 
 function arg(name: string, def?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -102,6 +111,33 @@ async function policyParity(bin: string, flags: string[], fixture: string, ckpt:
   return bad;
 }
 
+/** Fixture through the browser runtime. Exported for tests/blueprint-web.test.ts. */
+export async function webParity(fixture: string, dir?: string, log = console.log): Promise<{ n: number; bad: number; maxDiff: number; byStreet: number[]; maxDiffByStreet: number[] }> {
+  const lines = readFileSync(fixture, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l) as Fixture);
+  const web = await loadWebBlueprint(nodeAssetReader(dir)!);
+  const ids = (s: string): number[] => { const o: number[] = []; for (let i = 0; i < s.length; i += 2) o.push(cardToId(parseCard(s.slice(i, i + 2)))); return o; };
+  let bad = 0, maxDiff = 0;
+  const byStreet = [0, 0, 0, 0], maxDiffByStreet = [0, 0, 0, 0];
+  const tol = 1 / 255 + 1e-6;  // quantization bound plus the fixture's 9-digit printing
+  for (const f of lines) {
+    const fail = (m: string) => { if (bad++ < 10) log(`MISMATCH '${f.history}' ${f.hole}/${f.board}: ${m}`); };
+    const h = ids(f.hole);
+    let ans;
+    try { ans = web.source.lookup(f.history ? f.history.split(' ') : [], [h[0], h[1]], ids(f.board)); } catch (e) { fail(String(e)); continue; }
+    if (ans.node !== f.node) { fail(`node ${ans.node} vs ${f.node}`); continue; }
+    if (ans.bucket !== f.bucket) { fail(`bucket ${ans.bucket} vs trainer ${f.bucket}`); continue; }
+    if (ans.toks.join(',') !== f.toks.join(',')) { fail(`toks ${ans.toks} vs ${f.toks}`); continue; }
+    let d = 0;
+    for (let i = 0; i < f.probs.length; i++) d = Math.max(d, Math.abs(ans.probs[i] - f.probs[i]));
+    maxDiff = Math.max(maxDiff, d);
+    maxDiffByStreet[f.street] = Math.max(maxDiffByStreet[f.street], d);
+    if (d > tol) { fail(`probs differ by ${d}`); continue; }
+    byStreet[f.street]++;
+  }
+  log(`web parity: ${lines.length} infosets (passing per street ${byStreet.join('/')}), bucket and tokens exact, max |dp| ${maxDiff.toExponential(3)} (per street ${maxDiffByStreet.map(x => x.toExponential(2)).join(' / ')}; bound 1/255 = ${(1 / 255).toExponential(3)}), ${bad} mismatches`);
+  return { n: lines.length, bad, maxDiff, byStreet, maxDiffByStreet };
+}
+
 async function main(): Promise<void> {
   const mode = process.argv[2];
   const repo = resolve(__dirname, '..');
@@ -110,8 +146,9 @@ async function main(): Promise<void> {
   let bad: number;
   if (mode === 'tree') bad = await treeParity(bin, flags);
   else if (mode === 'policy') bad = await policyParity(bin, flags, arg('fixture')!, arg('ckpt')!);
-  else throw new Error('usage: blueprint-parity.ts tree|policy ...');
+  else if (mode === 'web') bad = (await webParity(arg('fixture')!, arg('dir'))).bad;
+  else throw new Error('usage: blueprint-parity.ts tree|policy|web ...');
   process.exit(bad === 0 ? 0 : 1);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+if (require.main === module) main().catch(e => { console.error(e); process.exit(1); });

@@ -484,9 +484,45 @@ off-tree). Both seeds pooled (4,000 deals, 8,000 hands, deal-level samples):
 head-to-head numbers against one opponent (the current rule-and-solver
 engine), not an exploitability measurement.
 
-Not done yet: real-time search on later streets, depths other than 100 BB
-(the agent plays them but the abstraction assumes 100 BB), and an export
-path for the browser (the agent needs `bp serve` for flop/turn buckets).
+Not done yet: real-time search on later streets and depths other than 100 BB
+(the agent plays them but the abstraction assumes 100 BB). The browser path
+without `bp serve` is the next section.
+
+## The blueprint in the extension (`export-web`, engine flag `BLUEPRINT`)
+
+Added 2026-10-09. The same BlueprintAgent runs inside the extension's
+DecisionEngine with no C++ process:
+
+* `scripts/export-web.ts` turns a `bp export` file plus the run's
+  `cache/abs-<id>.bin` into `web/` (committed, every file under 5 MB):
+  `policy.gpobp.gz` (the export, 7,279,665 bytes raw), `flop.u8.gz` and
+  `turn.u8.gz` (the trainer's flop and turn tables as one byte per
+  [canonical board][combo], 2,327,130 and 21,788,832 bytes raw),
+  `boards.u32.gz` (canonical flop and turn keys in the trainer's id order) and
+  `meta.json`. 7,351,523 bytes gzipped in all. It refuses a cache whose id,
+  bucket counts or river bounds differ from the policy header. No river table
+  ships: `src/core/blueprint/web-tables.ts` computes river EHS per decision as
+  the trainer's float32 `(wins + 0.5 ties) * (1/990)` (bit-identical to the C++
+  expression for all 491,536 (wins, ties) pairs, checked against a compiled
+  C++ loop) and applies `river_bounds` with upper_bound.
+* Board canonicalization is ported from `BoardIso` (first of the 24 suit
+  permutations that reaches the smallest sorted board, the same permutation
+  applied to the hole cards). A fresh colex enumeration in TS gives 1,755
+  flops and 16,432 turns in exactly the shipped order (test).
+* `src/core/blueprint/web-blueprint.ts` loads the assets (Node: fs and zlib;
+  extension: `fetch(chrome.runtime.getURL('blueprint/...'))` and
+  `DecompressionStream`), `engine-bridge.ts` wraps BlueprintAgent for
+  `DecisionEngine.decide()`. The webpack build copies `web/` to
+  `dist/blueprint/`, listed in the manifest's web-accessible resources.
+
+Parity on the final checkpoint (12,749,175,749 iterations), FLAGS as above:
+`bp serve FLAGS --ckpt final.bin --parity-dump 1000 --out F`, then
+`npx tsx sim/blueprint-parity.ts web --fixture F`: 1,000 infosets, 250 per
+street, 0 mismatches in node, bucket or tokens, max probability difference
+2.692e-3 (the export rounds to bytes summing to 255, so the bound is 1/255 =
+3.922e-3). With `--parity-dump 40000 --seed 11`: 40,000 infosets, 0
+mismatches, max difference 2.941e-3. Match results and latency are in the top
+level README ("Engine flags") and `sim/results/2026-10-09/bp-web/`.
 
 ## Correctness gate (Kuhn and Leduc)
 
@@ -947,10 +983,9 @@ against the engine, so its match runs outside `bp`. To score it with AIVAT:
   Potential-aware flop buckets (`--flop-mode pa`) and OCHS river buckets
   (`--river-mode ochs`) exist as options; at 50 buckets neither beat the
   defaults (see "Abstraction v2"). The turn has no potential-aware option yet.
-* The TS loader looks up (history, bucket). It computes preflop and river
-  buckets itself but does not yet load the flop/turn k-means tables, and it
-  has no action translation for real bet sizes that fall between the
-  abstract sizes.
+* The TS loader looks up (history, bucket). Flop and turn tables load
+  through the `export-web` assets (`src/core/blueprint/web-*.ts`); action
+  translation for off-tree sizes lives in BlueprintAgent (`translate.ts`).
 * There is no full-game best response for hold'em. `bp br` is a bound
   inside the abstraction; `bp lbr` is a full-game lower bound, but only
   with bet sizes that exist in the target's tree (no off-tree sizes and no
