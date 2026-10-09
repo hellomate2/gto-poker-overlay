@@ -11,14 +11,18 @@
 // must NOT change the bot, nor claim the bot is "good" — it surfaces leaks.
 //
 // Usage:
-//   npx tsx sim/run.ts [handsPerMatchup] [seed]   (default 100000, seed 42)
+//   npx tsx sim/run.ts [handsPerMatchup] [seed] [--profiles a,b,c] [--no-expl] [--out FILE]
+//     default 100000 hands, seed 42, profiles station,nit,maniac,tag,raiser,barreler,checkraiser
+//     --no-expl   skip the EXPL (opponent-tracking) pass: halves the runtime
+//     --out FILE  report path (default sim/REPORT.md)
 //   npx tsx sim/run.ts --selftest
 // ============================================================
 
 import './fake-idb'; // installs an in-memory indexedDB so opponent tracking works
 import { resetFakeIdb } from './fake-idb';
 import { playHand, HandLog, HUConfig, makeRng, SeatAgent, Seat } from './holdem';
-import { makeBotAgent, makeOpponent } from './agents';
+import { makeBotAgent, makeOpponent, archetypeNames } from './agents';
+import { PressureStats, emptyPressure, accumulatePressure, pressureLines } from './stats';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 
@@ -37,10 +41,11 @@ function unsilence(): void { console.log = realLog; }
 
 const BB = 20, SB = 10, START_BB = 100;
 
-// The four profiles the report focuses on (task spec). Extras ('lag', 'fish')
-// still exist in agents.ts and can be run ad-hoc, but the report covers these.
-const PROFILES = ['station', 'nit', 'maniac', 'tag'] as const;
-type Profile = (typeof PROFILES)[number];
+// Default profiles: the four threshold archetypes plus the three exploit probes
+// (raiser / barreler / checkraiser). Extras ('lag', 'fish') can be run ad-hoc
+// with --profiles.
+const DEFAULT_PROFILES = ['station', 'nit', 'maniac', 'tag', 'raiser', 'barreler', 'checkraiser'];
+type Profile = string;
 
 // ------------------------------------------------------------------
 // Stats: counts of opportunities and the bot's response in each spot, so every
@@ -80,6 +85,9 @@ interface Stats {
 
   // Aggregate postflop action tallies (for AF)
   pBets: number; pRaises: number; pCalls: number; pChecks: number; pFolds: number;
+
+  // Fold-to-pressure and barrel metrics (sim/stats.ts)
+  pressure: PressureStats;
 }
 
 function emptyStats(): Stats {
@@ -91,6 +99,7 @@ function emptyStats(): Stats {
     riverBetOpp: 0, riverBet: 0,
     wtsdOpp: 0, wtsd: 0, wonSD: 0,
     pBets: 0, pRaises: 0, pCalls: 0, pChecks: 0, pFolds: 0,
+    pressure: emptyPressure(),
   };
 }
 
@@ -204,6 +213,9 @@ function accumulate(st: Stats, log: HandLog, botSeat: Seat, button: Seat): void 
     if (botRiver.some(a => a.type === 'bet' || a.type === 'raise')) st.riverBet++;
   }
 
+  // --- Fold-to-raise / fold-to-barrel / barrel metrics ---
+  accumulatePressure(st.pressure, acts, botSeat);
+
   // --- Postflop action tallies for AF ---
   for (const a of botActs) {
     if (!POST.has(a.street)) continue;
@@ -284,6 +296,24 @@ function detectLeaks(profile: Profile, st: Stats): Leak[] {
     if (win < 0) leaks.push({ severity: 'HIGH', text: `Losing to a reasonable TAG is the clearest signal of a fundamental leak (range or sizing).` });
   }
 
+  // Exploit probes. Thresholds are minimum-defense-frequency style bounds: a
+  // raise to 3x a bet risks 3B to win P+B, so folding more than roughly half
+  // the time to an any-two-cards raiser shows a profit for the raiser.
+  const pr = st.pressure;
+  const f2r = pct(pr.foldToRaise, pr.foldToRaiseOpp);
+  const f2tb = pct(pr.foldToTurnBarrel, pr.foldToTurnBarrelOpp);
+  const f2rb = pct(pr.foldToRiverBet, pr.foldToRiverBetOpp);
+  if (profile === 'raiser') {
+    if (Number.isFinite(f2r) && f2r > 50) leaks.push({ severity: 'HIGH', text: `Folds to a postflop raise ${fmtPct(f2r)} vs a RAISER who raises any two cards — over-folding; the raiser profits from the raise alone.` });
+  }
+  if (profile === 'barreler') {
+    if (Number.isFinite(f2tb) && f2tb > 50) leaks.push({ severity: 'HIGH', text: `Folds to the turn barrel ${fmtPct(f2tb)} vs a BARRELER who bets every street with any two cards — over-folding.` });
+    if (Number.isFinite(f2rb) && f2rb > 50) leaks.push({ severity: 'HIGH', text: `Folds to river bets ${fmtPct(f2rb)} vs a BARRELER whose river bets are mostly air — over-folding.` });
+  }
+  if (profile === 'checkraiser') {
+    if (Number.isFinite(f2r) && f2r > 50) leaks.push({ severity: 'HIGH', text: `Folds to a check-raise ${fmtPct(f2r)} vs a CHECKRAISER who check-raises any two cards — over-folding.` });
+  }
+
   // Universal sanity flags.
   const af_ = af(st);
   if (Number.isFinite(af_) && af_ > 8) leaks.push({ severity: 'LOW', text: `Postflop AF ${af_.toFixed(1)} is extremely high — bot may be over-betting/under-calling (one-dimensional).` });
@@ -356,6 +386,7 @@ function freqLines(st: Stats): Record<string, string> {
     'WTSD': fmtPct(pct(st.wtsd, st.wtsdOpp)),
     'W$SD': fmtPct(pct(st.wonSD, st.wtsd)),
     'postflop AF': Number.isFinite(af(st)) ? af(st).toFixed(2) : '∞',
+    ...pressureLines(st.pressure),
   };
 }
 
@@ -370,8 +401,15 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args[0] === '--selftest') { await selftest(); return; }
 
-  const hands = parseInt(args[0] || '100000', 10);
-  const seed = parseInt(args[1] || '42', 10);
+  const flag = (k: string) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
+  const VALUE_FLAGS = new Set(['--profiles', '--out']);
+  const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && VALUE_FLAGS.has(args[i - 1])));
+  const hands = parseInt(positional[0] || '100000', 10);
+  const seed = parseInt(positional[1] || '42', 10);
+  const PROFILES: Profile[] = (flag('--profiles') ?? DEFAULT_PROFILES.join(',')).split(',').filter(Boolean);
+  for (const p of PROFILES) if (!archetypeNames().includes(p)) throw new Error(`unknown profile ${p}; known: ${archetypeNames().join(',')}`);
+  const runExpl = !args.includes('--no-expl');
+  const outPath = flag('--out') ?? join(__dirname, 'REPORT.md');
   seedGlobalRandom(seed);
 
   unsilence();
@@ -380,22 +418,35 @@ async function main(): Promise<void> {
   realLog('GTO = bot with no read; EXPL = bot tracking the opponent (exploit adjuster on). Same deck per pair.\n');
   silence();
 
-  const results: { profile: Profile; gto: Stats; expl: Stats; leaks: Leak[] }[] = [];
-  let ki = 0;
+  const results: { profile: Profile; gto: Stats; expl: Stats | null; leaks: Leak[] }[] = [];
   for (const profile of PROFILES) {
-    const deckSeed = seed * 131 + (ki++) * 977;
+    // Deck seed is fixed per profile NAME (not list position), so a profile's
+    // result does not change when --profiles selects a different subset. For the
+    // original four profiles this reproduces the old list-index seeds.
+    const legacyIdx = ['station', 'nit', 'maniac', 'tag'].indexOf(profile);
+    const ki = legacyIdx >= 0 ? legacyIdx : 4 + archetypeNames().indexOf(profile);
+    const deckSeed = seed * 131 + ki * 977;
     const oppSeed = 1000 + profile.length;
+    const t0 = Date.now();
+    // Reseed the bot's Math.random per matchup so each profile's numbers are
+    // independent of which profiles ran before it in this process.
+    seedGlobalRandom(deckSeed);
     const gto = await runMatchup(profile, hands, deckSeed, false, oppSeed);
-    const expl = await runMatchup(profile, hands, deckSeed, true, oppSeed);
+    seedGlobalRandom(deckSeed + 1);
+    const expl = runExpl ? await runMatchup(profile, hands, deckSeed, true, oppSeed) : null;
+    const secs = (Date.now() - t0) / 1000;
     const leaks = detectLeaks(profile, gto); // flag leaks on the read-less baseline
     results.push({ profile, gto, expl, leaks });
 
     unsilence();
     const f = freqLines(gto);
-    realLog(`── vs ${profile.toUpperCase()} ${'─'.repeat(40)}`);
-    realLog(`   bb/100 GTO ${f['bb/100']}   |   EXPL ${bb100(expl) >= 0 ? '+' : ''}${bb100(expl).toFixed(1)}   (lift ${(bb100(expl) - bb100(gto) >= 0 ? '+' : '')}${(bb100(expl) - bb100(gto)).toFixed(1)})`);
+    realLog(`── vs ${profile.toUpperCase()} ${'─'.repeat(40)}  (${secs.toFixed(0)}s)`);
+    if (expl) realLog(`   bb/100 GTO ${f['bb/100']}   |   EXPL ${bb100(expl) >= 0 ? '+' : ''}${bb100(expl).toFixed(1)}   (lift ${(bb100(expl) - bb100(gto) >= 0 ? '+' : '')}${(bb100(expl) - bb100(gto)).toFixed(1)})`);
+    else realLog(`   bb/100 GTO ${f['bb/100']}   (EXPL pass skipped)`);
     realLog(`   VPIP ${f['VPIP']}  PFR ${f['PFR']}  SBopen ${f['SB open']}  BBdef ${f['BB defend']}  3bet ${f['3bet']}  f23b ${f['fold-to-3bet']}`);
     realLog(`   cbet ${f['flop cbet']}  f2cbet ${f['fold-to-cbet']}  riverBet ${f['river bet']}  WTSD ${f['WTSD']}  W$SD ${f['W$SD']}  pAF ${f['postflop AF']}`);
+    realLog(`   f2raise ${f['fold-to-raise (postflop)']}  f2turnBarrel ${f['fold-to-turn-barrel']}  f2riverBet ${f['fold-to-river-bet']}`);
+    realLog(`   f2flopBet ${f['fold-to-flop-bet']}  turnBarrel ${f['turn barrel']}  riverBarrel ${f['river barrel']}`);
     if (leaks.length === 0) realLog('   leaks: none flagged by the heuristic checks.');
     for (const l of leaks) realLog(`   [${l.severity}] ${l.text}`);
     realLog('');
@@ -404,18 +455,18 @@ async function main(): Promise<void> {
 
   unsilence();
   const totGto = results.reduce((s, r) => s + r.gto.netChips, 0) / BB / (hands * PROFILES.length) * 100;
-  const totExpl = results.reduce((s, r) => s + r.expl.netChips, 0) / BB / (hands * PROFILES.length) * 100;
-  realLog(`AGGREGATE bb/100 — GTO ${totGto.toFixed(1)} | EXPLOIT ${totExpl.toFixed(1)}`);
+  const totExpl = results.reduce((s, r) => s + (r.expl?.netChips ?? 0), 0) / BB / (hands * PROFILES.length) * 100;
+  realLog(`AGGREGATE bb/100 — GTO ${totGto.toFixed(1)}${runExpl ? ` | EXPLOIT ${totExpl.toFixed(1)}` : ''}`);
   realLog(`Preflop solved-chart reference: SB-RFI ≈ 81%, BB-vs-open defend ≈ 74%.`);
 
   // ---- write REPORT.md ----
   const md = renderReport(hands, seed, results);
-  const out = join(__dirname, 'REPORT.md');
+  const out = outPath;
   writeFileSync(out, md, 'utf8');
   realLog(`\nReport written to ${out}`);
 }
 
-function renderReport(hands: number, seed: number, results: { profile: Profile; gto: Stats; expl: Stats; leaks: Leak[] }[]): string {
+function renderReport(hands: number, seed: number, results: { profile: Profile; gto: Stats; expl: Stats | null; leaks: Leak[] }[]): string {
   const L: string[] = [];
   L.push('# Bot measurement report');
   L.push('');
@@ -443,12 +494,17 @@ function renderReport(hands: number, seed: number, results: { profile: Profile; 
   L.push('| Profile | bb/100 (GTO) | 95% CI | bb/100 (EXPL) | exploit lift |');
   L.push('|---|---:|---:|---:|---:|');
   for (const r of results) {
-    const g = bb100(r.gto), e = bb100(r.expl), ci = 1.96 * bb100SE(r.gto);
-    L.push(`| ${r.profile} | ${g >= 0 ? '+' : ''}${g.toFixed(1)} | ±${ci.toFixed(1)} | ${e >= 0 ? '+' : ''}${e.toFixed(1)} | ${e - g >= 0 ? '+' : ''}${(e - g).toFixed(1)} |`);
+    const g = bb100(r.gto), ci = 1.96 * bb100SE(r.gto);
+    if (r.expl) {
+      const e = bb100(r.expl);
+      L.push(`| ${r.profile} | ${g >= 0 ? '+' : ''}${g.toFixed(1)} | ±${ci.toFixed(1)} | ${e >= 0 ? '+' : ''}${e.toFixed(1)} | ${e - g >= 0 ? '+' : ''}${(e - g).toFixed(1)} |`);
+    } else {
+      L.push(`| ${r.profile} | ${g >= 0 ? '+' : ''}${g.toFixed(1)} | ±${ci.toFixed(1)} | n/a | n/a |`);
+    }
   }
   const totGto = results.reduce((s, r) => s + r.gto.netChips, 0) / BB / (hands * results.length) * 100;
-  const totExpl = results.reduce((s, r) => s + r.expl.netChips, 0) / BB / (hands * results.length) * 100;
-  L.push(`| **aggregate** | **${totGto.toFixed(1)}** | | **${totExpl.toFixed(1)}** | |`);
+  const totExpl = results.reduce((s, r) => s + (r.expl?.netChips ?? 0), 0) / BB / (hands * results.length) * 100;
+  L.push(`| **aggregate** | **${totGto.toFixed(1)}** | | **${results.every(r => r.expl) ? totExpl.toFixed(1) : 'n/a'}** | |`);
   L.push('');
   L.push('> Caveat: these opponents are deliberately exploitable scripted heuristics, not');
   L.push('> thinking players. A large positive bb/100 vs them is expected and is NOT');
