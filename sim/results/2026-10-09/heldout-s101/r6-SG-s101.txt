@@ -1,0 +1,15 @@
+CMD: GPO_ENGINE_FLAGS=SUBGAME_SOLVER --mode field --seats 6 --deals 2000 --seed 101 load={ 13.71 12.96 13.85 }
+=== MATCH (field duplicate, 6 seats vs [tag,lag,nit,station,tag], 2000 deals, each engine plays every deal), seed 101, 100bb, blinds 10/20 ===
+A = /Users/rg/Downloads/gto-poker-overlay (swarm/base@b39bc8b)
+B = /Users/rg/Downloads/gpo-wt/integrate (swarm/integrate@fc10eaf)
+A vs field: +818.10 bb/100 (±287.5)   B vs field: +827.77 bb/100 (±288.0)
+A - B (paired): -9.68 bb/100, 95% CI ±11.31  (sd per deal 2.58 bb)
+  -> no significant difference at 95%
+  fold-to-raise (postflop)   A 16.2% (17/105)         B 15.2% (16/105)         A-B +1.0pp ±9.8
+  fold-to-flop-bet           A 60.1% (282/469)        B 60.1% (282/469)        A-B +0.0pp ±6.3
+  fold-to-turn-barrel        A 47.0% (39/83)          B 47.0% (39/83)          A-B +0.0pp ±15.2
+  fold-to-river-bet          A 50.5% (49/97)          B 50.0% (48/96)          A-B +0.5pp ±14.1
+  turn barrel                A 54.8% (34/62)          B 58.1% (36/62)          A-B -3.2pp ±17.4
+  river barrel               A 67.7% (21/31)          B 65.6% (21/32)          A-B +2.1pp ±23.3
+(317s wall, 12.6 games/s)
+EXIT 0 after 318s

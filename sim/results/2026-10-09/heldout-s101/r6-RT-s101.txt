@@ -1,0 +1,15 @@
+CMD: GPO_ENGINE_FLAGS=RANGE_TRACKER --mode field --seats 6 --deals 2000 --seed 101 load={ 9.66 11.27 12.84 }
+=== MATCH (field duplicate, 6 seats vs [tag,lag,nit,station,tag], 2000 deals, each engine plays every deal), seed 101, 100bb, blinds 10/20 ===
+A = /Users/rg/Downloads/gto-poker-overlay (swarm/base@b39bc8b)
+B = /Users/rg/Downloads/gpo-wt/integrate (swarm/integrate@fc10eaf)
+A vs field: +818.10 bb/100 (±287.5)   B vs field: +849.07 bb/100 (±311.1)
+A - B (paired): -30.97 bb/100, 95% CI ±156.20  (sd per deal 35.64 bb)
+  -> no significant difference at 95%
+  fold-to-raise (postflop)   A 16.2% (17/105)         B 19.9% (33/166)         A-B -3.7pp ±9.3
+  fold-to-flop-bet           A 60.1% (282/469)        B 23.0% (96/418)         A-B +37.2pp ±6.0
+  fold-to-turn-barrel        A 47.0% (39/83)          B 40.8% (60/147)         A-B +6.2pp ±13.4
+  fold-to-river-bet          A 50.5% (49/97)          B 59.9% (94/157)         A-B -9.4pp ±12.6
+  turn barrel                A 54.8% (34/62)          B 50.0% (51/102)         A-B +4.8pp ±15.7
+  river barrel               A 67.7% (21/31)          B 55.1% (27/49)          A-B +12.6pp ±21.6
+(480s wall, 8.3 games/s)
+EXIT 0 after 481s
