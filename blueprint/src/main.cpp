@@ -19,6 +19,7 @@
 //   bp aivat  --game leduc|kuhn   AIVAT validation on a small game
 //   bp aivat-log --a F --log G    AIVAT for a logged match (A = checkpoint F)
 //   (bp h2h --aivat scores a hold'em match with AIVAT, see aivat.h)
+//   bp absv2  --mode check|h2h|br abstraction v2 checks and A/B (src/abs_v2.h)
 //
 // Every hold'em command takes the same tree + abstraction options so it can
 // rebuild the exact tree a checkpoint was trained on; a fingerprint of both
@@ -39,6 +40,7 @@
 #include <memory>
 #include <sstream>
 
+#include "abs_v2.h"
 #include "abstraction.h"
 #include "aivat_holdem.h"
 #include "eval.h"
@@ -146,6 +148,12 @@ AbsConfig abs_from_args(const Args& a) {
   c.sample_flops = int(a.geti("sample-flops", 300));
   c.sample_turns = int(a.geti("sample-turns", 300));
   c.sample_rivers = int(a.geti("sample-rivers", 2000));
+  // abstraction v2 options (abs_v2.h)
+  c.flop_mode = a.get("flop-mode", "da");
+  c.river_mode = a.get("river-mode", "ehs");
+  c.restarts = int(a.geti("restarts", 1));
+  c.pa_sample = int(a.geti("pa-sample", 200000));
+  c.waugh_lookup = a.has("waugh-lookup");
   return c;
 }
 
@@ -1093,6 +1101,10 @@ int cmd_lbr(const Args& a) {
 // ---- export / show ---------------------------------------------------------------
 int cmd_export(const Args& a) {
   auto h = setup_holdem(a, true);
+  // abstraction v2: the TS loader computes river buckets from 1-D EHS bounds,
+  // which do not exist for OCHS river buckets, so refuse instead of exporting
+  // a policy whose river lookups would be silently wrong.
+  if (h->acfg.river_mode == "ochs") die("export: OCHS river buckets are not readable by the TS loader yet");
   McfrConfig m;
   Trainer<HoldemSampler> tr(h->tree, HoldemSampler{&h->abs}, m);
   std::string ck = a.get("ckpt");
@@ -1221,11 +1233,218 @@ int cmd_serve(const Args& a) {
   return serve_loop(ctx, stdin, proto);
 }
 
+// ---- absv2: abstraction v2 checks and cross-abstraction head-to-head ------------------
+//   bp absv2 --mode check [abs opts]   Waugh tables vs the legacy tables: every
+//                                      (hole, flop), --samples sampled turn and
+//                                      river hands; lookup speed of both paths
+//   bp absv2 --mode h2h --a CK1 --b CK2 [abs opts for A] [--bx-<opt> V for B]
+//                                      duplicate head-to-head where each side
+//                                      sees buckets from its own abstraction
+//   bp absv2 --mode br --target CK --iters N [abs opts]
+//                                      `bp br` with an iteration budget
+int cmd_absv2(const Args& a) {
+  std::string mode = a.get("mode", "check");
+  if (mode == "check") {
+    Args la = a;
+    la.kv.erase("waugh-lookup");
+    auto h = setup_holdem(la, true);
+    const Abstraction& A = h->abs;
+    int threads = int(a.geti("threads", 4));
+    WaughTables W;
+    waugh_from_legacy(A, W, threads, true);
+    std::printf("legacy tables: flop %zu, turn %zu, river %zu entries\n", A.flop_bucket.size(), A.turn_bucket.size(),
+                A.river_bucket.size());
+    // 1) every (hole, flop)
+    std::atomic<long long> n1{0}, bad1{0};
+    std::vector<std::thread> pool;
+    for (int t = 0; t < threads; t++)
+      pool.emplace_back([&, t] {
+        long long n = 0, bad = 0;
+        for (int b0 = 0; b0 < 52; b0++)
+          for (int b1 = b0 + 1; b1 < 52; b1++)
+            for (int b2 = b1 + 1; b2 < 52; b2++) {
+              if ((b0 * 52 + b1 * 7 + b2) % threads != t) continue;
+              int b[3] = {b0, b1, b2};
+              for (int x = 0; x < 52; x++)
+                for (int y = x + 1; y < 52; y++) {
+                  if (x == b0 || x == b1 || x == b2 || y == b0 || y == b1 || y == b2) continue;
+                  int hh[2] = {x, y};
+                  n++;
+                  if (A.flop(hh, b) != W.flop_bucket(hh, b)) bad++;
+                }
+            }
+        n1 += n;
+        bad1 += bad;
+      });
+    for (auto& th : pool) th.join();
+    pool.clear();
+    std::printf("flop: %lld (hole, flop) hands checked, %lld mismatches\n", n1.load(), bad1.load());
+    // 2) sampled turn and river hands
+    long long samples = a.geti("samples", 10000000);
+    for (int st = 2; st <= 3; st++) {
+      if (st == 3 && W.river.empty()) break;
+      std::atomic<long long> bad{0};
+      for (int t = 0; t < threads; t++)
+        pool.emplace_back([&, t] {
+          Rng rng(uint64_t(a.geti("seed", 5)) * 977 + uint64_t(t) + 100 * st);
+          long long nb = 0, cnt = samples / threads + (t < samples % threads ? 1 : 0);
+          for (long long i = 0; i < cnt; i++) {
+            int c[7];
+            uint64_t used = 0;
+            for (int j = 0; j < 7; j++) {
+              int x;
+              do x = int(rng.below(52)); while (used >> x & 1);
+              used |= 1ull << x;
+              c[j] = x;
+            }
+            bool ok = st == 2 ? A.turn(c, c + 2) == W.turn_bucket(c, c + 2) : A.river(c, c + 2) == W.river_bucket(c, c + 2);
+            nb += !ok;
+          }
+          bad += nb;
+        });
+      for (auto& th : pool) th.join();
+      pool.clear();
+      std::printf("%s: %lld sampled hands checked, %lld mismatches\n", st == 2 ? "turn" : "river", samples, bad.load());
+    }
+    // 3) single-thread lookup speed of both paths on the same random hands
+    {
+      const int N = 2000000;
+      std::vector<int> cards(size_t(N) * 7);
+      Rng rng(11);
+      for (int i = 0; i < N; i++) {
+        uint64_t used = 0;
+        for (int j = 0; j < 7; j++) {
+          int x;
+          do x = int(rng.below(52)); while (used >> x & 1);
+          used |= 1ull << x;
+          cards[size_t(i) * 7 + j] = x;
+        }
+      }
+      for (int st = 1; st <= 3; st++) {
+        if (st == 3 && W.river.empty()) break;
+        long long chk = 0;
+        double t0 = now_sec();
+        for (int i = 0; i < N; i++) {
+          const int* c = &cards[size_t(i) * 7];
+          chk += st == 1 ? A.flop(c, c + 2) : st == 2 ? A.turn(c, c + 2) : A.river(c, c + 2);
+        }
+        double t1 = now_sec();
+        for (int i = 0; i < N; i++) {
+          const int* c = &cards[size_t(i) * 7];
+          chk -= st == 1 ? W.flop_bucket(c, c + 2) : st == 2 ? W.turn_bucket(c, c + 2) : W.river_bucket(c, c + 2);
+        }
+        double t2 = now_sec();
+        std::printf("street %d lookup: legacy %.1f ns, waugh %.1f ns (checksum diff %lld)\n", st, (t1 - t0) / N * 1e9,
+                    (t2 - t1) / N * 1e9, chk);
+      }
+    }
+    return (bad1.load() == 0) ? 0 : 1;
+  }
+  if (mode == "h2h") {
+    Args ba = a;
+    for (auto& kv : a.kv)
+      if (kv.first.rfind("bx-", 0) == 0) ba.kv[kv.first.substr(3)] = kv.second;
+    auto ha = setup_holdem(a, true);
+    auto hb = setup_holdem(ba, true);
+    if (ha->tcfg.describe() != hb->tcfg.describe() || ha->tree.nodes.size() != hb->tree.nodes.size() ||
+        ha->tree.num_slots != hb->tree.num_slots)
+      die("absv2 h2h: both sides need the same betting tree and bucket counts");
+    Agent A = make_agent(a.get("a"), *ha), B = make_agent(a.get("b"), *hb);
+    int64_t hands = a.geti("hands", 1000000);
+    int threads = int(a.geti("threads", 4));
+    uint64_t seed = uint64_t(a.geti("seed", 99));
+    HoldemSampler sa{&ha->abs}, sb{&hb->abs};
+    const BettingTree& tree = ha->tree;
+    std::vector<double> sum(threads, 0), sq(threads, 0);
+    std::vector<std::thread> pool;
+    for (int t = 0; t < threads; t++)
+      pool.emplace_back([&, t] {
+        Rng rng(seed * 1000 + uint64_t(t));
+        Deal da, db;
+        int64_t n = hands / threads + (t < hands % threads ? 1 : 0);
+        for (int64_t i = 0; i < n; i++) {
+          int c[9];
+          uint64_t used = 0;
+          for (int j = 0; j < 9; j++) {
+            int x;
+            do x = int(rng.below(52)); while (used >> x & 1);
+            used |= 1ull << x;
+            c[j] = x;
+          }
+          sa.fill(c, da);
+          sb.fill(c, db);
+          double r = 0;
+          for (int seat = 0; seat < 2; seat++) {  // A sits in `seat`
+            uint32_t ni = 0;
+            while (tree.nodes[ni].type == DECISION) {
+              const Node& nd = tree.nodes[ni];
+              bool a_acts = nd.player == seat;
+              ni = nd.child + (a_acts ? A.act(tree, nd, da, rng) : B.act(tree, nd, db, rng));
+            }
+            r += terminal_utility(tree.nodes[ni], seat, da.winner);
+          }
+          r *= 0.5;
+          sum[t] += r;
+          sq[t] += r * r;
+        }
+      });
+    for (auto& th : pool) th.join();
+    double S = 0, Q = 0;
+    for (int t = 0; t < threads; t++) S += sum[t], Q += sq[t];
+    double mean = S / double(hands), var = Q / double(hands) - mean * mean;
+    double ci = 1.96 * std::sqrt(var / double(hands));
+    std::printf("absv2 h2h %s [%s] vs %s [%s]: %+.1f mbb/hand  (95%% CI +/- %.1f, %lld duplicate deals)\n",
+                A.name.c_str(), ha->acfg.id().c_str(), B.name.c_str(), hb->acfg.id().c_str(), mean * 10, ci * 10,
+                (long long)hands);
+    return 0;
+  }
+  if (mode == "br") {
+    // `bp br` with a fixed iteration budget (--iters) instead of a wall-clock
+    // budget, so two targets get equally strong exploiters on a loaded machine.
+    auto h = setup_holdem(a, true);
+    Agent target = make_agent(a.get("target"), *h);
+    McfrConfig m = holdem_mcfr(a);
+    Trainer<HoldemSampler> ex(h->tree, HoldemSampler{&h->abs}, m);
+    ex.fixed = &target.pol;
+    int64_t iters = a.geti("iters", 20000000);
+    double t0 = now_sec();
+    while (ex.iter < iters) ex.run(std::min(iters, ex.iter + 100000 * int64_t(m.threads)), 1e9, 100000 * m.threads, nullptr);
+    std::printf("exploiter trained %lld iterations in %.0fs against %s [%s]\n", (long long)ex.iter, now_sec() - t0,
+                target.name.c_str(), h->acfg.id().c_str());
+    int64_t hands = a.geti("hands", 1000000);
+    for (int greedy = 0; greedy < 2; greedy++) {
+      Agent E;
+      E.kind = AG_POLICY;
+      E.name = greedy ? "exploiter(greedy)" : "exploiter(current)";
+      E.pol = policy_table(ex, h->tree, true);
+      if (greedy) {
+        for (const Node& n : h->tree.nodes) {
+          if (n.type != DECISION) continue;
+          for (int bk = 0; bk < h->tree.buckets[n.street]; bk++) {
+            uint64_t base = n.slot + uint64_t(bk) * n.nact;
+            int best = 0;
+            for (int x = 1; x < n.nact; x++)
+              if (ex.R[base + x] > ex.R[base + best]) best = x;
+            if (ex.R[base + best] <= 0) continue;
+            for (int x = 0; x < n.nact; x++) E.pol[base + x] = x == best ? 1.f : 0.f;
+          }
+        }
+      }
+      H2HResult r = play_h2h(h.get(), E, target, hands, m.threads, uint64_t(a.geti("seed", 99)));
+      std::printf("%s vs %s: %+.1f mbb/hand (95%% CI +/- %.1f, %lld duplicate deals)\n", E.name.c_str(),
+                  target.name.c_str(), r.mbb, r.ci95, (long long)hands);
+    }
+    return 0;
+  }
+  die("absv2: unknown --mode " + mode);
+}
+// ---- end absv2
+
 }  // namespace
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show|serve|lbr|aivat|aivat-log> [--options]\n"
+    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show|serve|lbr|aivat|aivat-log|absv2> [--options]\n"
                          "see blueprint/README.md\n");
     return 2;
   }
@@ -1244,5 +1463,6 @@ int main(int argc, char** argv) {
   if (cmd == "lbr") return cmd_lbr(a);
   if (cmd == "aivat") return cmd_aivat(a);
   if (cmd == "aivat-log") return cmd_aivat_log(a);
+  if (cmd == "absv2") return cmd_absv2(a);
   die("unknown command " + cmd);
 }

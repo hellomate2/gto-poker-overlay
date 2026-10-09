@@ -37,12 +37,149 @@ code can be moved to a rented many-core box unchanged.
   threads with pruning and discounting on, then resumed for 19 s, with no
   sanitizer report.
 
+## Abstraction v2 (PLAN.md M2, 2026-10-09)
+
+New files: `src/hand_iso.{h,cpp}`, `src/abs_v2.{h,cpp}`, `tests/test_abs_v2.cpp`
+(`make test-v2`, also run by `make test`), and Kevin Waugh's hand-isomorphism
+library vendored unchanged under `third_party/hand-isomorphism` with its
+BSD-style license and attribution notice (`LICENSE.txt`). The defaults are
+unchanged: with no new flags every command builds and loads exactly the old
+abstraction, its cache file and checkpoint fingerprints keep their old names,
+and `make test` still reports 2,374 checks and 0 failures in the old suite.
+
+New options, accepted by every hold'em command:
+
+| flag | meaning |
+| --- | --- |
+| `--flop-mode pa` | potential-aware flop buckets (default `da`, the old distribution-aware ones) |
+| `--restarts N`, `--pa-sample N` | k-means restarts and weighted fit-sample size for `pa` (defaults 1 and 200,000) |
+| `--river-mode ochs` | OCHS river buckets (default `ehs`) |
+| `--waugh-lookup` | read buckets through Waugh-indexed tables (same buckets, less memory, slower lookups) |
+
+New subcommand `bp absv2`:
+
+* `--mode check`: projects the abstraction into Waugh-indexed tables and
+  compares them with the old tables on every (hole, flop) and on `--samples`
+  random turn and river hands, then times both lookup paths.
+* `--mode h2h --a CK1 --b CK2 [--bx-<flag> V ...]`: duplicate head-to-head
+  where each side sees buckets from its own abstraction (flags prefixed `bx-`
+  apply to side B). With both sides on the same abstraction it reproduces
+  `bp h2h` exactly: `--a <ckpt> --b checkcall --hands 1000000 --seed 7` printed
+  +1,948.9 +/- 21.2 mbb/hand from both commands, and the same checkpoint
+  against its own snapshot printed +4.0 +/- 12.7 from both.
+* `--mode br --target CK --iters N`: `bp br` with an iteration budget instead
+  of minutes, so two targets get equally trained exploiters on a busy machine.
+
+`bp export` refuses OCHS abstractions because the TS loader computes river
+buckets from 1-D EHS bounds.
+
+### What each piece does and how it was checked
+
+Hand isomorphism (Waugh 2013). `hand_iso(street)` indexes (hole | unordered
+board) per street. Tests assert the index sizes 169 / 1,286,792 / 13,960,050 /
+123,156,254 and recount them independently by brute force (orbits of hole
+combos under each canonical board's suit stabilizer, using the old
+`BoardIso`); the preflop index induces exactly the 169 `preflop_class`
+classes; every one of the 25,989,600 raw (hole, flop) hands gets the same
+index as its suit-relabeled and reordered versions and every index is hit;
+unindex then index is the identity on every flop index and on 1M sampled turn
+and river indices; flop class sizes sum to 25,989,600.
+
+Waugh-indexed tables. `bp absv2 --mode check --samples 10000000` on the
+default 50/50/50 abstraction: 25,989,600 (hole, flop) hands, 10,000,000 turn
+hands and 10,000,000 river hands checked, 0 mismatches. Tables take 154 MB
+instead of 226 MB (1,286,792 + 13,960,050 two-byte entries and 123,156,254
+one-byte entries, versus 2,327,130 + 21,788,832 and 178,292,634). Lookups are
+slower, measured single-threaded on 2M random hands while other jobs loaded
+the machine: flop 57.8 ns versus 13.8 ns, turn 253.8 ns versus 73.2 ns, river
+286.5 ns versus 262.9 ns. So `--waugh-lookup` stays off by default; it is for
+memory-bound runs.
+
+Potential-aware flop (Ganzfried and Sandholm 2014). The turn is clustered as
+before; each of the 1,286,792 flop classes becomes a histogram over the turn
+buckets reached by its 47 turn cards; flop classes are clustered by k-means
+under GS14's greedy EMD (Algorithm 2, with the mean's mass decremented before
+the point's target is cleared), whose ground distance is the 1-D EMD between
+turn cluster centers. Centers are fit on a sample drawn in proportion to class
+size, with k-means++ seeding and restarts, then every class is assigned. Tests:
+an exact EMD solver (min-cost flow) matches the 1-D closed form on 200 random
+instances; greedy EMD is never below exact, equals it for single-spike points,
+and its mean relative excess over exact was 0.0212 on 300 random instances
+with planar ground distances (3 to 10 clusters, 47 units of mass); k-means
+recovers planted clusters; on a small 8/8/8 abstraction the turn and river
+tables are identical to the old ones and the flop buckets are suit-invariant.
+Build of `--flop 50 --turn 50 --river 50 --flop-mode pa --restarts 3
+--pa-sample 200000 --threads 4`: 600 s wall, 1,218 s CPU (fit 535.6 s,
+assigning all classes 36.6 s); flop bucket mass from 0.0029 to 0.0482 (the
+old flop: 0.0054 to 0.0481).
+
+OCHS river (Johanson et al. 2013). Each river hand's feature is its win
+probability (ties half) against each of 8 opponent clusters of preflop
+classes, then k-means under L2 (centers ordered by mean OCHS). The 8 opponent
+clusters are our own reproduction of J13's method (k-means under 1-D EMD on
+each class's river-equity histogram over 4,000 random boards, 50 restarts),
+not a copy of J13's Table 1; the build prints them. Tests: the sorted-sweep
+OCHS matches brute-force enumeration on 240 (board, hole) pairs to 1e-5; AA
+lands in the top cluster. Build at 50 river buckets: 54.6 s total on 4
+threads; the river table is cached next to the abstraction file
+(`cache/abs-<id>.bin.river`).
+
+### A/B at equal training iterations (small tree, 50/50/50 buckets)
+
+Each arm: `bp train --preset small --threads 4 --seed 1 --iters 40000000`,
+then `--resume --iters 100000000`, with `--discount-every 1000000
+--lcfr-until 10000000 --prune-after 5000000 --prune-threshold -30000000
+--regret-floor -31000000`, plus the arm's abstraction flags. Wall time per arm
+at 100M iterations: legacy 400 s, potential-aware flop 336 s, OCHS river 376
+s, legacy with `--seed 2` 284 s (machine shared with other jobs). Head-to-head: `bp absv2 --mode h2h`, 20M
+duplicate deals, seed 321. Exploiters: `bp absv2 --mode br --iters 30000000
+--hands 4000000 --seed 123`, each in its own blueprint's abstraction.
+
+| arm (vs legacy) | head-to-head, mbb/hand (95% CI) |
+| --- | ---: |
+| potential-aware flop, 40M iterations (4M deals, seed 123) | -3.8 +/- 6.6 |
+| potential-aware flop, 100M iterations | -0.2 +/- 2.8 |
+| OCHS river, 100M iterations | -16.4 +/- 2.9 |
+| legacy, training seed 1 vs a legacy run with `--seed 2` (training noise baseline) | -2.0 +/- 2.8 |
+| potential-aware flop vs the seed-2 legacy run | -2.7 +/- 2.8 |
+| OCHS river vs the seed-2 legacy run | -12.9 +/- 2.8 |
+
+| blueprint at 100M iterations | exploiter (current), mbb/hand | exploiter (greedy) |
+| --- | ---: | ---: |
+| legacy | +25.1 +/- 6.9 | +25.5 +/- 7.0 |
+| potential-aware flop | +14.0 +/- 6.8 | +23.6 +/- 6.8 |
+| OCHS river | +34.0 +/- 6.8 | +34.0 +/- 6.8 |
+
+At 40M iterations the exploiters won +50.9 / +65.3 against the legacy
+blueprint and +49.4 / +48.1 against the potential-aware one (2M deals, about
++/- 9.8 each).
+
+Reading. At 50 buckets on the small tree, the potential-aware flop is not
+distinguishable from the old flop head to head (-0.2 +/- 2.8 and -2.7 +/- 2.8
+mbb/hand against two legacy runs; two legacy runs that differ only in the
+training seed scored -2.0 +/- 2.8 against each other). Its
+exploiters are no stronger than the legacy ones, but the two exploitability
+numbers live in different abstractions, so they are not a like-for-like
+comparison. The OCHS river is significantly worse at this size (-16.4 +/-
+2.9 and -12.9 +/- 2.8 against the two legacy runs), plausibly because 50 clusters in 8 dimensions give less resolution
+along hand strength than 50 clusters on the EHS line; J13 used OCHS with
+9,000 river buckets. Neither change is turned on by default. Both should be
+retested at 200 or more buckets (GS14 reported +2.2 to +2.6 mbb/hand at
+5,000 flop buckets, a gain this setup could not resolve).
+
+Not done yet from M2: L1-on-CDF assignment for the old features,
+full-population flop clustering without sampling, potential-aware turn
+buckets, and an exact-EMD or faster k-means (the potential-aware build spends
+most of its time in the fit; Elkan-style bounds would cut it).
+
 ## Layout
 
 | File | What it does |
 | --- | --- |
 | `src/eval.{h,cpp}` | 5 to 7 card hand evaluator (incremental, table driven) |
 | `src/abstraction.{h,cpp}` | suit isomorphism, EHS features, k-means, bucket tables, cache files |
+| `src/hand_iso.{h,cpp}` | Waugh's optimal hand index per street (wraps `third_party/hand-isomorphism`) |
+| `src/abs_v2.{h,cpp}` | Waugh-indexed tables, potential-aware flop (EMD k-means), OCHS river |
 | `src/tree.{h,cpp}` | abstract betting tree for limit (Kuhn, Leduc) and no-limit rules |
 | `src/games.h` | deal samplers: Kuhn, Leduc, hold'em (cards projected to buckets) |
 | `src/mccfr.h` | the trainer (one template for every game) and the exact best response |
@@ -56,6 +193,7 @@ code can be moved to a rented many-core box unchanged.
 | `tests/test_serve.cpp` | `bp serve` tests (`make test`) |
 | `tests/test_lbr.cpp` | LBR tests against exact best responses (`make test-lbr`, also run by `make test`) |
 | `tests/test_aivat.cpp` | AIVAT tests (`make test-aivat`) |
+| `tests/test_abs_v2.cpp` | abstraction v2 tests (`make test-v2`) |
 | `../src/core/blueprint/loader.ts` | TS reader for exported policies |
 | `../tests/blueprint-loader.test.ts` | vitest suite for the loader, using real exports as fixtures |
 
@@ -805,9 +943,10 @@ against the engine, so its match runs outside `bp`. To score it with AIVAT:
 
 ## Known limitations
 
-* Flop and turn features are equity-distribution histograms. Potential-aware
-  features (histograms over next-street clusters, earth mover's distance)
-  are the standard upgrade and would plug into `build_street()`.
+* Flop and turn features default to equity-distribution histograms.
+  Potential-aware flop buckets (`--flop-mode pa`) and OCHS river buckets
+  (`--river-mode ochs`) exist as options; at 50 buckets neither beat the
+  defaults (see "Abstraction v2"). The turn has no potential-aware option yet.
 * The TS loader looks up (history, bucket). It computes preflop and river
   buckets itself but does not yet load the flop/turn k-means tables, and it
   has no action translation for real bet sizes that fall between the
