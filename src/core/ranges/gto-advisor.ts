@@ -191,26 +191,25 @@ function jammerRangeKey(state: GameState, jammerIdx: number): string | null {
  *     (everyone else folded): the heads-up SB-vs-BB push/fold Nash call table
  *     (pushfold-nash.ts, the HoldemResources/SnapShove HU Nash grids) is the
  *     equilibrium for exactly this spot, so it is used up to 25bb.
- *   - Any other jam <= 25bb at a ring table: chip-EV pot odds against the
- *     jammer's chart range (jam-equity.ts: the 6-max chart range for the
- *     jammer's position and line, equity from the cached 169x169 all-in
- *     matrix). With k live players still to act behind hero, any of them can
- *     wake up and overcall or re-jam. A lower bound on calling EV that holds
- *     whatever they then do: if anyone behind continues, hero loses at most the
- *     call (folding to a re-jam, or losing a 3-way pot); otherwise hero has its
- *     heads-up equity e vs the jammer. So
- *         EV(call) >= P0 * (e * W - C) - (1 - P0) * C = P0 * e * W - C,
- *     and hero calls iff e >= C / (P0 * W), where C is the chips to call, W the
- *     pot hero can win once it calls, and P0 = prod_j (1 - c_j) the chance
- *     nobody behind continues. c_j is the share of combos with which player j
- *     would call the jam heads-up at j's own price (hero's call not counted).
- *     That is an estimate, not a bound: hero's call adds money for j, but j
- *     then has to beat two hands. Given P0, the inequality above is a true
- *     lower bound, so the rule only calls when calling is +EV even if every
- *     action behind costs hero its whole call.
- *   - Someone already called the jam: there is no 3-way equity table in the
- *     repo, so only the premium core continues (DEEP_JAM_CALL_50PLUS, the
- *     tightest stack-off set; what the baseline used for these spots).
+ *   - Any other jam <= 25bb at a ring table: chip-EV against the jammer's
+ *     chart range (jam-equity.ts: the 6-max chart range for the jammer's
+ *     position and line, equity from the cached 169x169 all-in matrix).
+ *     With nobody left to act this is plain pot odds: call iff e * W >= C,
+ *     where e is hero's equity vs that range, C the chips hero adds and W the
+ *     pot hero can win once it calls. Each live player j still to act behind
+ *     hero is modelled as overcalling with the hands that would call the jam
+ *     heads-up at j's own price (hero's call not counted), a share c_j of all
+ *     combos taken as the strongest c_j of hands (TOP_EQUITY). The EV of
+ *     calling sums over every subset of overcallers, with hero's share of a
+ *     multiway pot approximated by the product of its heads-up equities. This
+ *     is a model, not an equilibrium: it ignores re-jams behind, and the
+ *     product tends to understate hero's multiway share because winning
+ *     against each opponent is positively correlated through hero's final
+ *     hand. More players behind always tighten the range.
+ *   - Someone already called the jam: the caller's range is not modelled, so
+ *     only the premium core continues (DEEP_JAM_CALL_50PLUS, the tightest
+ *     stack-off set; the swarm/next baseline used it for every short jam it
+ *     recognised, because it measured depth against the deepest stack).
  *   - 25-50bb: DEEP_JAM_CALL (the existing 25-50bb heads-up stack-off set) when
  *     nobody is behind and nobody has called; otherwise the 50bb+ premium core.
  *   - Over 50bb: DEEP_JAM_CALL_50PLUS, as before.
@@ -320,6 +319,73 @@ function jamCallDecision(
   }
   const inCall = ev - toCall >= 0;
   return { inCall, basis: `${key} eq, ${behind.length} behind` };
+}
+
+/**
+ * Open-jam or fold for a short (<= PUSHFOLD_MAX_BB) first-in hero with two or
+ * more live players still to act (the BTN with both blinds behind). The
+ * heads-up shove table does not apply: each extra player behind is another
+ * chance to be called. Chip EV of jamming, relative to folding:
+ *   - each player j behind calls with the heads-up BB Nash call range at the
+ *     effective stack between hero and j (pushfold-nash.ts callRange). That is
+ *     the BB's equilibrium reply to the much wider heads-up SB shove range, so
+ *     it overstates how often j calls a tighter ring-table jam and the rule
+ *     errs toward folding. j's range is taken as the strongest |callRange|
+ *     combos, and hero's equity against it comes from TOP_EQUITY;
+ *   - EV sums over every subset of callers: nobody calls -> hero wins the
+ *     posted chips; otherwise hero risks the biggest caller's capped stack,
+ *     and its share of the pot is the product of its heads-up equities (the
+ *     same approximation jamCallDecision uses).
+ * Jam iff that EV beats folding (which forfeits hero's own posted chips).
+ */
+function shortStackOpenJam(state: GameState, live: number[], c1: number, c2: number): boolean {
+  const hero = state.players[state.heroIndex];
+  const bb = state.bigBlind || 1;
+  const heroIdx = handGroupIndex(c1, c2);
+  const H = totalChips(hero);
+  const heroBet = hero.currentBet || 0;
+  const liveSet = new Set(live);
+  const callers = live.map(j => {
+    const pj = state.players[j];
+    const cap = Math.min(totalChips(pj), H);
+    const c = comboShare(callRange(cap / bb));
+    return { cap, bet: pj.currentBet || 0, c, eqVs: equityVsTop(heroIdx, c) };
+  });
+  // Chips already in front of players who are not live (folded blinds) are dead.
+  let deadFolded = 0;
+  state.players.forEach((p, i) => { if (i !== state.heroIndex && !liveSet.has(i)) deadFolded += p.currentBet || 0; });
+
+  let ev = 0;
+  const k = callers.length;
+  for (let mask = 0; mask < (1 << k); mask++) {
+    let prob = 1;
+    for (let j = 0; j < k; j++) prob *= (mask & (1 << j)) ? callers[j].c : 1 - callers[j].c;
+    if (prob === 0) continue;
+    if (mask === 0) {
+      let won = deadFolded;
+      for (const cl of callers) won += cl.bet;
+      ev += prob * won;
+      continue;
+    }
+    let risk = 0;
+    for (let j = 0; j < k; j++) if (mask & (1 << j)) risk = Math.max(risk, callers[j].cap);
+    let pot = risk + deadFolded, eq = 1;
+    for (let j = 0; j < k; j++) {
+      const cl = callers[j];
+      if (mask & (1 << j)) { pot += Math.min(cl.cap, risk); eq *= cl.eqVs; }
+      else pot += Math.min(cl.bet, risk);
+    }
+    // Net chips relative to the start of the hand: win eq * pot, pay `risk`.
+    ev += prob * (eq * pot - risk);
+  }
+  return ev > -heroBet;
+}
+
+/** Share of all 1326 combos in a set of hand-class names. */
+function comboShare(hands: Set<string>): number {
+  let n = 0;
+  for (const h of hands) n += h.length === 2 ? 6 : h.endsWith('s') ? 4 : 12;
+  return n / 1326;
 }
 
 export interface GTOAdvice {
@@ -534,6 +600,26 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
       const inShove = shoveRange(effStackBB).has(handName);
       return {
         scenario: `Push/Fold Nash — Open Jam (${effStackBB.toFixed(0)}bb eff)`,
+        hand: handName,
+        actions: inShove
+          ? [{ action: 'All-In', frequency: 100 }]
+          : [{ action: 'Fold', frequency: 100 }],
+        inRange: inShove,
+        rangeWeight: inShove ? 100 : 0,
+      };
+    }
+
+    // The BTN first-in at a ring table with both blinds (and any limpers) still
+    // to act: not the heads-up table above, but still a jam-or-fold stack
+    // depth. Falling through to the 6-max open chart here opened 2.5bb with a
+    // 45% range off a 10bb stack and then had to fold to the blinds' shoves
+    // (measured: sim/match.ts --stacks 10,100,8,100,15,100 seed 202, 2000
+    // deals, restoring the HU shove table beat the chart fall-through by
+    // +26.31 bb/100, 95% CI +/-22.82). See shortStackOpenJam for the rule.
+    if (firstIn && !headsUp && live.length >= 2 && effStackBB <= PUSHFOLD_MAX_BB && hero.position === 'BTN') {
+      const inShove = shortStackOpenJam(state, live, c1, c2);
+      return {
+        scenario: `Short-stack open jam vs ${live.length} behind (${effStackBB.toFixed(0)}bb eff)`,
         hand: handName,
         actions: inShove
           ? [{ action: 'All-In', frequency: 100 }]

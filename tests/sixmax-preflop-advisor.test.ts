@@ -27,7 +27,9 @@ import { card } from './helpers';
 //       Now: HU Nash only for the SB jamming into the BB; otherwise pot odds
 //       against the jammer's chart range, tightened for players behind.
 //   F3: the heads-up push/fold shove table was applied to the BTN first-in at a
-//       6-max table with SB and BB still to act.
+//       6-max table with SB and BB still to act. Now the BTN jams or folds by
+//       chip EV against both blinds (shortStackOpenJam); the first fix fell
+//       through to the 2.5bb open chart instead.
 // ============================================================
 
 const BB = 20;
@@ -216,11 +218,19 @@ describe('F3: first-in push/fold only applies heads-up against the big blind', (
     preflop: [fold('UTG'), fold('MP'), fold('CO')],
   });
 
-  it('BTN at 10bb with SB and BB to act does not get the HU open-jam table', () => {
+  it('BTN at 10bb with SB and BB to act does not get the HU open-jam table (K5o, Q8o, J4s, T6s fold)', () => {
     for (const hole of [['Kh', '5c'], ['Qh', '8c'], ['Jh', '4h'], ['Th', '6h']] as [string, string][]) {
       const a = getGTOAdvice(btnShort(hole))!;
-      expect(a.scenario).not.toContain('Push/Fold');
-      expect(a.actions[0].action).not.toBe('All-In');
+      expect(a.scenario).not.toContain('Push/Fold Nash');
+      expect(a.actions[0].action).toBe('Fold');
+    }
+  });
+
+  it('BTN at 10bb with both blinds behind is still jam-or-fold, not a 2.5bb chart open (AA, A9o, 55 jam)', () => {
+    for (const hole of [['Ah', 'Ad'], ['Ah', '9c'], ['5h', '5c']] as [string, string][]) {
+      const a = getGTOAdvice(btnShort(hole))!;
+      expect(a.scenario).toContain('Short-stack open jam vs 2 behind');
+      expect(a.actions[0].action).toBe('All-In');
     }
   });
 
