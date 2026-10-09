@@ -56,6 +56,18 @@ struct BpView {
 std::vector<uint32_t> build_from_blueprint(Game& g, const BpView& bv, uint32_t root, const std::vector<int>& board,
                                            bool depth_limited);
 
+// Build the subgame from blueprint node `root` (start of a turn or river
+// round) by the tree's own betting rules (tree.cpp legal_actions, ported),
+// to the end of the game, and insert any action in `line` (tokens from the
+// root, e.g. {"k", "b0.8"}) that the menu lacks: a bet or raise of that pot
+// fraction, sized as tree.cpp sizes it. This is how the search handles an
+// opponent's off-tree bet: the real size is added to the subgame and the
+// round is re-solved from its start (Pluribus Algorithm 2, unsafe). Nodes
+// built here have bp = -1. Without extra actions the result has the same
+// nodes, labels and chip amounts as build_from_blueprint(..., false).
+void build_by_rules(Game& g, const BpView& bv, uint32_t root, const std::vector<int>& board,
+                    const std::vector<std::string>& line);
+
 // Biased continuation strategy: choice 0 = blueprint, 1 = fold x bias,
 // 2 = check/call x bias, 3 = bet/raise/all-in x bias (renormalized).
 void continuation(const BettingTree& t, const Node& n, const double* sigma, int choice, double bias, double* out);

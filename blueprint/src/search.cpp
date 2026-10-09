@@ -128,6 +128,240 @@ std::vector<uint32_t> build_from_blueprint(Game& g, const BpView& bv, uint32_t r
   return b.leaves;
 }
 
+// ---- rule-based builder (off-tree sizes) --------------------------------------------
+
+namespace {
+
+struct RState {
+  int32_t c[2];
+  int street, player, raises, actions;
+  int32_t last_inc;
+};
+struct RAct {
+  uint8_t kind;
+  int32_t to;
+  std::string label;
+};
+
+std::string frac_label(char k, double f) {
+  char buf[32];
+  std::snprintf(buf, sizeof buf, "%c%g", k, f);
+  return buf;
+}
+
+// Port of tree.cpp legal_actions (keep in sync), labels as BettingTree::token.
+void rule_actions(const TreeConfig& cfg, const RState& s, std::vector<RAct>& out) {
+  out.clear();
+  const StreetRules& r = cfg.street[s.street];
+  int p = s.player, o = 1 - p;
+  int32_t mine = s.c[p], theirs = s.c[o], maxc = std::max(mine, theirs);
+  int32_t to_call = maxc - mine, pot = s.c[0] + s.c[1];
+  if (to_call > 0) {
+    out.push_back({ACT_FOLD, mine, "f"});
+    out.push_back({ACT_CALL, std::min(maxc, cfg.stack), "c"});
+  } else {
+    out.push_back({ACT_CHECK, mine, "k"});
+  }
+  bool chips_behind = theirs < cfg.stack && mine + to_call < cfg.stack;
+  if (!chips_behind) return;
+  if (s.raises >= r.max_raises) {
+    if (!r.limit && r.allin) out.push_back({ACT_ALLIN, cfg.stack, "a"});
+    return;
+  }
+  uint8_t kind = to_call > 0 ? ACT_RAISE : ACT_BET;
+  if (r.limit) die("search: rule builder is for no-limit trees");
+  const std::vector<float>& fr = to_call > 0 ? r.raise_fracs : r.bet_fracs;
+  std::vector<int32_t> seen;
+  for (float f : fr) {
+    int32_t to;
+    if (to_call == 0) to = mine + std::max(cfg.min_bet, int32_t(std::lround(f * pot)));
+    else to = maxc + std::max(s.last_inc, int32_t(std::lround(f * (pot + to_call))));
+    if (to >= cfg.stack) {
+      if (r.allin) continue;
+      to = cfg.stack;
+    }
+    if (std::find(seen.begin(), seen.end(), to) != seen.end()) continue;
+    seen.push_back(to);
+    out.push_back({kind, to, frac_label(kind == ACT_BET ? 'b' : 'r', std::lround(f * 1000) / 1000.0)});
+  }
+  if (r.allin && std::find(seen.begin(), seen.end(), cfg.stack) == seen.end())
+    out.push_back({ACT_ALLIN, cfg.stack, "a"});
+}
+
+// The extra action a token such as "b0.8" or "r2.5" names at state s.
+bool token_action(const TreeConfig& cfg, const RState& s, const std::string& tok, RAct& out) {
+  if (tok.size() < 2 || (tok[0] != 'b' && tok[0] != 'r')) return false;
+  double f = std::stod(tok.substr(1));
+  int p = s.player, o = 1 - p;
+  int32_t mine = s.c[p], theirs = s.c[o], maxc = std::max(mine, theirs);
+  int32_t to_call = maxc - mine, pot = s.c[0] + s.c[1];
+  if ((tok[0] == 'b') != (to_call == 0)) return false;
+  if (!(theirs < cfg.stack && mine + to_call < cfg.stack)) return false;
+  int32_t to = to_call == 0 ? mine + std::max(cfg.min_bet, int32_t(std::lround(f * pot)))
+                            : maxc + std::max(s.last_inc, int32_t(std::lround(f * (pot + to_call))));
+  if (to >= cfg.stack) return false;  // that is the all-in, token "a"
+  out = {uint8_t(to_call == 0 ? ACT_BET : ACT_RAISE), to, tok};
+  return true;
+}
+
+struct RuleBuilder {
+  Game& g;
+  const BpView& bv;
+  const TreeConfig& cfg;
+  int32_t base[2];
+  const std::vector<std::string>& line;
+
+  SNode make(const RState& s, int parent, const std::vector<int>& board) {
+    SNode k;
+    k.parent = parent;
+    k.c[0] = s.c[0] - base[0];
+    k.c[1] = s.c[1] - base[1];
+    k.pot = g.pot0 + k.c[0] + k.c[1];
+    k.board = g.add_board(board);
+    return k;
+  }
+
+  // depth = position in `line` if this node is on the actual line, else -1
+  void expand(int idx, const RState& s, const std::vector<int>& board, int depth) {
+    std::vector<RAct> acts;
+    rule_actions(cfg, s, acts);
+    if (depth >= 0 && depth < int(line.size())) {
+      bool have = false;
+      for (auto& a : acts) have |= a.label == line[depth];
+      RAct extra;
+      if (!have) {
+        if (!token_action(cfg, s, line[depth], extra))
+          die("search: token '" + line[depth] + "' is not a legal action at this point of the line");
+        bool dup = false;
+        for (auto& a : acts) dup |= a.to == extra.to && a.kind == extra.kind;
+        if (dup) die("search: token '" + line[depth] + "' duplicates an existing size");
+        // keep sizes ordered: insert before the first larger bet/raise or the all-in
+        size_t pos = acts.size();
+        for (size_t x = 0; x < acts.size(); x++)
+          if ((acts[x].kind == ACT_BET || acts[x].kind == ACT_RAISE || acts[x].kind == ACT_ALLIN) && acts[x].to > extra.to) {
+            pos = x;
+            break;
+          }
+        acts.insert(acts.begin() + long(pos), extra);
+      }
+    }
+    struct Kid {
+      RState t;
+      uint8_t type;
+      bool next_street;
+    };
+    std::vector<Kid> kids;
+    const int p = s.player, o = 1 - p;
+    int first = int(g.nodes.size());
+    for (const RAct& A : acts) {
+      RState t = s;
+      bool to_next = false, showdown = false;
+      uint8_t type = S_DEC;
+      if (A.kind == ACT_FOLD) {
+        type = S_FOLD;
+      } else if (A.kind == ACT_CHECK) {
+        if (s.actions >= 1) to_next = true;
+      } else if (A.kind == ACT_CALL) {
+        t.c[p] = A.to;
+        if (t.c[p] >= cfg.stack || t.c[o] >= cfg.stack) showdown = true;
+        else if (s.actions >= 1) to_next = true;
+      } else {
+        int32_t maxc = std::max(s.c[0], s.c[1]);
+        t.last_inc = std::max(s.last_inc, A.to - maxc);
+        t.c[p] = A.to;
+        t.raises = s.raises + 1;
+      }
+      t.actions = s.actions + 1;
+      t.player = o;
+      if (to_next) {
+        if (s.street + 1 >= cfg.nstreets) showdown = true;
+        else {
+          t.street = s.street + 1;
+          t.raises = 0;
+          t.actions = 0;
+          t.last_inc = cfg.min_bet;
+          t.player = cfg.street[t.street].first_player;
+        }
+      }
+      if (showdown) type = S_SHOW;
+      else if (to_next) type = S_CHANCE;
+      SNode k = make(t, idx, board);
+      k.type = type;
+      k.player = uint8_t(type == S_FOLD ? p : type == S_DEC ? t.player : 0);
+      k.label = A.label;
+      add_node(g, k);
+      kids.push_back({t, type, to_next});
+    }
+    g.nodes[idx].type = S_DEC;
+    g.nodes[idx].player = uint8_t(p);
+    g.nodes[idx].first = first;
+    g.nodes[idx].nact = int(acts.size());
+    for (size_t a = 0; a < kids.size(); a++) {
+      int ch = first + int(a);
+      int d2 = depth >= 0 && depth < int(line.size()) && acts[a].label == line[depth] ? depth + 1 : -1;
+      if (kids[a].type == S_DEC) expand(ch, kids[a].t, board, d2);
+      else if (kids[a].type == S_CHANCE) expand_chance(ch, kids[a].t, board);
+    }
+  }
+
+  void expand_chance(int idx, const RState& t, const std::vector<int>& board) {
+    if (bv.board_len[t.street] - int(board.size()) != 1) die("search: rule builder deals one card per street");
+    uint64_t bm = 0;
+    for (int c : board) bm |= 1ull << c;
+    std::vector<int> cards;
+    for (int x = 0; x < bv.deck; x++)
+      if (!(bm >> x & 1)) cards.push_back(x);
+    int first = int(g.nodes.size());
+    for (int x : cards) {
+      std::vector<int> b2 = board;
+      b2.push_back(x);
+      SNode k = make(t, idx, b2);
+      k.type = S_DEC;
+      k.player = uint8_t(t.player);
+      k.deal = x;
+      k.label = bv.deck == 52 ? card_str(x) : "d" + std::to_string(x);
+      add_node(g, k);
+    }
+    g.nodes[idx].first = first;
+    g.nodes[idx].nact = int(cards.size());
+    for (size_t k = 0; k < cards.size(); k++) {
+      std::vector<int> b2 = board;
+      b2.push_back(cards[k]);
+      expand(first + int(k), t, b2, -1);
+    }
+  }
+};
+
+}  // namespace
+
+void build_by_rules(Game& g, const BpView& bv, uint32_t root, const std::vector<int>& board,
+                    const std::vector<std::string>& line) {
+  const BettingTree& tr = *bv.tree;
+  const Node& r = tr.nodes[root];
+  if (r.type != DECISION) die("search: subgame root must be a decision node");
+  if (root != round_start(tr, root)) die("search: rule builder starts at the first node of a round");
+  g.nodes.clear();
+  g.boards.clear();
+  g.leaves.clear();
+  g.deck = bv.deck;
+  g.cards_per_hand = bv.cards_per_hand;
+  g.full_board = bv.board_len.back();
+  g.strength = bv.strength;
+  g.pot0 = double(r.contrib[0] + r.contrib[1]);
+  RState s;
+  s.c[0] = r.contrib[0];
+  s.c[1] = r.contrib[1];
+  s.street = r.street;
+  s.player = r.player;
+  s.raises = 0;
+  s.actions = 0;
+  s.last_inc = tr.cfg.min_bet;
+  RuleBuilder b{g, bv, tr.cfg, {r.contrib[0], r.contrib[1]}, line};
+  SNode n = b.make(s, -1, board);
+  add_node(g, n);
+  b.expand(0, s, board, 0);
+}
+
 void continuation(const BettingTree& t, const Node& n, const double* sigma, int choice, double bias, double* out) {
   double s = 0;
   for (int a = 0; a < n.nact; a++) {
@@ -496,6 +730,10 @@ void cap_range(std::vector<Hand>& hs, std::vector<double>& w, size_t cap, int ke
 }
 
 struct SearchSpot {
+  // Off-tree mode: `line` holds the tokens from the round start to the
+  // decision, at least one of which is not in the blueprint; `node` is unused.
+  bool offtree = false;
+  std::vector<std::string> line;
   uint32_t node = 0, rs = 0;
   std::vector<int> board;
   int hero = 0;
@@ -526,26 +764,46 @@ SearchOut run_search(const BpView& bv, const SearchSpot& sp, int k, double bias,
     cap_range(g.hands[p], g.w[p], max_hands, p == sp.hero ? 0 : -1, sp.hero_hand.mask);
   }
   const int street = t.nodes[sp.rs].street;
-  std::vector<uint32_t> leaf_bp = build_from_blueprint(g, bv, sp.rs, sp.board, street == 1);
+  std::vector<uint32_t> leaf_bp;
+  if (sp.offtree) {
+    if (street < 2) die("search: off-tree sizes are supported on the turn and river (flop leaves need blueprint nodes)");
+    build_by_rules(g, bv, sp.rs, sp.board, sp.line);
+  } else {
+    leaf_bp = build_from_blueprint(g, bv, sp.rs, sp.board, street == 1);
+  }
   g.finalize();
   if (!leaf_bp.empty()) build_leaf_values(g, bv, leaf_bp, sp.board, k, bias, rollouts, seed, threads);
   // Locate the decision node and the hero's own in-round actions.
-  std::vector<uint32_t> path;
-  for (uint32_t c = sp.node; c != sp.rs; c = t.nodes[c].parent) path.push_back(c);
-  std::reverse(path.begin(), path.end());
+  std::vector<int> acts;  // action index taken at each node of the line
+  if (sp.offtree) {
+    int c = 0;
+    for (const std::string& tok : sp.line) {
+      int a = -1;
+      for (int x = 0; x < g.nodes[c].nact; x++)
+        if (g.nodes[g.nodes[c].first + x].label == tok) a = x;
+      if (a < 0 || g.nodes[c].type != S_DEC) die("search: line token '" + tok + "' not found in the subgame");
+      acts.push_back(a);
+      c = g.nodes[c].first + a;
+    }
+  } else {
+    std::vector<uint32_t> path;
+    for (uint32_t c = sp.node; c != sp.rs; c = t.nodes[c].parent) path.push_back(c);
+    std::reverse(path.begin(), path.end());
+    for (uint32_t c : path) acts.push_back(int(c - t.nodes[t.nodes[c].parent].child));
+  }
   int cur = 0;
   int hero_idx = -1;
   for (int i = 0; i < g.n(sp.hero); i++)
     if (g.hands[sp.hero][i].mask == sp.hero_hand.mask) hero_idx = i;
   sc.threads = threads;
   Solver S(g, sc);
-  for (uint32_t c : path) {
+  for (int a : acts) {
     const SNode& nd = g.nodes[cur];
-    int a = int(c - t.nodes[t.nodes[c].parent].child);
     if (nd.player == sp.hero && hero_idx >= 0) S.freeze(cur, hero_idx, a);
     cur = nd.first + a;
   }
-  if (g.nodes[cur].bp != int(sp.node)) die("search: subgame node does not match the blueprint node");
+  if (g.nodes[cur].type != S_DEC || g.nodes[cur].player != sp.hero) die("search: the line does not end at the hero's decision");
+  if (!sp.offtree && g.nodes[cur].bp != int(sp.node)) die("search: subgame node does not match the blueprint node");
   o.setup_s = now_sec() - t0;
   o.setup_cpu = cpu_seconds() - c0;
   double t1 = now_sec(), c1 = cpu_seconds();
@@ -557,10 +815,12 @@ SearchOut run_search(const BpView& bv, const SearchSpot& sp, int k, double bias,
   o.strat.resize(nd.nact);
   S.average(cur, hero_idx, o.strat.data());
   for (int a = 0; a < nd.nact; a++) o.labels.push_back(g.nodes[nd.first + a].label);
-  const Node& bn = t.nodes[sp.node];
-  std::vector<int> pre(sp.board.begin(), sp.board.begin() + bv.board_len[bn.street]);
-  o.bp_strat.resize(bn.nact);
-  bv.policy(bn.slot + uint64_t(bv.bucket(sp.hero_hand, pre, bn.street)) * bn.nact, bn.nact, o.bp_strat.data());
+  if (!sp.offtree) {
+    const Node& bn = t.nodes[sp.node];
+    std::vector<int> pre(sp.board.begin(), sp.board.begin() + bv.board_len[bn.street]);
+    o.bp_strat.resize(bn.nact);
+    bv.policy(bn.slot + uint64_t(bv.bucket(sp.hero_hand, pre, bn.street)) * bn.nact, bn.nact, o.bp_strat.data());
+  }
   if (want_expl) o.expl = S.exploitability();
   o.pot0 = g.pot0;
   o.H[0] = g.n(0);
@@ -580,14 +840,51 @@ int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, con
   sp.hero_hand.c[1] = hh[1];
   sp.hero_hand.nc = 2;
   sp.hero_hand.mask = (1ull << hh[0]) | (1ull << hh[1]);
-  int64_t ni = tree.find(split_ws(a.get("history")));
-  if (ni < 0 || tree.nodes[ni].type != DECISION) die("search: history not found in the blueprint tree or terminal");
-  sp.node = uint32_t(ni);
-  const Node& n = tree.nodes[sp.node];
+  std::vector<std::string> toks = split_ws(a.get("history"));
+  int64_t ni = tree.find(toks);
+  if (ni < 0) {
+    // Off-tree: follow the blueprint as far as it goes; the rest of the line
+    // must stay inside the current round and is added to the subgame.
+    size_t m = 0;
+    uint32_t u = 0;
+    while (m < toks.size()) {
+      std::vector<std::string> pre(toks.begin(), toks.begin() + long(m) + 1);
+      int64_t x = tree.find(pre);
+      if (x < 0) break;
+      u = uint32_t(x);
+      m++;
+    }
+    if (tree.nodes[u].type != DECISION) die("search: history not found in the blueprint tree");
+    sp.offtree = true;
+    sp.rs = round_start(tree, u);
+    std::vector<std::string> in_round;
+    for (uint32_t c = u; c != sp.rs; c = tree.nodes[c].parent) in_round.push_back(tree.token(c));
+    std::reverse(in_round.begin(), in_round.end());
+    for (size_t x = m; x < toks.size(); x++) in_round.push_back(toks[x]);
+    sp.line = in_round;
+    sp.node = u;
+    // the player to act after the line: replay it on a throwaway rule build
+    Game probe;
+    for (int p = 0; p < 2; p++) probe.hands[p].clear();
+    build_by_rules(probe, bv, sp.rs, sp.board, sp.line);
+    int c = 0;
+    for (const std::string& tk : sp.line)
+      for (int x = 0; x < probe.nodes[c].nact; x++)
+        if (probe.nodes[probe.nodes[c].first + x].label == tk) {
+          c = probe.nodes[c].first + x;
+          break;
+        }
+    if (probe.nodes[c].type != S_DEC) die("search: the history does not end at a decision");
+    sp.hero = probe.nodes[c].player;
+  } else {
+    if (tree.nodes[ni].type != DECISION) die("search: history ends at a terminal node");
+    sp.node = uint32_t(ni);
+    sp.hero = tree.nodes[ni].player;
+    sp.rs = round_start(tree, sp.node);
+  }
+  const Node& n = tree.nodes[sp.rs];
   if (n.street == 0) die("search: preflop search is not implemented (play the blueprint preflop)");
   if (int(sp.board.size()) != bv.board_len[n.street]) die("search: board size does not match the street of the history");
-  sp.hero = n.player;
-  sp.rs = round_start(tree, sp.node);
   int k = int(a.i("k", 4));
   size_t cap = size_t(a.i("max-hands", n.street == 1 ? 120 : n.street == 2 ? 300 : 1326));
   SolverConfig sc;
@@ -604,8 +901,11 @@ int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, con
   }
   SearchOut o = run_search(bv, sp, k, a.f("bias", 5), cap, int(a.i("rollouts", 24)), a.f("budget-ms", 2000) / 1000.0,
                            int(a.i("max-iters", 1000000)), int(a.i("threads", 4)), uint64_t(a.i("seed", 1)), true, sc);
-  std::printf("search: street %d, player %d to act, history '%s', round start '%s'\n", n.street, sp.hero,
-              tree.history(sp.node).c_str(), tree.history(sp.rs).c_str());
+  std::string ln;
+  for (auto& x : sp.line) ln += (ln.empty() ? "" : " ") + x;
+  std::printf("search: street %d, player %d to act, history '%s', round start '%s'%s%s\n", n.street, sp.hero,
+              a.get("history").c_str(), tree.history(sp.rs).c_str(), sp.offtree ? ", off-tree line in round: " : "",
+              ln.c_str());
   std::printf("subgame: %d nodes, %d depth-limit leaves (k=%d), hands %d vs %d, pot0 %.0f\n", o.nodes, o.leaves,
               o.leaves ? k : 0, o.H[0], o.H[1], o.pot0);
   std::printf("setup %.3fs, solve %.3fs, %d iterations, exploitability %.2f chips (%.3f%% of pot0, within the "
@@ -614,8 +914,10 @@ int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, con
   std::printf("cpu time (all threads): setup %.3fs, solve %.3fs (%.2f ms of cpu per iteration)\n", o.setup_cpu,
               o.solve_cpu, 1000 * o.solve_cpu / std::max(1, o.iters));
   std::printf("%-8s %8s %8s\n", "action", "search", "blueprint");
-  for (size_t x = 0; x < o.labels.size(); x++)
-    std::printf("%-8s %8.4f %8.4f\n", o.labels[x].c_str(), o.strat[x], o.bp_strat[x]);
+  for (size_t x = 0; x < o.labels.size(); x++) {
+    if (o.bp_strat.empty()) std::printf("%-8s %8.4f %8s\n", o.labels[x].c_str(), o.strat[x], "-");
+    else std::printf("%-8s %8.4f %8.4f\n", o.labels[x].c_str(), o.strat[x], o.bp_strat[x]);
+  }
   return 0;
 }
 

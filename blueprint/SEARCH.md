@@ -2,15 +2,16 @@
 
 Status on 2026-10-09: the C++ subgame solver and a first depth-limited search
 agent exist, are checked against exact references, and run on the overnight
-checkpoint. Off-tree bet sizes, preflop search and safe re-solving gadgets
-are not built yet (see "Not done" below).
+checkpoint. Off-tree opponent bets are handled on the turn and river. Preflop
+search, off-tree sizes on the flop and safe re-solving gadgets are not built
+yet (see "Not done" below).
 
 ## Files and commands
 
 | File | What it does |
 | --- | --- |
 | `src/subgame.{h,cpp}` | vectorized range-vs-range solver: DCFR and CFR+, card removal, showdown sweeps, chance nodes, depth-limit leaves, frozen actions, exact best response; a port of the TS single-street tree builder |
-| `src/search.{h,cpp}` | copies the blueprint's betting subtree into a subgame, builds k = 4 continuation leaves, computes beliefs, and holds the `bp search`, `bp search-h2h` and `bp subgame` commands |
+| `src/search.{h,cpp}` | copies the blueprint's betting subtree into a subgame (or rebuilds a round by the tree rules with an off-tree size inserted), builds k = 4 continuation leaves, computes beliefs, and holds the `bp search`, `bp search-h2h` and `bp subgame` commands |
 | `tests/test_rt.cpp` | `make test-rt` |
 | `scripts/export-ts-spots.ts` | exports spots solved by `src/core/solver/postflop-cfr.ts` for `bp subgame` |
 
@@ -57,6 +58,18 @@ did). Ranges are capped to the heaviest combos (120 per side on the flop,
 always kept. The searcher's own actions already taken this round are frozen
 for its real hand. The tree is the blueprint's own subtree from the round
 start, so the search uses the blueprint's bet sizes.
+
+Off-tree bets. When the history contains a size the blueprint lacks (for
+example `--history "r1 c k k k k k b0.8"` with a menu of 0.5 and 1 pot),
+the blueprint is followed as far as it goes, the round is rebuilt from its
+start by the tree's own betting rules (a port of tree.cpp legal_actions),
+and the real size is inserted on the actual line with tree.cpp's sizing.
+The round is then re-solved from its start, which is Pluribus Algorithm 2
+in its unsafe form. Without extra sizes the rule builder reproduces the
+blueprint copy node for node (tested on a turn and a river root of the
+`tiny` tree). On a real spot (board Qs 7h 2d 9c 3s, line `r1 c k k k k k
+b0.8`, 1,081 combos per side, 4 threads) the re-solve ran 1,334 iterations
+in 1.5 s and reached 0.014% of the pot.
 
 On the turn and river the subgame runs to the end of the game (turn: one
 chance node per river card, then the river betting). On the flop it stops
@@ -183,9 +196,11 @@ can raise.
 
 * The PLAN.md M4 comparison against noambrown/poker_solver or
   postflop-solver on 50 river and 20 turn spots, and timings on 8 cores.
-* Off-tree opponent bets: the search tree is the blueprint's menu, so a size
-  that is not in the blueprint cannot be entered. Adding the opponent's real
-  size at the round root and re-solving (Pluribus Algorithm 2) is next.
+* Off-tree sizes on the flop (the depth-limit leaves need a blueprint node
+  after the action; translation to the nearest size is the usual fix) and
+  in earlier rounds than the current one (beliefs need an on-tree history).
+* The search uses the blueprint's own sizes for its own bets; Pluribus also
+  adds sizes for the searcher.
 * Preflop search and the preflop translation cache.
 * Safe re-solving (Resolve, Reach-Resolve, the Coin Toss checks) and the
   Modicum CFR+ schedule tweaks.

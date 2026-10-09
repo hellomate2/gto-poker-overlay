@@ -684,6 +684,77 @@ static void test_holdem_copy_exact() {
   }
 }
 
+// Rule-built subgames: identical to the blueprint copy without extra sizes;
+// an off-tree bet is inserted with tree.cpp's sizing and solves cleanly.
+static void test_rule_builder() {
+  BettingTree t;
+  int bk[4] = {169, 5, 5, 5};
+  t.build(holdem_config("tiny"), bk);
+  BpView bv;
+  bv.tree = &t;
+  bv.strength = holdem_strength;
+  bv.deck = 52;
+  bv.cards_per_hand = 2;
+  bv.board_len = {0, 3, 4, 5};
+  std::vector<int> deal = {card("Qs"), card("7h"), card("2d"), card("9c"), card("3s")};
+  for (int nb : {4, 5}) {
+    std::vector<std::string> line = {"c", "k", "k", "k"};
+    if (nb == 5) line.insert(line.end(), {"k", "k"});
+    uint32_t root = uint32_t(t.find(line));
+    std::vector<int> board(deal.begin(), deal.begin() + nb);
+    Game a, b;
+    build_from_blueprint(a, bv, root, board, false);
+    build_by_rules(b, bv, root, board, {});
+    bool same = a.nodes.size() == b.nodes.size();
+    for (size_t x = 0; same && x < a.nodes.size(); x++) {
+      const SNode &u = a.nodes[x], &v = b.nodes[x];
+      same = u.type == v.type && u.player == v.player && u.nact == v.nact && u.first == v.first && u.c[0] == v.c[0] &&
+             u.c[1] == v.c[1] && u.label == v.label && u.deal == v.deal &&
+             a.boards[u.board].cards == b.boards[v.board].cards;
+      if (!same)
+        std::printf("  first difference at node %zu: type %d/%d player %d/%d nact %d/%d first %d/%d c %g,%g/%g,%g label %s/%s\n",
+                    x, u.type, v.type, u.player, v.player, u.nact, v.nact, u.first, v.first, u.c[0], u.c[1], v.c[0],
+                    v.c[1], u.label.c_str(), v.label.c_str());
+    }
+    std::printf("  rules vs blueprint copy, %s root: %zu vs %zu nodes, identical: %s\n", nb == 5 ? "river" : "turn",
+                a.nodes.size(), b.nodes.size(), same ? "yes" : "no");
+    CHECK(same);
+  }
+  // Off-tree river bet: 0.8 pot is not in the tiny menu (0.75 pot).
+  std::vector<std::string> line = {"c", "k", "k", "k", "k", "k"};
+  uint32_t root = uint32_t(t.find(line));
+  Game g;
+  Rng rng(3);
+  uint64_t bm = 0;
+  for (int c : deal) bm |= 1ull << c;
+  for (int p = 0; p < 2; p++)
+    for (int a = 1; a < 52; a++)
+      for (int b2 = 0; b2 < a; b2++) {
+        uint64_t m = (1ull << a) | (1ull << b2);
+        if (m & bm) continue;
+        Hand h;
+        h.c[0] = a, h.c[1] = b2, h.nc = 2, h.mask = m;
+        g.hands[p].push_back(h);
+        g.w[p].push_back(rng.uniform());
+      }
+  build_by_rules(g, bv, root, deal, {"k", "b0.8"});
+  g.finalize();
+  int at = g.find({"k", "b0.8"});
+  CHECK(at > 0);
+  if (at > 0) {
+    const SNode& nd = g.nodes[at];
+    // pot 200 at the river root (limp, checks): 0.8 pot = 160 chips
+    CHECK(nd.c[0] == 160 && nd.c[1] == 0 && nd.type == S_DEC && nd.player == 1);
+    CHECK(g.find({"k", "b0.75"}) > 0);  // the menu size is still there
+  }
+  Solver S(g, SolverConfig{});
+  for (int i = 0; i < 300; i++) S.iterate();
+  double e = S.exploitability();
+  std::printf("  off-tree river bet b0.8 added: %zu nodes, 300 DCFR iterations, exploitability %.4f%% of pot\n",
+              g.nodes.size(), 100 * e / g.pot0);
+  CHECK(e < 0.005 * g.pot0);
+}
+
 int main() {
   struct T {
     const char* name;
@@ -697,6 +768,7 @@ int main() {
       {"beliefs", test_beliefs},
       {"freeze", test_freeze},
       {"hold'em blueprint copy exact", test_holdem_copy_exact},
+      {"rule builder and off-tree sizes", test_rule_builder},
   };
   for (auto& t : tests) {
     int before = g_fail;
