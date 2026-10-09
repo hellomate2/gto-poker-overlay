@@ -157,6 +157,17 @@ const ARCHETYPES: Record<string, ArchetypeParams> = {
 
 export function archetypeNames(): string[] { return Object.keys(ARCHETYPES); }
 
+/**
+ * Stack depth (big blinds, chips this seat can still put in preflop) at or
+ * below which a scripted opponent turns every preflop raise into an all-in, so
+ * a short-stack table (sim/match.ts --stacks) produces real jams for the bot to
+ * face. A sim modelling choice, not a measured threshold: it sits inside the
+ * 25bb band the repo's push/fold tables cover (pushfold-nash.ts
+ * MAX_PUSHFOLD_BB) and well below the 100bb default, so default runs never
+ * reach it.
+ */
+export const SHORT_JAM_BB = 15;
+
 /** Preflop equity-vs-random per hand class, shared across agents. Each entry is
  *  computed with an RNG seeded by the hand class itself, so the cached value does
  *  not depend on which agent or process computed it first (shard-reproducible). */
@@ -216,13 +227,18 @@ export function makeOpponent(kind: string, seed: number, opponentSamples = 200, 
     };
 
     if (view.street === 'preflop') {
+      // Short stack (sim/match.ts --stacks): every preflop raise is a shove.
+      // At 100bb this never fires, so default runs are unchanged.
+      const shortJam = view.maxTo <= SHORT_JAM_BB * view.bb;
+      const pfRaise = (frac: number): ActResult =>
+        shortJam ? { action: 'allin' } : { action: 'raise', toAmount: raiseTo(frac) };
       if (!facing) {
         // first in (or BB option). Open the top of the range, else (SB) fold / (BB) check.
-        if (eq >= p.openTop) return { action: 'raise', toAmount: raiseTo(view.canCheck ? 1.0 : 1.5) };
+        if (eq >= p.openTop) return pfRaise(view.canCheck ? 1.0 : 1.5);
         return view.canCheck ? { action: 'check' } : { action: 'fold' };
       }
       // facing a raise: 3-bet premiums, call decent, fold the rest (call more vs maniac).
-      if (eq >= p.threeBetTop) return { action: 'raise', toAmount: raiseTo(1.0) };
+      if (eq >= p.threeBetTop) return pfRaise(1.0);
       if (eq >= p.callTop && eq > potOdds) return { action: 'call' };
       if (eq < p.foldTo3betBelow) return { action: 'fold' };
       return eq > potOdds ? { action: 'call' } : { action: 'fold' };
