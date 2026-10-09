@@ -20,6 +20,8 @@
 // ============================================================
 #include <sys/resource.h>
 
+#include <csignal>
+
 #include <algorithm>
 #include <iomanip>
 #include <map>
@@ -377,9 +379,19 @@ int cmd_bench(const Args& a) {
   }
   h->tree.print_stats(stdout);
   double secs = a.getf("seconds", 10);
+  // --threads-list 1,16,48,96,192 picks the thread counts explicitly (cloud bench);
+  // otherwise 1, 2 and 4 threads up to --max-threads, as before.
   std::vector<int> threads_list;
-  for (const auto& s : std::vector<std::string>{"1", "2", "4"})
-    if (std::stoi(s) <= a.geti("max-threads", 4)) threads_list.push_back(std::stoi(s));
+  if (a.has("threads-list")) {
+    std::stringstream ss(a.get("threads-list"));
+    std::string tok;
+    while (std::getline(ss, tok, ','))
+      if (!tok.empty()) threads_list.push_back(std::stoi(tok));
+    if (threads_list.empty()) die("empty --threads-list");
+  } else {
+    for (const auto& s : std::vector<std::string>{"1", "2", "4"})
+      if (std::stoi(s) <= a.geti("max-threads", 4)) threads_list.push_back(std::stoi(s));
+  }
   for (int th : threads_list) {
     McfrConfig m = holdem_mcfr(a);
     m.threads = th;
@@ -399,7 +411,15 @@ int cmd_bench(const Args& a) {
 }
 
 // ---- train ---------------------------------------------------------------------
+// SIGTERM / SIGINT ask a running `bp train` to stop after the current ~1 s chunk,
+// write its checkpoint and snapshot, and exit with status 75 (EX_TEMPFAIL), so a
+// spot-interruption notice or `systemctl stop` loses at most one chunk of work.
+volatile std::sig_atomic_t g_stop_signal = 0;
+extern "C" void on_stop_signal(int sig) { g_stop_signal = sig; }
+
 int cmd_train(const Args& a) {
+  std::signal(SIGTERM, on_stop_signal);
+  std::signal(SIGINT, on_stop_signal);
   auto h = setup_holdem(a, true);
   h->tree.print_stats(stdout);
   HoldemSampler smp{&h->abs};
@@ -431,14 +451,14 @@ int cmd_train(const Args& a) {
   uint64_t last_vis = 0, last_ex = 0, last_pr = 0;
   int64_t chunk = 200 * m.threads;
   std::vector<float> prev_pol = policy_table(tr, h->tree);
-  while (now_sec() < t_end && tr.iter < max_iters) {
+  while (now_sec() < t_end && tr.iter < max_iters && !g_stop_signal) {
     double c0 = now_sec();
     tr.run(std::min(max_iters, tr.iter + chunk), t_end - c0, chunk, nullptr);
     double cdt = now_sec() - c0;
     // aim for ~1 s chunks so logs and the deadline stay responsive
     if (cdt > 0) chunk = std::max<int64_t>(m.threads, int64_t(double(chunk) / cdt));
     double t = now_sec();
-    bool final_round = t >= t_end || tr.iter >= max_iters;
+    bool final_round = t >= t_end || tr.iter >= max_iters || g_stop_signal;
     if (t - last_log >= log_every || final_round) {
       double dt = t - last_log;
       std::vector<float> pol = policy_table(tr, h->tree);
@@ -477,6 +497,10 @@ int cmd_train(const Args& a) {
   std::fclose(log);
   std::printf("done: %lld iterations in %.1fs; peak RSS %.0f MB; checkpoint %s\n", (long long)tr.iter, now_sec() - t0,
               max_rss_mb(), ckpt.c_str());
+  if (g_stop_signal) {
+    std::printf("stopped by signal %d after writing the checkpoint; rerun with --resume\n", int(g_stop_signal));
+    return 75;
+  }
   return 0;
 }
 

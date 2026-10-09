@@ -401,7 +401,8 @@ paper (Brown and Sandholm, Science 2019) reports 8 days on a 64-core server
 and under 512 GB of memory for its six-player blueprint; nothing here was
 benchmarked against that.
 
-Moving to a rented machine: copy `blueprint/`, `make`, run `bp abs` with the
+Moving to a rented machine: `cloud/README.md` has the step-by-step package
+(setup, bench gate, cost math, resumable training, fetch). By hand: copy `blueprint/`, `make`, run `bp abs` with the
 target bucket counts (the abstraction build is multithreaded), then `bp train`
 with `--threads` set to the core count and a long `--minutes`; `--resume`
 picks up after an interruption. For memory, the first lever is storing
