@@ -172,6 +172,15 @@ turn spots (`bp subgame`, 04:47 PDT); the TS solver took 770 ms and 435 ms
 when the spots were exported (04:25 PDT, heavier load), so that ratio is
 indicative only.
 
+Algorithm choice on the same river spot (1,081 combos per side,
+`bp search --max-iters N --algo ...`), exploitability as % of the pot:
+
+| algorithm | 50 iterations | 200 | 1,000 |
+| --- | ---: | ---: | ---: |
+| DCFR alpha 1.5, beta 0.5, gamma 2 (default, the TS solver's) | 2.018 | 0.245 | 0.022 |
+| DCFR alpha 1.5, beta 0, gamma 2 (the DCFR paper's) | 2.384 | 0.264 | 0.023 |
+| CFR+, linear averaging from iteration 1 | 5.852 | 0.840 | 0.094 |
+
 Head-to-head: blueprint plus search on one street against the pure
 blueprint, duplicate deals (`bp search-h2h`). Both agents play the blueprint
 before the searched street, so on a given deal and action-sample stream they
