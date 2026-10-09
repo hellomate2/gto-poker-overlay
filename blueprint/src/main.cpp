@@ -37,6 +37,7 @@
 #include "export.h"
 #include "games.h"
 #include "mccfr.h"
+#include "search.h"
 #include "tree.h"
 
 using namespace bp;
@@ -808,5 +809,16 @@ int main(int argc, char** argv) {
   if (cmd == "br") return cmd_br(a);
   if (cmd == "export") return cmd_export(a);
   if (cmd == "show") return cmd_show(a);
+  // ---- real-time search (PLAN.md M4/M5): src/subgame.*, src/search.* ----
+  if (cmd == "subgame") return rt::subgame_cli(a.kv);
+  if (cmd == "search" || cmd == "search-h2h") {
+    auto h = setup_holdem(a, true);
+    McfrConfig m;
+    Trainer<HoldemSampler> tr(h->tree, HoldemSampler{&h->abs}, m);
+    if (!tr.load(a.get("ckpt"), h->hash)) die("cannot load checkpoint " + a.get("ckpt") + " for this tree/abstraction");
+    std::vector<float> pol = policy_table(tr, h->tree);
+    return rt::search_cli(cmd, a.kv, h->tree, h->abs, pol);
+  }
+  // ---- end real-time search ----
   die("unknown command " + cmd);
 }
