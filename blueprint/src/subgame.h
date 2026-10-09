@@ -102,7 +102,7 @@ struct Board {
 // payoff is pot0 * compat(i, j) - V (constant-sum).
 struct LeafValues {
   int k[2] = {1, 1};
-  std::vector<float> V;  // [((a * k1 + b) * H0 + i) * H1 + j]
+  std::vector<double> V;  // [((a * k1 + b) * H0 + i) * H1 + j]
   size_t at(int a, int b, int i, int j, int H0, int H1) const {
     return ((size_t(a) * k[1] + b) * H0 + i) * size_t(H1) + j;
   }
@@ -141,6 +141,7 @@ struct SolverConfig {
   enum Algo { DCFR, CFRPLUS } algo = DCFR;
   double alpha = 1.5, beta = 0.5, gamma = 2.0;  // DCFR (TS defaults)
   int cfrp_delay = 0;                          // CFR+: average weight max(0, t - delay)
+  int threads = 1;                             // parallel chance-node children
 };
 
 class Solver {
@@ -176,7 +177,8 @@ class Solver {
   std::vector<size_t> leaf_off_[2];  // per leaf: offset into LR_/LS_ for player p
   std::vector<double> LR_, LS_;
   std::vector<int> frozen_node_, frozen_hand_, frozen_act_;
-  std::vector<double> cardsum_;
+  bool in_parallel_ = false;
+  std::vector<double> chance(int ni, int p, double norm, const std::function<std::vector<double>(int)>& child);
   // per-iteration discount factors
   double dpos_ = 1, dneg_ = 1, dstrat_ = 1, wavg_ = 1;
 

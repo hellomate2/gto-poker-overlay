@@ -18,6 +18,8 @@
 using namespace bp;
 using namespace bp::rt;
 
+static int card(const char* s) { return parse_card(s); }
+
 static int g_fail = 0, g_checks = 0;
 #define CHECK(cond)                                                 \
   do {                                                              \
@@ -445,6 +447,30 @@ static void test_leduc_depth_limited() {
                 S.value(0, false) - 1, full, S.exploitability());
     CHECK_NEAR(S.value(0, false) - 1, full, 2e-3);
     CHECK(lv.size() == 5);
+    // Rollout leaf values converge to the exact enumeration (k = 4) at the
+    // Monte Carlo rate: 10x the rollouts cuts the RMS error by about sqrt(10).
+    Game ex = g;
+    build_leaf_values(ex, L.bv, lv, {}, 4, 5.0, 0, 1, 2);
+    double rms[2];
+    int nro[2] = {2000, 20000};
+    for (int t = 0; t < 2; t++) {
+      Game ro = g;
+      build_leaf_values(ro, L.bv, lv, {}, 4, 5.0, nro[t], 9 + t, 2);
+      double s2 = 0;
+      size_t cnt = 0;
+      for (size_t l = 0; l < lv.size(); l++)
+        for (size_t x = 0; x < ex.leaves[l].V.size(); x++) {
+          double d = ex.leaves[l].V[x] - ro.leaves[l].V[x];
+          s2 += d * d;
+          cnt++;
+        }
+      rms[t] = std::sqrt(s2 / double(cnt));
+    }
+    std::printf("  Leduc k=4 leaf values vs exact enumeration: RMS error %.4f chips at 2000 rollouts, %.4f at 20000 "
+                "(ratio %.2f, Monte Carlo rate sqrt(10) = 3.16)\n",
+                rms[0], rms[1], rms[0] / rms[1]);
+    CHECK(rms[1] > 0 && rms[0] / rms[1] > 2.0 && rms[0] / rms[1] < 5.0);
+    CHECK(rms[1] < 0.05);
   }
   // (b) a weak blueprint; compare blueprint, k=1 and k=4 search (round 1),
   // and k=4 search plus unsafe round-2 re-solving. Exact exploitability.
@@ -510,6 +536,136 @@ static void test_freeze() {
   CHECK(p[0] > 0 || p[1] > 0);
 }
 
+// ---- hold'em blueprint copies: exact against a brute-force walk ------------------------
+// A synthetic blueprint (random policy on the "tiny" hold'em tree, a made-up
+// order-independent bucket function) is copied into river, turn (chance +
+// river) and flop (depth-limited, k = 1, exact runouts) subgames. Each
+// subgame evaluated under the blueprint itself must equal the brute-force
+// value: for every hand pair and every runout, walk the blueprint tree.
+static void test_holdem_copy_exact() {
+  BettingTree t;
+  int bk[4] = {169, 5, 5, 5};
+  t.build(holdem_config("tiny"), bk);
+  std::vector<double> table(t.num_slots);
+  Rng rng(21);
+  for (const Node& n : t.nodes) {
+    if (n.type != DECISION) continue;
+    for (int b = 0; b < t.buckets[n.street]; b++) {
+      double s = 0;
+      for (int a = 0; a < n.nact; a++) s += table[n.slot + uint64_t(b) * n.nact + a] = 0.05 + rng.uniform();
+      for (int a = 0; a < n.nact; a++) table[n.slot + uint64_t(b) * n.nact + a] /= s;
+    }
+  }
+  BpView bv;
+  bv.tree = &t;
+  bv.policy = [&](uint64_t base, int na, double* out) {
+    for (int a = 0; a < na; a++) out[a] = table[base + a];
+  };
+  bv.bucket = [](const Hand& h, const std::vector<int>& board, int street) {
+    if (street == 0) return preflop_class(h.c[0], h.c[1]);
+    int s = 0;
+    for (int c : board) s += c * 3;
+    return (h.c[0] * 7 + h.c[1] * 13 + s + street) % 5;
+  };
+  bv.strength = holdem_strength;
+  bv.deck = 52;
+  bv.cards_per_hand = 2;
+  bv.board_len = {0, 3, 4, 5};
+  std::vector<int> deal = {int(card("Qs")), int(card("7h")), int(card("2d")), int(card("9c")), int(card("3s"))};
+  struct Case {
+    std::vector<std::string> line;
+    int nb;
+  } cases[] = {{{"c", "k", "k", "k", "k", "k"}, 5}, {{"c", "k", "k", "k"}, 4}, {{"c", "k"}, 3}};
+  for (const Case& cs : cases) {
+    int64_t root = t.find(cs.line);
+    CHECK(root > 0 && t.nodes[root].type == DECISION && t.nodes[root].street == cs.nb - 2);
+    std::vector<int> board(deal.begin(), deal.begin() + cs.nb);
+    uint64_t bm = 0;
+    for (int c : board) bm |= 1ull << c;
+    Game g;
+    Rng r2(5 + cs.nb);
+    for (int p = 0; p < 2; p++)
+      while (g.n(p) < 12) {
+        int a = int(r2.below(52)), b = int(r2.below(52));
+        uint64_t m = (1ull << a) | (1ull << b);
+        if (a == b || (m & bm)) continue;
+        bool dup = false;
+        for (auto& h : g.hands[p]) dup |= h.mask == m;
+        if (dup) continue;
+        Hand h;
+        h.c[0] = a, h.c[1] = b, h.nc = 2, h.mask = m;
+        g.hands[p].push_back(h);
+        g.w[p].push_back(0.2 + r2.uniform());
+      }
+    std::vector<uint32_t> lv = build_from_blueprint(g, bv, uint32_t(root), board, cs.nb == 3);
+    g.finalize();
+    if (!lv.empty()) build_leaf_values(g, bv, lv, board, 1, 5.0, 0, 1, 2);
+    Solver S(g, SolverConfig{});
+    S.external = [&](int node, int h, double* out) {
+      const SNode& nd = g.nodes[node];
+      const Node& bn = t.nodes[nd.bp];
+      const Hand& hd = g.hands[nd.player][h];
+      int b = bv.bucket(hd, g.boards[nd.board].cards, bn.street);
+      bv.policy(bn.slot + uint64_t(b) * bn.nact, bn.nact, out);
+    };
+    double v = S.value(0, false);
+    // brute force
+    const int base0 = t.nodes[root].contrib[0];
+    std::function<double(uint32_t, const Hand&, const Hand&, const std::vector<int>&, int)> walk =
+        [&](uint32_t ni, const Hand& h0, const Hand& h1, const std::vector<int>& full, int winner) -> double {
+      const Node& n = t.nodes[ni];
+      if (n.type != DECISION) return terminal_utility(n, 0, winner);
+      const Hand& hh = n.player == 0 ? h0 : h1;
+      std::vector<int> pre(full.begin(), full.begin() + bv.board_len[n.street]);
+      double pr[MAX_ACTIONS];
+      bv.policy(n.slot + uint64_t(bv.bucket(hh, pre, n.street)) * n.nact, n.nact, pr);
+      double s = 0;
+      for (int a = 0; a < n.nact; a++) s += pr[a] * walk(n.child + a, h0, h1, full, winner);
+      return s;
+    };
+    double num = 0, den = 0;
+    for (int i = 0; i < g.n(0); i++)
+      for (int j = 0; j < g.n(1); j++) {
+        const Hand &h0 = g.hands[0][i], &h1 = g.hands[1][j];
+        if (h0.mask & h1.mask) continue;
+        uint64_t dead = bm | h0.mask | h1.mask;
+        double acc = 0, cnt = 0;
+        std::vector<int> live;
+        for (int x = 0; x < 52; x++)
+          if (!(dead >> x & 1)) live.push_back(x);
+        auto one = [&](const std::vector<int>& full) {
+          int32_t s0 = holdem_strength(h0, full), s1 = holdem_strength(h1, full);
+          acc += walk(uint32_t(root), h0, h1, full, s0 > s1 ? 0 : s1 > s0 ? 1 : 2);
+          cnt += 1;
+        };
+        if (cs.nb == 5) one(board);
+        else if (cs.nb == 4)
+          for (int x : live) {
+            std::vector<int> f = board;
+            f.push_back(x);
+            one(f);
+          }
+        else
+          for (int x : live)
+            for (int y : live)
+              if (x != y) {
+                std::vector<int> f = board;
+                f.push_back(x);
+                f.push_back(y);
+                one(f);
+              }
+        double w = g.w[0][i] * g.w[1][j];
+        num += w * (acc / cnt + base0);
+        den += w;
+      }
+    double ref = num / den;
+    std::printf("  hold'em %s subgame (%zu nodes%s) under the blueprint: %.9f vs brute force %.9f\n",
+                cs.nb == 5 ? "river" : cs.nb == 4 ? "turn" : "flop", g.nodes.size(),
+                cs.nb == 3 ? ", k=1 exact leaves" : "", v, ref);
+    CHECK_NEAR(v, ref, 1e-6);
+  }
+}
+
 int main() {
   struct T {
     const char* name;
@@ -522,6 +678,7 @@ int main() {
       {"leduc depth-limited search", test_leduc_depth_limited},
       {"beliefs", test_beliefs},
       {"freeze", test_freeze},
+      {"hold'em blueprint copy exact", test_holdem_copy_exact},
   };
   for (auto& t : tests) {
     int before = g_fail;

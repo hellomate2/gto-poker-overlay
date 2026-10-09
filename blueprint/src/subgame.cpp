@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <thread>
+#include <atomic>
 
 #include "eval.h"
 
@@ -184,7 +186,6 @@ Solver::Solver(Game& g, const SolverConfig& cfg) : g_(g), cfg_(cfg) {
   // node instead when indices repeat.
   LR_.assign(lo, 0.0);
   LS_.assign(lo, 0.0);
-  cardsum_.assign(64, 0.0);
 }
 
 void Solver::freeze(int node, int h, int a) {
@@ -272,7 +273,7 @@ void Solver::mass(int p, const std::vector<double>& r, std::vector<double>& out)
   const int q = 1 - p, n = g_.n(p), no = g_.n(q);
   out.assign(n, 0.0);
   double tot = 0;
-  std::fill(cardsum_.begin(), cardsum_.end(), 0.0);
+  double cardsum_[64] = {0};
   const auto& oh = g_.hands[q];
   for (int j = 0; j < no; j++) {
     double x = r[j];
@@ -407,7 +408,7 @@ void Solver::leaf_values(int ni, int p, const std::vector<std::vector<double>>& 
       for (int b = 0; b < L.k[1]; b++) {
         const std::vector<double>& r = rb[b];
         for (int i = 0; i < H0; i++) {
-          const float* V = &L.V[L.at(a, b, i, 0, H0, H1)];
+          const double* V = &L.V[L.at(a, b, i, 0, H0, H1)];
           double s = 0;
           for (int j = 0; j < H1; j++) s += V[j] * r[j];
           cv[a][i] += s;
@@ -431,11 +432,42 @@ void Solver::leaf_values(int ni, int p, const std::vector<std::vector<double>>& 
         for (int i = 0; i < H0; i++) {
           double ri = rb[a][i];
           if (ri == 0) continue;
-          const float* V = &L.V[L.at(a, b, i, 0, H0, H1)];
+          const double* V = &L.V[L.at(a, b, i, 0, H0, H1)];
           for (int j = 0; j < H1; j++) out[j] -= V[j] * ri;
         }
     }
   }
+}
+
+// Chance node: children are independent subtrees (disjoint regret slots), so
+// they run on up to cfg.threads threads when the node is not already inside
+// a parallel region. The sum is taken in child order, so results do not
+// depend on the thread count.
+std::vector<double> Solver::chance(int ni, int p, double norm, const std::function<std::vector<double>(int)>& child) {
+  const SNode& nd = g_.nodes[ni];
+  const int n = g_.n(p);
+  std::vector<std::vector<double>> vals(nd.nact);
+  const int T = std::min(cfg_.threads, nd.nact);
+  if (T > 1 && !in_parallel_) {
+    in_parallel_ = true;
+    std::atomic<int> next{0};
+    std::vector<std::thread> pool;
+    for (int t = 0; t < T; t++)
+      pool.emplace_back([&] {
+        for (int k; (k = next.fetch_add(1)) < nd.nact;) vals[k] = child(nd.first + k);
+      });
+    for (auto& th : pool) th.join();
+    in_parallel_ = false;
+  } else {
+    for (int k = 0; k < nd.nact; k++) vals[k] = child(nd.first + k);
+  }
+  std::vector<double> out(n, 0.0);
+  for (int k = 0; k < nd.nact; k++) {
+    int x = g_.nodes[nd.first + k].deal;
+    for (int i = 0; i < n; i++)
+      if (!(g_.hands[p][i].mask >> x & 1)) out[i] += vals[k][i] / norm;
+  }
+  return out;
 }
 
 std::vector<double> Solver::cfr(int ni, int p, const std::vector<double>& r) {
@@ -446,16 +478,8 @@ std::vector<double> Solver::cfr(int ni, int p, const std::vector<double>& r) {
     case S_FOLD:
     case S_SHOW: terminal(ni, p, r, out); return out;
     case S_CHANCE: {
-      out.assign(n, 0.0);
       const double norm = double(g_.deck - int(g_.boards[nd.board].cards.size()) - 2 * g_.cards_per_hand);
-      for (int k = 0; k < nd.nact; k++) {
-        int ch = nd.first + k;
-        std::vector<double> v = cfr(ch, p, chance_child_reach(ch, q, r));
-        int x = g_.nodes[ch].deal;
-        for (int i = 0; i < n; i++)
-          if (!(g_.hands[p][i].mask >> x & 1)) out[i] += v[i] / norm;
-      }
-      return out;
+      return chance(ni, p, norm, [&](int ch) { return cfr(ch, p, chance_child_reach(ch, q, r)); });
     }
     case S_LEAF: {
       const LeafValues& L = g_.leaves[nd.leaf];
@@ -498,9 +522,18 @@ std::vector<double> Solver::cfr(int ni, int p, const std::vector<double>& r) {
   node_current(ni, sig);
   if (nd.player == p) {
     std::vector<std::vector<double>> cv(na);
+    std::vector<double> m;  // compatible opponent mass, shared by fold children
     out.assign(n, 0.0);
     for (int a = 0; a < na; a++) {
-      cv[a] = cfr(nd.first + a, p, r);
+      const SNode& ch = g_.nodes[nd.first + a];
+      if (ch.type == S_FOLD) {
+        if (m.empty()) mass(p, r, m);
+        const double pay = ch.player == p ? -ch.c[p] : ch.pot - ch.c[p];
+        cv[a].resize(n);
+        for (int i = 0; i < n; i++) cv[a][i] = m[i] * pay;
+      } else {
+        cv[a] = cfr(nd.first + a, p, r);
+      }
       for (int i = 0; i < n; i++) out[i] += sig[size_t(a) * n + i] * cv[a][i];
     }
     double* R = &R_[nd.off];
@@ -553,16 +586,8 @@ std::vector<double> Solver::eval(int ni, int p, const std::vector<double>& r, bo
     case S_FOLD:
     case S_SHOW: terminal(ni, p, r, out); return out;
     case S_CHANCE: {
-      out.assign(n, 0.0);
       const double norm = double(g_.deck - int(g_.boards[nd.board].cards.size()) - 2 * g_.cards_per_hand);
-      for (int k = 0; k < nd.nact; k++) {
-        int ch = nd.first + k;
-        std::vector<double> v = eval(ch, p, chance_child_reach(ch, q, r), br);
-        int x = g_.nodes[ch].deal;
-        for (int i = 0; i < n; i++)
-          if (!(g_.hands[p][i].mask >> x & 1)) out[i] += v[i] / norm;
-      }
-      return out;
+      return chance(ni, p, norm, [&](int ch) { return eval(ch, p, chance_child_reach(ch, q, r), br); });
     }
     case S_LEAF: {
       const LeafValues& L = g_.leaves[nd.leaf];
