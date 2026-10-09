@@ -1095,7 +1095,9 @@ int scale_train(const Args& a) {
   // the iteration count reaches --accum-from-iter. Hundreds of these are cheap;
   // the checkpoint-style snapshots above are for resume and archive.
   double accum_every = a.getf("accum-every-sec", 60);
-  int64_t accum_from = a.geti("accum-from-iter", 0);
+  // Default start: the end of the Linear-CFR phase (the Leduc gate starts at
+  // 25% of the run, which is where its Linear-CFR phase ends).
+  int64_t accum_from = a.geti("accum-from-iter", m.lcfr_until);
   std::string accum_path = out + "/snapavg.f32", err;
   FILE* log = std::fopen((out + "/log.csv").c_str(), tr.iter > 0 ? "a" : "w");
   if (!log) die("cannot open log");

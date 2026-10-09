@@ -111,6 +111,31 @@ These come out a little under PLAN.md's optimistic row (1.9 h, $7) because the
 average. Both assume a server core is as fast as an M3 Pro thread (f = 1), which is
 exactly what `bench.sh` exists to measure.
 
+## Memory (PLAN.md M3)
+
+`train.sh` runs the dense trainer (`bp train`, 12 bytes per slot). The compact
+trainer (`bp scale train`, `blueprint/README.md` "Compact trainer and scaling")
+keeps the running average only preflop and stores 4 bytes per postflop slot.
+Its blueprint after preflop is the average of current-strategy snapshots;
+the Leduc gate passes (1.17x to 1.22x the dense exploitability at 4M
+iterations, 751 snapshots, three seeds) but fails with Pluribus's 55
+snapshots (3.7x to 4.5x), so take a snapshot every minute or so.
+`python3 cost.py memory`, from the slot counts `bp scale tree` prints on the
+current tree:
+
+```
+run                              slots  dense 12 B   compact  ratio snapshot file
+R1 (200/200/200)           231,540,861      2.78 GB   0.95 GB  0.341       0.93 GB
+R2 (5000/5000/1000)      1,955,854,461     23.47 GB   7.84 GB  0.334       7.82 GB
+R3 (30000/30000/2000)    7,906,534,461     94.88 GB  31.65 GB  0.334      31.63 GB
+```
+
+R1 fits either way on a 384 GiB box. The compact layout matters from R2 up,
+and for checkpoint upload and download time (a checkpoint is about one table).
+Lazy allocation does not shrink a heads-up run: a fresh run on the medium 200 BB
+tree had allocated 98.9% of river node blocks after 60 s on one thread, so
+budget RAM for every block. `train.sh` does not call `bp scale train` yet.
+
 ## AWS, step by step (console)
 
 Steps and labels follow the AWS docs for a Spot request from the launch wizard
