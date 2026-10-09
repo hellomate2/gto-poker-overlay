@@ -16,7 +16,7 @@ import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
 import { resampleAdjusted } from './exploit/resample';
 import { predictPostflop } from './ml/policy';
-import { Spot } from './ml/features';
+import { buildNetSpot } from './ml/serve-spot';
 import { ENGINE_FLAGS as F } from './engine-flags';
 import {
   liveVillainIndexes, estimateVillainRanges, heroRangeFor, preflopRangeFor,
@@ -513,9 +513,10 @@ export class DecisionEngine {
   /**
    * Distilled neural-net postflop decision.
    *
-   * Builds a normalized `Spot` from GameState using the SAME encodeSpot feature
-   * module the training data was prepped with (no train/inference mismatch),
-   * runs predictPostflop (masked to legal actions), then:
+   * Builds a normalized `Spot` from GameState with buildNetSpot, which uses the
+   * same feature definitions as ml/prep.ts (pinned by
+   * tests/ml-serve-parity.test.ts), runs predictPostflop (masked to legal
+   * actions), then:
    *   - returns the argmax action,
    *   - for bet/raise, sizes via the existing board-texture sizing
    *     (getGTOBetSize) — the net only decides the action class, not the size,
@@ -537,62 +538,33 @@ export class DecisionEngine {
     const pot = Math.max(1, state.pot);
     const isIP = this.isInPosition(state);
 
-    // Betting-action context (mirrors prep.ts: preflop aggressor + this-street
-    // bet/raise counts) so the net sees who's driving and whether it's a raised
-    // pot. Computed from GameState.actionHistory to match the training labels.
-    const pfActions = state.actionHistory.preflop || [];
-    let pfAggressor: string | null = null;
-    for (const a of pfActions) if (a.type === 'raise' || a.type === 'allin') pfAggressor = a.playerName;
-    const isPreflopAggressor = !!hero && pfAggressor === hero.name;
-    const curActions = state.actionHistory[street] || [];
-    let streetBetCount = 0;
-    let facedRaiseThisStreet = false;
-    for (const a of curActions) {
-      if (a.type === 'bet') streetBetCount++;
-      else if (a.type === 'raise' || a.type === 'allin') { streetBetCount++; facedRaiseThisStreet = true; }
-    }
-
-    const spot: Spot = {
-      holeCards: heroCards,
-      board: board.map(c => cardToId(c)),
-      street,
-      heroPos: isIP ? 'IP' : 'OOP',
-      facingBet,
-      isPreflopAggressor, facedRaiseThisStreet, streetBetCount,
-      toCallFrac: toCall / pot,
-      // Offered size proxy: facing a bet -> the bet we'd be raising over; else
-      // a default value bet of ~2/3 pot. Sizing itself is decided below; this is
-      // only a feature signal mirroring how the dataset's available_moves offered
-      // a single Bet/Raise size.
-      offeredSizeFrac: facingBet ? toCall / pot : 0.66,
-      canCheck: !facingBet,
-      canBet: !facingBet,
-      canCall: facingBet,
-      canRaise: facingBet,
-      canFold: facingBet,
-      threeBetPot: this.isThreeBetPot(state),
-    };
-
-    const pred = predictPostflop(spot);
-    const probs = pred.probs;
-    const action = pred.action;
-
-    // Bet/raise size from the distilled SIZE head (the solver-learned size for
-    // this spot), replacing the flat board-texture heuristic which systematically
-    // UNDER-bet (it used 0.33-0.66 pot; the solver bets ~0.66-0.9+). Falls back to
-    // the texture sizing if the size head is unavailable.
+    // Sizing first: the net's offeredSizeFrac feature is the bet / raise-to the
+    // engine would actually make here (prep.ts: the offered 'Bet X' / 'Raise X').
+    // Sizing is by board texture + street + hand strength (chooseBetSize): the
+    // learned size head was degenerate (~0.66 pot for every spot).
     const boardAnalysis = this.analyzeBoard(board);
     const bb = state.bigBlind || 20;
     const heroCat = Math.floor(
       evaluateHand([heroCards[0], heroCards[1], ...board.map(c => cardToId(c))]) / 1_000_000,
     );
-    // Varied sizing by board texture + street + hand strength. The learned size
-    // head was degenerate (returned ~0.66 pot for EVERY spot — dry, wet, river,
-    // all the same), so the bot bet a flat 65% everywhere. chooseBetSize uses the
-    // texture sizer (dry/range boards small, wet/dynamic big) and polarizes the
-    // river (value + bluffs bigger, thin pairs smaller).
     const betSize = this.chooseBetSize(boardAnalysis, pot, street, bb, heroCat);
     const raiseSize = Math.max(this.roundToStake(state.currentBet * 2.5, bb), state.currentBet + betSize);
+
+    // Build the net's Spot with the SAME feature definitions ml/prep.ts used at
+    // training time (see src/core/ml/serve-spot.ts and
+    // tests/ml-serve-parity.test.ts).
+    const spot = buildNetSpot(state, {
+      heroCards, isIP,
+      threeBetPot: this.isThreeBetPot(state),
+      betTo: betSize, raiseTo: raiseSize,
+      liveVillainStacks: this.liveVillains(state).map(i => state.players[i]?.stack || 0),
+    });
+    if (!spot) return null;
+    const isPreflopAggressor = !!spot.isPreflopAggressor;
+
+    const pred = predictPostflop(spot);
+    const probs = pred.probs;
+    const action = pred.action;
 
     const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
     const betProb = probs.bet + probs.raise;
