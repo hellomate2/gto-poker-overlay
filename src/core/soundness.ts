@@ -17,6 +17,7 @@
  * this decides whether the action stands or must be corrected.
  */
 import { ActionType } from '../types/poker';
+import { MDF_RESCUE } from './defense';
 
 export interface SoundnessInput {
   /** The action the engine wants to take. */
@@ -41,7 +42,23 @@ export interface SoundnessInput {
    * hard deep-stack-off floor (RULE 2) still applies.
    */
   trustExploitRead?: boolean;
+  /**
+   * The call was decided by defense.ts (defendVsAggression): priced against a
+   * villain range that contains bluffs, with the minimum-defense-frequency rule
+   * applied to hero's own range. RULE 1's usual yardstick is
+   * villainContinuingRange({aggression:true}), which contains NO bluffs, so
+   * re-checking a defense call against it re-creates the over-folding the
+   * defense module exists to fix (probe: 56-78% of the betting range folded to
+   * a 3x raise). When set, pass the defense module's own equity as eqVsRange;
+   * RULE 1 then only guards large commitments (commit >= DEFENDED_GUARD_COMMIT)
+   * against the defense floor (1 - MDF_RESCUE) * potOdds, as a backstop against
+   * a stale or mis-wired input. RULE 2 and RULE 3 are unchanged.
+   */
+  rangeDefended?: boolean;
 }
+
+/** Commitment above which a defense-module call is still re-checked by RULE 1. */
+export const DEFENDED_GUARD_COMMIT = 0.5;
 
 export interface SoundnessResult {
   override: boolean;
@@ -68,7 +85,16 @@ export function evaluateSoundness(i: SoundnessInput): SoundnessResult {
   // with king-high. POSTFLOP ONLY: preflop calls are governed by the solved
   // charts (and RULE 2 below for deep all-ins); applying a pot-odds-vs-random
   // floor preflop would wrongly fold sound chart-defends if the pot is read low.
-  if (i.action === 'call' && i.facingBet && i.street !== 'preflop' && !i.trustExploitRead) {
+  if (i.action === 'call' && i.facingBet && i.street !== 'preflop' && !i.trustExploitRead && i.rangeDefended) {
+    const floor = (1 - MDF_RESCUE) * i.potOdds;
+    if (i.commit >= DEFENDED_GUARD_COMMIT && i.eqVsRange < floor) {
+      return {
+        override: true,
+        action: 'fold',
+        reason: `fold: ${pct(i.eqVsRange)} eq < defense floor ${pct(floor)} committing ${pct(i.commit)} stack [soundness]`,
+      };
+    }
+  } else if (i.action === 'call' && i.facingBet && i.street !== 'preflop' && !i.trustExploitRead) {
     const margin = 0.01 + 0.06 * clamp01(i.commit);
     // Never fold a hand that's clearly ahead of the range (>=60%), regardless of
     // price — that would only ever be a mistake.

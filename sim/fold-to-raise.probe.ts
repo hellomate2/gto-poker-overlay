@@ -1,6 +1,7 @@
 import './fake-idb';
 import { it } from 'vitest';
 import { DecisionEngine } from '../src/core/engine';
+import { installDefense } from './defense-shim';
 import { GameState, Player, Position, Street, Card, Rank, Suit, Action } from '../src/types/poker';
 import { cardToId } from '../src/core/cfr/card-utils';
 import { quickEquity } from '../src/core/equity/monte-carlo';
@@ -31,7 +32,8 @@ import { predictPostflop } from '../src/core/ml/policy';
 //             pot to the multiway ranged heuristic (diagnosis item 3).
 //
 // Run (about 1-3 minutes):
-//   npx vitest run --config sim/vitest.probe.config.ts
+//   npx vitest run --config sim/vitest.probe.config.ts sim/fold-to-raise
+//   PROBE_DEFENSE=1 ...   same grid with defense.ts wired in (sim/defense-shim.ts)
 // Output: a per-spot TSV-ish table and summary matrices on stdout.
 // ============================================================
 
@@ -153,6 +155,7 @@ function buildSpot(board: BoardDef, hand: HandDef, street: Exclude<Street, 'pref
 
 /** Which layer produced the final action, read off the reasoning trail. */
 function pathOf(reasoning: string): string {
+  if (reasoning.includes('[defense]')) return 'defense';
   if (reasoning.includes('[soundness]')) return 'soundness';
   if (reasoning.includes('[too strong to fold]')) return 'sanity-unfold';
   if (reasoning.includes('[anti-punt]')) return 'net-antipunt';
@@ -173,6 +176,8 @@ export async function runProbe(): Promise<ProbeRow[]> {
   const engine = new DecisionEngine();
   // Pure baseline: no opponent stats (matches sim/agents.ts exploit:false).
   (engine as unknown as { tracker: { loadStats: () => Promise<void> } }).tracker.loadStats = async () => {};
+  // PROBE_DEFENSE=1: route facing-a-bet spots through src/core/defense.ts (sim/defense-shim.ts).
+  if (process.env.PROBE_DEFENSE === '1') installDefense(engine);
   const rows: ProbeRow[] = [];
   for (const table of ['hu', '6max'] as const) {
     for (const board of BOARDS) for (const hand of board.hands) for (const street of STREETS) for (const bf of BET_FRACS) for (const rm of RAISE_MULTS) {

@@ -1,6 +1,7 @@
 import './fake-idb';
 import { it } from 'vitest';
 import { DecisionEngine } from '../src/core/engine';
+import { installDefense } from './defense-shim';
 import { GameState, Player, Position, Street, Card, Rank, Suit, Action, BotDecision } from '../src/types/poker';
 import { cardToId, idToCard } from '../src/core/cfr/card-utils';
 import { evaluateHand } from '../src/core/equity/hand-eval';
@@ -92,6 +93,8 @@ it('probe: fold-to-raise over the bot\'s whole betting range (HU)', async () => 
   const engine = new DecisionEngine();
   const internals = engine as unknown as EngineInternals;
   internals.tracker.loadStats = async () => {};
+  // PROBE_DEFENSE=1: route facing-a-bet spots through src/core/defense.ts (sim/defense-shim.ts).
+  if (process.env.PROBE_DEFENSE === '1') installDefense(engine);
   const rng = mulberry32(7);
   const t0 = Date.now();
   let decisions = 0;
@@ -136,7 +139,7 @@ it('probe: fold-to-raise over the bot\'s whole betting range (HU)', async () => 
         const resp = await engine.decide(structuredClone(st)); decisions++;
         const folded = resp.action === 'fold' ? 1 : 0;
         if (folded) {
-          const path = resp.reasoning.includes('[soundness]') ? 'soundness' : resp.reasoning.includes('[anti-punt]') ? 'net-antipunt' : resp.reasoning.startsWith('net ') ? 'net' : 'other';
+          const path = resp.reasoning.includes('[defense]') ? 'defense' : resp.reasoning.includes('[soundness]') ? 'soundness' : resp.reasoning.includes('[anti-punt]') ? 'net-antipunt' : resp.reasoning.startsWith('net ') ? 'net' : 'other';
           foldPaths[path] = (foldPaths[path] || 0) + pBet;
         }
         wBet += pBet; wFold += pBet * folded;
@@ -156,5 +159,6 @@ it('probe: fold-to-raise over the bot\'s whole betting range (HU)', async () => 
   out(`board\tstreet\tbet freq\tfold-to-3x-raise (betting range)\t1-MDF\tbluff-raise break-even\tverdict\tfold by hero class`);
   for (const l of lines) out(l);
   out(`folds (pBet-weighted) by deciding layer: ${Object.entries(foldPaths).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(', ')}`);
+  out(`defense wired: ${process.env.PROBE_DEFENSE === '1'}`);
   out(`probe: ${decisions} decisions, ${COMBOS_PER_SPOT} combos/spot, ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }, 3_600_000);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  defendVsAggression, rangeEquities, balancedAggressorRange, barrelGate, blockerScoreOf, rangeFromPolicy, MDF_RESCUE,
+  defendVsAggression, rangeEquities, balancedAggressorRange, bluffPropensity, barrelGate, blockerScoreOf, rangeFromPolicy, leadPolicyRange, MDF_RESCUE,
 } from '../src/core/defense';
 import { WeightedRange } from '../src/core/ranges/weighted-range';
 import { equityVsRange } from '../src/core/equity/range-equity';
@@ -252,18 +252,39 @@ describe('defendVsAggression', () => {
 });
 
 describe('balancedAggressorRange', () => {
+  const share = (r: WeightedRange, n: number) => {
+    const tot = r.weights.reduce((a, b) => a + b, 0);
+    const v = r.weights.slice(0, n).reduce((a, b) => a + b, 0);
+    return 1 - v / tot;
+  };
+
   it('gives the bluff block the s/(1+2s) share on the river and more on earlier streets', () => {
     const river = ids('Kd', '7c', '2s', '9h', '4d');
     const value = combosOf('99', river).concat(combosOf('77', river), combosOf('K9s', river));
-    const share = (r: WeightedRange, n: number) => {
-      const tot = r.weights.reduce((a, b) => a + b, 0);
-      const v = r.weights.slice(0, n).reduce((a, b) => a + b, 0);
-      return 1 - v / tot;
-    };
     const r = balancedAggressorRange(value, river, 'river', 1);
     expect(share(r, value.length)).toBeCloseTo(1 / 3, 9);
     const t = balancedAggressorRange(value, river.slice(0, 4), 'turn', 1);
-    expect(share(t, value.length)).toBeCloseTo(Math.min(0.5, 1.4 / 3), 9);
+    expect(share(t, value.length)).toBeCloseTo(1.2 / 3, 9);
+  });
+
+  it('weights flop bluffs toward draws, not random air', () => {
+    const flop = ids('Js', '9s', '4d');
+    const value = combosOf('JJ', flop).concat(combosOf('99', flop));
+    const r = balancedAggressorRange(value, flop, 'flop', 0.75);
+    const w = (a: string, b: string) => {
+      const x = Math.min(cid(a), cid(b)), y = Math.max(cid(a), cid(b));
+      return r.weights[r.combos.findIndex(([p, q]) => p === x && q === y)];
+    };
+    expect(w('Ts', '8s')).toBeGreaterThan(w('As', '5s')); // combo draw > flush draw
+    expect(w('As', '5s')).toBeGreaterThan(w('Qh', 'Td'));  // flush draw > open-ender
+    expect(w('Qh', 'Td')).toBeGreaterThan(w('6h', '2c'));  // open-ender > air
+  });
+
+  it('bluffPropensity: on the river no-pair hands bluff, pairs rarely', () => {
+    const river = ids('Js', '9s', '4d', '2h', '7c');
+    expect(bluffPropensity([cid('As'), cid('5s')], river, 'river')).toBe(1);
+    expect(bluffPropensity([cid('9h'), cid('5c')], river, 'river')).toBeCloseTo(0.15, 9);
+    expect(bluffPropensity([cid('Ts'), cid('8s')], ids('Js', '9s', '4d'), 'flop')).toBe(4);
   });
 });
 
@@ -303,6 +324,26 @@ describe('rangeFromPolicy', () => {
       const ranks = [a >> 2, b >> 2];
       const boardRanks = board.map(c => c >> 2);
       expect(ranks[0] === ranks[1] || ranks.some(x => boardRanks.includes(x))).toBe(true);
+    }
+  });
+});
+
+describe('leadPolicyRange', () => {
+  it('weights two pair+ above air and zeroes non-flush combos on a monotone board', () => {
+    const dry = ids('Kd', '7c', '2s');
+    const r = leadPolicyRange(dry, 'flop', { isAggressor: true, isIP: true, veryWetOrMono: false }, undefined, { runouts: 20 });
+    const w = (a: string, b: string) => {
+      const x = Math.min(cid(a), cid(b)), y = Math.max(cid(a), cid(b));
+      const i = r.combos.findIndex(([p, q]) => p === x && q === y);
+      return i < 0 ? 0 : r.weights[i];
+    };
+    expect(w('Kh', '7h')).toBeGreaterThan(w('6h', '3d'));
+    const mono = ids('Ks', '8s', '4s');
+    const m = leadPolicyRange(mono, 'flop', { isAggressor: true, isIP: true, veryWetOrMono: true }, undefined, { runouts: 20 });
+    for (let i = 0; i < m.combos.length; i++) {
+      const spades = m.combos[i].filter(c => c % 4 === cid('As') % 4).length;
+      // On a three-spade flop only a made flush (two spades) may be bet.
+      if (m.weights[i] > 0) expect(spades).toBe(2);
     }
   });
 });

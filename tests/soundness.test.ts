@@ -46,6 +46,28 @@ describe('soundness gate — RULE 1: price/commitment floor on calls', () => {
   });
 });
 
+describe('soundness gate — RULE 1 with a defense-module call (rangeDefended)', () => {
+  it('lets a MDF bluff-catch stand that the bluff-free yardstick would veto', () => {
+    // 22% eq vs a 30% price at a 30% commitment: the classic RULE 1 fold.
+    const plain = evaluateSoundness(S({ eqVsRange: 0.22, potOdds: 0.30, commit: 0.3 }));
+    const defended = evaluateSoundness(S({ eqVsRange: 0.22, potOdds: 0.30, commit: 0.3, rangeDefended: true }));
+    expect(plain.override).toBe(true);
+    expect(defended.override).toBe(false);
+  });
+
+  it('still folds a big commitment below the defense floor', () => {
+    // floor = (1 - 0.35) * 0.4 = 26%; 15% eq committing 80% of the stack.
+    const r = evaluateSoundness(S({ eqVsRange: 0.15, potOdds: 0.40, commit: 0.8, rangeDefended: true }));
+    expect(r.override).toBe(true);
+    expect(r.action).toBe('fold');
+  });
+
+  it('does not change RULE 3 (stacking off as the aggressor with air)', () => {
+    const r = evaluateSoundness(S({ action: 'allin', facingBet: true, commit: 1, eqVsRange: 0.2, rangeDefended: true }));
+    expect(r.override).toBe(true);
+  });
+});
+
 describe('soundness gate — RULE 2: no deep preflop stack-off with trash', () => {
   const jam = (o: Partial<SoundnessInput>) =>
     evaluateSoundness(S({ action: 'allin', street: 'preflop', facingBet: true, ...o }));

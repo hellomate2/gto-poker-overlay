@@ -51,6 +51,7 @@
 import { CardId } from '../types/poker';
 import { WeightedRange, normalizeRange } from './ranges/weighted-range';
 import { evaluateHand, HAND_CATEGORY } from './equity/hand-eval';
+import { leadBetProbability } from './cbet';
 
 export type PostflopStreet = 'flop' | 'turn' | 'river';
 
@@ -446,17 +447,25 @@ export function blockerScoreOf(heroCombo: [CardId, CardId], villainRange: Weight
 /**
  * A balanced-aggressor fallback for villain's range when no tracked range is
  * available: the given VALUE combos (e.g. villainContinuingRange with
- * aggression:true) plus every other live combo as a bluff, with the bluff block
- * scaled to the share a balanced bettor uses at this size.
+ * aggression:true) at weight 1, plus every other live combo as a potential
+ * bluff, with the bluff block scaled to the share a balanced bettor uses at
+ * this size:
  *
  *   river bluff share  = s / (1 + 2s)      (makes hero's bluff-catchers indifferent)
- *   turn               = 1.4 x river share (semibluffs still have equity)
- *   flop               = 1.8 x river share
- * all capped at 0.5. Bluff weight is spread uniformly over the non-value combos.
+ *   turn               = 1.2 x river share (semibluffs still have equity)
+ *   flop               = 1.4 x river share
+ * all capped at BLUFF_SHARE_CAP.
  *
- * This ASSUMES villain is balanced. It is strictly a better default than the
- * value-only range (which assumes villain never bluffs and makes every
- * bluff-catcher a fold), but the range tracker's estimate should replace it.
+ * Inside the bluff block, combos are weighted by how likely a real player is to
+ * choose them as a bluff (bluffPropensity): on the flop/turn draws dominate and
+ * pure air is rare; on the river missed draws / no-pair hands bluff and hands
+ * with showdown value mostly do not. Spreading the bluffs uniformly over all
+ * non-value combos instead would hand hero's air far too much equity on the
+ * flop (random hands are much weaker vs ace-high than real semibluffs are).
+ *
+ * This ASSUMES villain is balanced. It is a better default than the value-only
+ * range (which assumes villain never bluffs and makes every bluff-catcher a
+ * fold), but the range tracker's estimate should replace it.
  */
 export function balancedAggressorRange(
   valueCombos: [CardId, CardId][],
@@ -466,8 +475,8 @@ export function balancedAggressorRange(
 ): WeightedRange {
   const s = Math.max(0, sizeFrac);
   const riverShare = s / (1 + 2 * s);
-  const mult = street === 'river' ? 1 : street === 'turn' ? 1.4 : 1.8;
-  const bluffShare = Math.min(0.5, riverShare * mult);
+  const mult = street === 'river' ? 1 : street === 'turn' ? 1.2 : 1.4;
+  const bluffShare = Math.min(BLUFF_SHARE_CAP, riverShare * mult);
   const dead = new Set(board);
   const valueKeys = new Set<number>();
   const combos: [CardId, CardId][] = [];
@@ -481,21 +490,76 @@ export function balancedAggressorRange(
   }
   const nValue = combos.length;
   const bluffs: [CardId, CardId][] = [];
+  const prop: number[] = [];
+  let propSum = 0;
   for (let a = 0; a < 52; a++) {
     if (dead.has(a)) continue;
     for (let b = a + 1; b < 52; b++) {
       if (dead.has(b) || valueKeys.has(a * 52 + b)) continue;
+      const p = bluffPropensity([a, b], board, street);
+      if (p <= 0) continue;
       bluffs.push([a, b]);
+      prop.push(p);
+      propSum += p;
     }
   }
   if (nValue === 0 || bluffs.length === 0) {
-    return { combos: [...combos, ...bluffs], weights: [...weights, ...bluffs.map(() => 1)] };
+    return { combos: [...combos, ...bluffs], weights: [...weights, ...prop] };
   }
-  // Total bluff weight B with B / (nValue + B) = bluffShare.
-  const B = bluffShare >= 1 ? nValue : (bluffShare * nValue) / (1 - bluffShare);
-  const wb = B / bluffs.length;
-  for (const c of bluffs) { combos.push(c); weights.push(wb); }
+  // Total bluff weight B with B / (nValue + B) = bluffShare, split by propensity.
+  const B = (bluffShare * nValue) / (1 - bluffShare);
+  for (let i = 0; i < bluffs.length; i++) { combos.push(bluffs[i]); weights.push((B * prop[i]) / propSum); }
   return { combos, weights };
+}
+
+/** Upper bound on the bluff share of the fallback aggressor range. */
+const BLUFF_SHARE_CAP = 0.45;
+
+/**
+ * Relative likelihood that a non-value combo is used as a bluff. Flop/turn:
+ * combo draws 4, flush draws 3, open-enders 2.5, gutshots 1.5, two overcards 1,
+ * weak made pairs 0.4, other air 0.25. River: no pair 1, one pair 0.15, better 0.05.
+ */
+export function bluffPropensity(combo: [CardId, CardId], board: CardId[], street: PostflopStreet): number {
+  const cat = Math.floor(evaluateHand([combo[0], combo[1], ...board]) / 1_000_000);
+  if (street === 'river') return cat === HAND_CATEGORY.HIGH_CARD ? 1 : cat === HAND_CATEGORY.PAIR ? 0.15 : 0.05;
+  // Flush draw: four of a suit counting at least one hole card.
+  const suit = [0, 0, 0, 0];
+  for (const c of board) suit[c % 4]++;
+  let fd = false;
+  for (const h of combo) if (suit[h % 4] + (combo[0] % 4 === combo[1] % 4 ? 2 : 1) === 4) fd = true;
+  // Straight draw: ranks that would complete a straight with the hole cards but
+  // not with the board alone. Two or more such ranks ~ open-ender, one ~ gutshot.
+  const outs = straightOuts([...board, ...combo]).filter(r => !straightOuts(board).includes(r)).length;
+  const sd = outs >= 2 ? 2 : outs === 1 ? 1 : 0;
+  const top = Math.max(...board.map(c => c >> 2));
+  const overcards = (combo[0] >> 2) > top && (combo[1] >> 2) > top;
+  if (fd && sd) return 4;
+  if (fd) return 3;
+  if (sd === 2) return 2.5;
+  if (sd === 1) return 1.5;
+  if (cat === HAND_CATEGORY.HIGH_CARD && overcards) return 1;
+  if (cat === HAND_CATEGORY.PAIR) return 0.4;
+  if (cat === HAND_CATEGORY.HIGH_CARD) return 0.25;
+  return 0.1;
+}
+
+/** Ranks (0..12) that would give a five-card straight together with `cards`. Ace plays low too. */
+function straightOuts(cards: CardId[]): number[] {
+  const has = new Array(13).fill(false);
+  for (const c of cards) has[c >> 2] = true;
+  const present = (r: number) => (r === -1 ? has[12] : has[r]);
+  const out: number[] = [];
+  for (let r = 0; r < 13; r++) {
+    if (has[r]) continue;
+    // Windows low..low+4 containing r; low = -1 is the wheel (A-2-3-4-5).
+    for (let low = Math.max(-1, r - 4); low <= Math.min(8, r); low++) {
+      let ok = true;
+      for (let k = low; k <= low + 4; k++) if (k !== r && !present(k)) { ok = false; break; }
+      if (ok) { out.push(r); break; }
+    }
+  }
+  return out;
 }
 
 /**
@@ -525,6 +589,42 @@ export function rangeFromPolicy(
     if (w > 0) { combos.push(all[i]); weights.push(w); }
   }
   return { combos, weights };
+}
+
+/**
+ * Hero's range for the line hero took this street, as the live lead policy
+ * (cbet.ts leadBetProbability) actually plays it: every live combo weighted by
+ * preflopWeight(combo) x P(bet | combo) for line 'bet' (default), or
+ * x (1 - P(bet | combo)) for line 'check'. After hero bet and got raised this is
+ * the range the raiser is attacking, so it is the right heroRange for
+ * defendVsAggression until the range tracker supplies hero's range directly.
+ * preflopWeight defaults to uniform (1). Dangerous-flush combos (monotone or
+ * 4-flush board, combo holds no flush) get the policy's zero bet probability.
+ */
+export function leadPolicyRange(
+  board: CardId[],
+  street: PostflopStreet,
+  ctx: { isAggressor: boolean; isIP: boolean; veryWetOrMono: boolean; line?: 'bet' | 'check' },
+  preflopWeight: (combo: [CardId, CardId]) => number = () => 1,
+  opts: RangeEquityOptions = {},
+): WeightedRange {
+  const suitCount = [0, 0, 0, 0];
+  for (const c of board) suitCount[c % 4]++;
+  const flushSuit = suitCount.findIndex(n => n >= 3);
+  return rangeFromPolicy(board, (combo, heroCat, eq) => {
+    const pw = preflopWeight(combo);
+    if (!(pw > 0)) return 0;
+    let dangerousFlush = false;
+    if (flushSuit >= 0) {
+      const held = (combo[0] % 4 === flushSuit ? 1 : 0) + (combo[1] % 4 === flushSuit ? 1 : 0);
+      dangerousFlush = held < (suitCount[flushSuit] >= 4 ? 1 : 2);
+    }
+    const pBet = leadBetProbability({
+      isAggressor: ctx.isAggressor, isIP: ctx.isIP, veryWetOrMono: ctx.veryWetOrMono,
+      heroCat, equity: eq, street, dangerousFlush,
+    });
+    return pw * (ctx.line === 'check' ? 1 - pBet : pBet);
+  }, opts);
 }
 
 // ============================================================
