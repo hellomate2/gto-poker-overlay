@@ -125,7 +125,7 @@ describe('P0-CRIT-1: subgame cap keeps the bluff part of a narrowed range', () =
 describe('P0-CRIT-1: engine with SUBGAME_SOLVER calls the OESD', () => {
   beforeEach(() => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
-    setEngineFlags({ SUBGAME_SOLVER: true, RANGE_TRACKER: true, FIX_LIVE_VILLAINS: true });
+    setEngineFlags({ SUBGAME_SOLVER: true, RANGE_TRACKER: true, FIX_LIVE_VILLAINS: true, BLUEPRINT: false });
   });
   afterEach(() => { vi.restoreAllMocks(); resetEngineFlags(); });
 

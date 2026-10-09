@@ -25,14 +25,18 @@ vi.mock('../src/storage/db', async () => {
 });
 
 import { DecisionEngine } from '../src/core/engine';
+import { setEngineFlags, resetEngineFlags } from '../src/core/engine-flags';
 import { GameState, Player } from '../src/types/poker';
 import { card } from './helpers';
 
 beforeEach(() => {
+  // Pin the distilled-net path: SUBGAME_SOLVER and BLUEPRINT (both on by default) take heads-up spots first.
+  setEngineFlags({ SUBGAME_SOLVER: false, BLUEPRINT: false });
   vi.spyOn(Math, 'random').mockReturnValue(0.99);
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => {
+  resetEngineFlags(); vi.restoreAllMocks(); });
 
 function facingFlopBet(hole: [string, string], board: string[], heroStack = 950): GameState {
   const mk = (name: string, isHero: boolean, stack: number, bet: number, seat: number): Player => ({

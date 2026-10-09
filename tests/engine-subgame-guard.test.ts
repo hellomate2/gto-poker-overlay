@@ -37,7 +37,7 @@ describe('subgame solver log guard', () => {
   // Math.random 0.99 samples the raise in the unguarded solve's 97% raise mix.
   beforeEach(() => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);
-    setEngineFlags({ SUBGAME_SOLVER: true, RANGE_TRACKER: true, FIX_LIVE_VILLAINS: true });
+    setEngineFlags({ SUBGAME_SOLVER: true, RANGE_TRACKER: true, FIX_LIVE_VILLAINS: true, BLUEPRINT: false });
   });
   afterEach(() => { vi.restoreAllMocks(); resetEngineFlags(); });
 
