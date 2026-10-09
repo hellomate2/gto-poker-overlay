@@ -16,7 +16,7 @@ import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
 import { resampleAdjusted } from './exploit/resample';
 import { predictPostflop } from './ml/policy';
-import { Spot } from './ml/features';
+import { buildNetSpot } from './ml/serve-spot';
 import { ENGINE_FLAGS as F } from './engine-flags';
 import {
   liveVillainIndexes, estimateVillainRanges, heroRangeFor, preflopRangeFor,
@@ -63,6 +63,10 @@ type BoardTexture = 'dry' | 'semi_wet' | 'wet' | 'very_wet' | 'monotone' | 'pair
 // measure whether hero has the equity to call off a big preflop bet. Deliberately
 // not razor-precise — the solved charts handle the exact preflop decision; this is
 // the backstop that stops weak hands stacking off on any non-chart path.
+/** Facing a bet, the equity vs villain's betting range at which the net path
+ *  raises instead of calling (see decidePostflopNet). */
+const NET_RAISE_MIN_EQ = 0.60;
+
 const PREFLOP_VALUE_RANGE = new Set<string>([
   'AA', 'KK', 'QQ', 'JJ', 'TT', '99', '88', '77', '66', '55',
   'AKs', 'AQs', 'AJs', 'ATs', 'A9s', 'A8s', 'A7s', 'A6s', 'A5s', 'A4s', 'A3s', 'A2s',
@@ -513,9 +517,10 @@ export class DecisionEngine {
   /**
    * Distilled neural-net postflop decision.
    *
-   * Builds a normalized `Spot` from GameState using the SAME encodeSpot feature
-   * module the training data was prepped with (no train/inference mismatch),
-   * runs predictPostflop (masked to legal actions), then:
+   * Builds a normalized `Spot` from GameState with buildNetSpot, which uses the
+   * same feature definitions as ml/prep.ts (pinned by
+   * tests/ml-serve-parity.test.ts), runs predictPostflop (masked to legal
+   * actions), then:
    *   - returns the argmax action,
    *   - for bet/raise, sizes via the existing board-texture sizing
    *     (getGTOBetSize) — the net only decides the action class, not the size,
@@ -534,65 +539,44 @@ export class DecisionEngine {
     const heroBet = hero?.currentBet || 0;
     const toCall = Math.max(0, state.currentBet - heroBet);
     const facingBet = toCall > 0;
-    const pot = Math.max(1, state.pot);
+    // One pot for sizing, pot odds and the net's features. A pot that does not
+    // read as positive falls back to 1 chip so fractions stay finite. (This used
+    // to be Math.max(1, pot), which on decimal stakes, where the pot is under 1,
+    // priced bets and pot odds against a 1-chip pot.)
+    const pot = state.pot > 0 ? state.pot : 1;
     const isIP = this.isInPosition(state);
 
-    // Betting-action context (mirrors prep.ts: preflop aggressor + this-street
-    // bet/raise counts) so the net sees who's driving and whether it's a raised
-    // pot. Computed from GameState.actionHistory to match the training labels.
-    const pfActions = state.actionHistory.preflop || [];
-    let pfAggressor: string | null = null;
-    for (const a of pfActions) if (a.type === 'raise' || a.type === 'allin') pfAggressor = a.playerName;
-    const isPreflopAggressor = !!hero && pfAggressor === hero.name;
-    const curActions = state.actionHistory[street] || [];
-    let streetBetCount = 0;
-    let facedRaiseThisStreet = false;
-    for (const a of curActions) {
-      if (a.type === 'bet') streetBetCount++;
-      else if (a.type === 'raise' || a.type === 'allin') { streetBetCount++; facedRaiseThisStreet = true; }
-    }
-
-    const spot: Spot = {
-      holeCards: heroCards,
-      board: board.map(c => cardToId(c)),
-      street,
-      heroPos: isIP ? 'IP' : 'OOP',
-      facingBet,
-      isPreflopAggressor, facedRaiseThisStreet, streetBetCount,
-      toCallFrac: toCall / pot,
-      // Offered size proxy: facing a bet -> the bet we'd be raising over; else
-      // a default value bet of ~2/3 pot. Sizing itself is decided below; this is
-      // only a feature signal mirroring how the dataset's available_moves offered
-      // a single Bet/Raise size.
-      offeredSizeFrac: facingBet ? toCall / pot : 0.66,
-      canCheck: !facingBet,
-      canBet: !facingBet,
-      canCall: facingBet,
-      canRaise: facingBet,
-      canFold: facingBet,
-      threeBetPot: this.isThreeBetPot(state),
-    };
-
-    const pred = predictPostflop(spot);
-    const probs = pred.probs;
-    const action = pred.action;
-
-    // Bet/raise size from the distilled SIZE head (the solver-learned size for
-    // this spot), replacing the flat board-texture heuristic which systematically
-    // UNDER-bet (it used 0.33-0.66 pot; the solver bets ~0.66-0.9+). Falls back to
-    // the texture sizing if the size head is unavailable.
+    // Sizing first: the net's offeredSizeFrac feature is the bet / raise-to the
+    // engine would actually make here (prep.ts: the offered 'Bet X' / 'Raise X').
+    // Sizing is by board texture + street + hand strength (chooseBetSize): the
+    // learned size head was degenerate (~0.66 pot for every spot).
     const boardAnalysis = this.analyzeBoard(board);
     const bb = state.bigBlind || 20;
     const heroCat = Math.floor(
       evaluateHand([heroCards[0], heroCards[1], ...board.map(c => cardToId(c))]) / 1_000_000,
     );
-    // Varied sizing by board texture + street + hand strength. The learned size
-    // head was degenerate (returned ~0.66 pot for EVERY spot — dry, wet, river,
-    // all the same), so the bot bet a flat 65% everywhere. chooseBetSize uses the
-    // texture sizer (dry/range boards small, wet/dynamic big) and polarizes the
-    // river (value + bluffs bigger, thin pairs smaller).
     const betSize = this.chooseBetSize(boardAnalysis, pot, street, bb, heroCat);
     const raiseSize = Math.max(this.roundToStake(state.currentBet * 2.5, bb), state.currentBet + betSize);
+
+    // Build the net's Spot with the SAME feature definitions ml/prep.ts used at
+    // training time (see src/core/ml/serve-spot.ts and
+    // tests/ml-serve-parity.test.ts).
+    const spot = buildNetSpot(state, {
+      heroCards, isIP,
+      threeBetPot: this.isThreeBetPot(state),
+      betTo: betSize, raiseTo: raiseSize,
+      liveVillains: this.liveVillains(state).map(i => ({
+        stack: state.players[i]?.stack || 0,
+        currentBet: state.players[i]?.currentBet || 0,
+      })),
+      pot,
+    });
+    if (!spot) return null;
+    const isPreflopAggressor = !!spot.isPreflopAggressor;
+
+    const pred = predictPostflop(spot);
+    const probs = pred.probs;
+    const action = pred.action;
 
     const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
     const betProb = probs.bet + probs.raise;
@@ -636,6 +620,7 @@ export class DecisionEngine {
     // calls); pure air with no equity folds. This makes the basic turn/river
     // decision (call / fold / jam) correct ~always, instead of punting.
     let raiseDowngraded = false;
+    let raiseUpgraded = false;
     if (facingBet && finalAction !== 'fold') {
       const boardIds = board.map(c => cardToId(c));
       let eqR: number;
@@ -664,9 +649,32 @@ export class DecisionEngine {
           mixedStrategy: { fold: 1, check: 0, call: 0, bets: [] },
         };
       }
-      // Have the odds to continue, but not strong enough to raise for value:
-      // don't turn a marginal call into a -EV raise/bluff-raise. Just call.
-      if (finalAction === 'raise' && eqR < 0.60) { finalAction = 'call'; raiseDowngraded = true; }
+      // Raise or call, once hero continues: equity vs villain's betting range
+      // decides it. Below NET_RAISE_MIN_EQ a net raise becomes a call (don't turn
+      // a marginal call into a -EV raise/bluff-raise). At or above it a net call
+      // becomes a value raise, when a raise is offered and the board is not a
+      // flush board.
+      //
+      // The upgrade half exists because of the train/serve parity fix
+      // (serve-spot.ts). Before it, the net saw offeredSizeFrac = toCall/pot (a
+      // raise looked 2-3x cheaper than in training) and canRaise always true, and
+      // it raised more: in the heads-up tag-field sims on tuning seeds 7, 13 and
+      // 29 (sim/match.ts, 3000 deals each), of the 334 facing-bet spots with
+      // eqR >= 0.60, a raise offered and no flush board, the net's argmax was
+      // raise in 254 (76%) with the old features and 162 (49%) with the
+      // parity-correct ones. The old net's extra raises were what won against
+      // the tag field, so the parity fix alone lost there. Tuned on seeds 7, 13
+      // and 29 only, never on the evaluation seeds 1 and 202: A = swarm/next,
+      // A - B vs the tag field was -1.52, +7.15, +14.46 bb/100 for the parity fix
+      // alone and -20.62, -12.32, -4.33 with this upgrade (negative = B better).
+      // The PokerBench holdout does not back this as GTO: of its 354 facing-bet
+      // rows with eqR >= 0.60 and a raise offered, the solver raises 55% and the
+      // net's argmax 50%. It is an exploit of opponents who call too wide.
+      if (finalAction === 'raise' && eqR < NET_RAISE_MIN_EQ) {
+        finalAction = 'call'; raiseDowngraded = true;
+      } else if (finalAction === 'call' && spot.canRaise && !dangerousFlushBoard && eqR >= NET_RAISE_MIN_EQ) {
+        finalAction = 'raise'; raiseUpgraded = true;
+      }
     }
 
     // ----------------------------------------------------------------
@@ -735,6 +743,13 @@ export class DecisionEngine {
         call: finalAction === 'call' ? probs.call + betProb : probs.call,
         bets: [],
       };
+    } else if (raiseUpgraded) {
+      mixedStrategy = {
+        fold: probs.fold,
+        check: probs.check,
+        call: 0,
+        bets: [{ amount: raiseSize, probability: probs.call + betProb }],
+      };
     } else {
       mixedStrategy = {
         fold: probs.fold,
@@ -750,6 +765,8 @@ export class DecisionEngine {
       ? `net ${action}->${finalAction} (behind range on flush board)`
       : raiseDowngraded
       ? `net ${action}->${finalAction} (no equity to raise)`
+      : raiseUpgraded
+      ? `net ${action}->${finalAction} (value raise)`
       : `net ${action} (f${pct(probs.fold)} k${pct(probs.check)} ` +
         `c${pct(probs.call)} b${pct(probs.bet)} r${pct(probs.raise)})`;
 
