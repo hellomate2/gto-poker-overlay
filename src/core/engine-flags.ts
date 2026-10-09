@@ -30,7 +30,7 @@
 //                      solve falls back to the normal path.
 //
 // Defaults are set from the sim/match.ts measurements recorded in
-// sim/INTEGRATION.md. In Node the environment variable GPO_ENGINE_FLAGS
+// sim/INTEGRATION.md (see the comment on DEFAULT_ENGINE_FLAGS). In Node the environment variable GPO_ENGINE_FLAGS
 // overrides them (see applyFlagSpec); the browser build has no `process`, so the
 // defaults apply there.
 // ============================================================
@@ -52,12 +52,26 @@ export const ENGINE_FLAG_NAMES: readonly EngineFlagName[] = [
   'SUBGAME_SOLVER',
 ];
 
+// Defaults (evidence in sim/INTEGRATION.md; field-mode A-B < 0 and hu "A vs B"
+// < 0 mean the candidate beat swarm/base):
+//   RANGE_TRACKER ON: beat base against all four heads-up probes (raiser,
+//     barreler, checkraiser, tag; every 95% CI excludes 0) and in the 6-max
+//     field (-159 +/- 138 bb/100); heads-up vs base neutral (+1.4 +/- 10.5).
+//   SUBGAME_SOLVER ON: 6-max field -21.1 +/- 14.6 bb/100; heads-up vs base and
+//     every probe neutral-to-favorable; p95 decision latency under 0.6 s.
+//   FIX_LIVE_VILLAINS ON: a correctness fix, neutral in the field (-3.4 +/- 6.5
+//     over 9000 deals); part of the measured default package
+//     (FIX+RT+SG: 6-max -174 +/- 138, raiser -54 +/- 51, tag -50 +/- 40).
+//   DEFENSE OFF: big gains against the exploit probes, but heads-up base beats
+//     it (+22.6 +/- 18.5 alone, +22.7 +/- 20.4 with RANGE_TRACKER).
+//   MULTIWAY_EQUITY OFF: over-folds multiway; the 6-max field loses
+//     +269 +/- 204 bb/100 alone and +128 +/- 206 with FIX+RT.
 export const DEFAULT_ENGINE_FLAGS: Readonly<EngineFlags> = Object.freeze({
-  FIX_LIVE_VILLAINS: false,
-  RANGE_TRACKER: false,
+  FIX_LIVE_VILLAINS: true,
+  RANGE_TRACKER: true,
   MULTIWAY_EQUITY: false,
   DEFENSE: false,
-  SUBGAME_SOLVER: false,
+  SUBGAME_SOLVER: true,
 });
 
 /** The live flag object the engine reads on every decision. Mutate via setEngineFlags. */
