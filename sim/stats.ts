@@ -147,6 +147,36 @@ export function pressureLines(st: PressureStats): Record<string, string> {
   };
 }
 
+/**
+ * Difference of two frequencies (A - B, in percentage points) with a 95% CI from
+ * the normal approximation to two independent proportions:
+ *   se = sqrt(pA(1-pA)/nA + pB(1-pB)/nB).
+ * Opportunities from the same hand are not strictly independent, so treat the
+ * interval as approximate. NaN when either side has no opportunities.
+ */
+export function freqDiffCI(nA: number, dA: number, nB: number, dB: number): { diffPP: number; ci95PP: number } {
+  if (dA === 0 || dB === 0) return { diffPP: NaN, ci95PP: NaN };
+  const pA = nA / dA, pB = nB / dB;
+  const se = Math.sqrt(pA * (1 - pA) / dA + pB * (1 - pB) / dB);
+  return { diffPP: 100 * (pA - pB), ci95PP: 100 * 1.96 * se };
+}
+
+/** Per-metric A-B difference lines, keyed like pressureLines. */
+export function pressureDiffLines(a: PressureStats, b: PressureStats): Record<string, string> {
+  const f = (na: number, da: number, nb: number, db: number) => {
+    const d = freqDiffCI(na, da, nb, db);
+    return Number.isFinite(d.diffPP) ? `${d.diffPP >= 0 ? '+' : ''}${d.diffPP.toFixed(1)}pp ±${d.ci95PP.toFixed(1)}` : 'n/a';
+  };
+  return {
+    'fold-to-raise (postflop)': f(a.foldToRaise, a.foldToRaiseOpp, b.foldToRaise, b.foldToRaiseOpp),
+    'fold-to-flop-bet': f(a.foldToFlopBet, a.foldToFlopBetOpp, b.foldToFlopBet, b.foldToFlopBetOpp),
+    'fold-to-turn-barrel': f(a.foldToTurnBarrel, a.foldToTurnBarrelOpp, b.foldToTurnBarrel, b.foldToTurnBarrelOpp),
+    'fold-to-river-bet': f(a.foldToRiverBet, a.foldToRiverBetOpp, b.foldToRiverBet, b.foldToRiverBetOpp),
+    'turn barrel': f(a.turnBarrel, a.turnBarrelOpp, b.turnBarrel, b.turnBarrelOpp),
+    'river barrel': f(a.riverBarrel, a.riverBarrelOpp, b.riverBarrel, b.riverBarrelOpp),
+  };
+}
+
 // ------------------------------------------------------------------
 // Win-rate summary with a confidence interval.
 // ------------------------------------------------------------------

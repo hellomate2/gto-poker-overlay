@@ -54,7 +54,7 @@ import { existsSync, writeFileSync } from 'fs';
 import { pathToFileURL } from 'url';
 import { playRingHand, RingConfig, SeatAgent, SeatView, makeRng, mixSeed, shuffledDeck } from './ring';
 import { makeBotAgent, makeOpponent, archetypeNames, EngineCtor } from './agents';
-import { PressureStats, emptyPressure, accumulatePressure, addPressure, pressureLines, Running, bb100WithCI } from './stats';
+import { PressureStats, emptyPressure, accumulatePressure, addPressure, pressureLines, pressureDiffLines, Running, bb100WithCI } from './stats';
 import { DEFAULT_FIELD } from './ring-run';
 
 const BB = 20, SB = 10, START_BB = 100;
@@ -208,8 +208,8 @@ function renderSummary(s: MatchSummary, opts: MatchOptions, dirA: string, dirB: 
   }
   const lo = s.diff.bb100 - s.diff.ci95, hi = s.diff.bb100 + s.diff.ci95;
   L.push(`  -> ${lo > 0 ? 'A is better (CI excludes 0)' : hi < 0 ? 'B is better (CI excludes 0)' : 'no significant difference at 95%'}`);
-  const pa = pressureLines(s.pressureA), pb = pressureLines(s.pressureB);
-  for (const k of Object.keys(pa)) L.push(`  ${k.padEnd(26)} A ${pa[k].padEnd(22)} B ${pb[k]}`);
+  const pa = pressureLines(s.pressureA), pb = pressureLines(s.pressureB), pd = pressureDiffLines(s.pressureA, s.pressureB);
+  for (const k of Object.keys(pa)) L.push(`  ${k.padEnd(26)} A ${pa[k].padEnd(22)} B ${pb[k].padEnd(22)} A-B ${pd[k]}`);
   L.push(`(${secs.toFixed(0)}s wall, ${(2 * s.deals / Math.max(secs, 1e-9)).toFixed(1)} games/s)`);
   return L;
 }

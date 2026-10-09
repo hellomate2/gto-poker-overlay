@@ -4,7 +4,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
-import { accumulatePressure, emptyPressure, MinimalAction, Running, bb100WithCI } from '../sim/stats';
+import { accumulatePressure, emptyPressure, MinimalAction, Running, bb100WithCI, freqDiffCI } from '../sim/stats';
 import { Street } from '../src/types/poker';
 
 /** Build a log from "seat:street:type" tokens in order. */
@@ -81,5 +81,14 @@ describe('Running / bb100WithCI', () => {
     const s = bb100WithCI(r, 2);
     expect(s.bb100).toBeCloseTo(150, 9);
     expect(s.ci95).toBeCloseTo(1.96 * 100 * Math.sqrt(0.5) / 2, 9);
+  });
+});
+
+describe('freqDiffCI', () => {
+  it('uses the two-proportion normal approximation', () => {
+    const d = freqDiffCI(30, 100, 50, 100);
+    expect(d.diffPP).toBeCloseTo(-20, 9);
+    expect(d.ci95PP).toBeCloseTo(100 * 1.96 * Math.sqrt(0.3 * 0.7 / 100 + 0.5 * 0.5 / 100), 9);
+    expect(Number.isNaN(freqDiffCI(1, 0, 1, 2).diffPP)).toBe(true);
   });
 });
