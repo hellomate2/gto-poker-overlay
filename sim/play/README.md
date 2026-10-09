@@ -14,6 +14,7 @@ npm run play -- [--port 8765] [--bot engine] [--bot-dir PATH] [--flags SPEC]
                 [--delay 600] [--seed N] [--exploit] [--no-history | --history-dir DIR]
 ```
 
+- `--bot` picks the opponent kind: `engine` (default), `blueprint` (the C++ blueprint's average policy over `bp serve`, needs `--policy CKPT` and `GPO_BP_FLAGS`), or `blueprint+search` (the same plus real-time search at its river decisions, 1.5 s per decision; see blueprint/README.md, "Blueprint plus real-time search in the agent"). Example: `GPO_BP_FLAGS="--preset small --flop 200 --turn 200 --river 200 --bins 50 --abs-seed 7 --cache /Users/rg/.gpo/overnight/cache" npm run play -- --bot blueprint+search --policy /Users/rg/.gpo/eval/final.bin`.
 - `--bot-dir` loads `src/core/engine.ts` from any checkout (default: this one), the same way `sim/match.ts` does.
 - `--flags` sets `GPO_ENGINE_FLAGS` before the engine loads (`all`, `none`, `DEFENSE,RANGE_TRACKER`, `+DEFENSE`). Setting the environment variable yourself works too. Checkouts without `src/core/engine-flags.ts` ignore it.
 - `--exploit` lets the bot track you across hands (its profiler and exploit adjuster). Off by default, which matches the harness baseline.

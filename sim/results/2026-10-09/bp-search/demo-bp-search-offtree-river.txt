@@ -1,0 +1,11 @@
+loaded abstraction /Users/rg/.gpo/overnight/cache/abs-f200-t200-r200-b50-s7.bin
+river table: 134459 canonical rivers (iso 0.8s, EHS 5.2s, 178 MB)
+search: street 3, player 1 to act, history 'r1 c k k k k k b0.8', round start 'r1 c k k k k', off-tree line in round: k b0.8
+subgame: 69 nodes, 0 depth-limit leaves (k=0), hands 1081 vs 1081, pot0 600
+setup 0.001s, solve 1.499s, 1857 iterations, exploitability 0.05 chips (0.008% of pot0, within the subgame model)
+cpu time (all threads): setup 0.001s, solve 1.450s (0.78 ms of cpu per iteration)
+action     search blueprint
+f          0.0000        -
+c          0.3471        -
+r1         0.6529        -
+a          0.0000        -
