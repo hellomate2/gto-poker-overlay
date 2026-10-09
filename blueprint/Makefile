@@ -36,7 +36,16 @@ test: bin/bp_tests bin/bp_serve_tests bin/lbr_tests
 test-lbr: bin/lbr_tests
 	./bin/lbr_tests
 
+# ---- AIVAT tests (tests/test_aivat.cpp) ----
+bin/aivat_tests: $(LIB_SRC) tests/test_aivat.cpp $(HEADERS)
+	@mkdir -p bin
+	$(CXX) $(CXXFLAGS) -Isrc $(LIB_SRC) tests/test_aivat.cpp -o $@
+
+test-aivat: bin/aivat_tests
+	./bin/aivat_tests
+# ---- end AIVAT tests ----
+
 clean:
 	rm -rf bin
 
-.PHONY: all test test-lbr clean
+.PHONY: all test test-lbr test-aivat clean
