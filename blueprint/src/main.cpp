@@ -18,7 +18,13 @@
 // rebuild the exact tree a checkpoint was trained on; a fingerprint of both
 // is stored in every checkpoint and checked on load.
 // ============================================================
+#include <dirent.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
+
+#include <ctime>
+
+#include <csignal>
 
 #include <algorithm>
 #include <iomanip>
@@ -75,6 +81,23 @@ double max_rss_mb() {
 #else
   return ru.ru_maxrss / 1e3;  // kilobytes on Linux
 #endif
+}
+
+bool file_exists(const std::string& p) {
+  struct stat st;
+  return ::stat(p.c_str(), &st) == 0;
+}
+
+std::vector<std::string> list_dir(const std::string& dir, const std::string& suffix) {
+  std::vector<std::string> out;
+  DIR* d = ::opendir(dir.c_str());
+  if (!d) return out;
+  while (struct dirent* e = ::readdir(d)) {
+    std::string n = e->d_name;
+    if (n.size() > suffix.size() && n.compare(n.size() - suffix.size(), suffix.size(), suffix) == 0) out.push_back(n);
+  }
+  ::closedir(d);
+  return out;
 }
 
 // ---- hold'em setup -------------------------------------------------------------
@@ -377,9 +400,22 @@ int cmd_bench(const Args& a) {
   }
   h->tree.print_stats(stdout);
   double secs = a.getf("seconds", 10);
+  // --threads-list 1,16,48,96,192 picks the thread counts explicitly (cloud bench);
+  // otherwise 1, 2 and 4 threads up to --max-threads, as before.
   std::vector<int> threads_list;
-  for (const auto& s : std::vector<std::string>{"1", "2", "4"})
-    if (std::stoi(s) <= a.geti("max-threads", 4)) threads_list.push_back(std::stoi(s));
+  // Both spellings are accepted: --threads-list (cloud bench.sh) and --thread-list
+  // (the overnight script), e.g. --threads-list 1,16,48,96,192.
+  const char* tl_key = a.has("threads-list") ? "threads-list" : (a.has("thread-list") ? "thread-list" : nullptr);
+  if (tl_key) {
+    std::stringstream ss(a.get(tl_key));
+    std::string tok;
+    while (std::getline(ss, tok, ','))
+      if (!tok.empty()) threads_list.push_back(std::stoi(tok));
+    if (threads_list.empty()) die("empty --threads-list");
+  } else {
+    for (const auto& s : std::vector<std::string>{"1", "2", "4"})
+      if (std::stoi(s) <= a.geti("max-threads", 4)) threads_list.push_back(std::stoi(s));
+  }
   for (int th : threads_list) {
     McfrConfig m = holdem_mcfr(a);
     m.threads = th;
@@ -399,7 +435,15 @@ int cmd_bench(const Args& a) {
 }
 
 // ---- train ---------------------------------------------------------------------
+// SIGTERM / SIGINT ask a running `bp train` to stop after the current ~1 s chunk,
+// write its checkpoint and snapshot, and exit with status 75 (EX_TEMPFAIL), so a
+// spot-interruption notice or `systemctl stop` loses at most one chunk of work.
+volatile std::sig_atomic_t g_stop_signal = 0;
+extern "C" void on_stop_signal(int sig) { g_stop_signal = sig; }
+
 int cmd_train(const Args& a) {
+  std::signal(SIGTERM, on_stop_signal);
+  std::signal(SIGINT, on_stop_signal);
   auto h = setup_holdem(a, true);
   h->tree.print_stats(stdout);
   HoldemSampler smp{&h->abs};
@@ -409,10 +453,37 @@ int cmd_train(const Args& a) {
   Trainer<HoldemSampler> tr(h->tree, smp, m);
   std::string ckpt = out + "/ckpt.bin";
   if (a.has("resume")) {
-    if (tr.load(ckpt, h->hash)) std::printf("resumed from %s at iteration %lld\n", ckpt.c_str(), (long long)tr.iter);
-    else std::printf("no compatible checkpoint at %s; starting fresh\n", ckpt.c_str());
+    // Try ckpt.bin, then snapshots newest first (names sort by iteration).
+    // If any candidate file exists but none loads, refuse to start: starting
+    // fresh would overwrite hours of training with an empty table.
+    std::vector<std::string> cands;
+    if (file_exists(ckpt)) cands.push_back(ckpt);
+    std::vector<std::string> snaps = list_dir(out + "/snapshots", ".bin");
+    std::sort(snaps.rbegin(), snaps.rend());
+    for (auto& s : snaps) cands.push_back(out + "/snapshots/" + s);
+    bool loaded = false;
+    for (auto& c : cands) {
+      if (tr.load(c, h->hash)) {
+        std::printf("resumed from %s at iteration %lld\n", c.c_str(), (long long)tr.iter);
+        loaded = true;
+        break;
+      }
+      std::printf("could not load %s (wrong tree/abstraction or damaged); trying the next one\n", c.c_str());
+    }
+    if (!loaded && !cands.empty()) die("--resume: checkpoint files exist under " + out + " but none loads");
+    if (!loaded) std::printf("no checkpoint under %s; starting fresh\n", out.c_str());
   }
   double minutes = a.getf("minutes", 25);
+  // --until-epoch T: stop at Unix time T at the latest (a fixed deadline that
+  // survives restarts, unlike --minutes, which counts from process start).
+  if (a.has("until-epoch")) {
+    double left = (double(a.geti("until-epoch", 0)) - double(std::time(nullptr))) / 60.0;
+    if (left <= 0) {
+      std::printf("deadline already passed; nothing to do\n");
+      return 0;
+    }
+    minutes = std::min(minutes, left);
+  }
   int64_t max_iters = a.geti("iters", INT64_MAX);
   double log_every = a.getf("log-every-sec", 30);
   double ckpt_every = a.getf("ckpt-every-min", 5) * 60;
@@ -431,14 +502,14 @@ int cmd_train(const Args& a) {
   uint64_t last_vis = 0, last_ex = 0, last_pr = 0;
   int64_t chunk = 200 * m.threads;
   std::vector<float> prev_pol = policy_table(tr, h->tree);
-  while (now_sec() < t_end && tr.iter < max_iters) {
+  while (now_sec() < t_end && tr.iter < max_iters && !g_stop_signal) {
     double c0 = now_sec();
     tr.run(std::min(max_iters, tr.iter + chunk), t_end - c0, chunk, nullptr);
     double cdt = now_sec() - c0;
     // aim for ~1 s chunks so logs and the deadline stay responsive
     if (cdt > 0) chunk = std::max<int64_t>(m.threads, int64_t(double(chunk) / cdt));
     double t = now_sec();
-    bool final_round = t >= t_end || tr.iter >= max_iters;
+    bool final_round = t >= t_end || tr.iter >= max_iters || g_stop_signal;
     if (t - last_log >= log_every || final_round) {
       double dt = t - last_log;
       std::vector<float> pol = policy_table(tr, h->tree);
@@ -477,6 +548,10 @@ int cmd_train(const Args& a) {
   std::fclose(log);
   std::printf("done: %lld iterations in %.1fs; peak RSS %.0f MB; checkpoint %s\n", (long long)tr.iter, now_sec() - t0,
               max_rss_mb(), ckpt.c_str());
+  if (g_stop_signal) {
+    std::printf("stopped by signal %d after writing the checkpoint; rerun with --resume\n", int(g_stop_signal));
+    return 75;
+  }
   return 0;
 }
 

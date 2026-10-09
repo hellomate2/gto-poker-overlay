@@ -1,0 +1,3 @@
+threads,iters_per_sec,visits_per_sec,seconds
+1,45221,13100000,10
+4,166468,46200000,10

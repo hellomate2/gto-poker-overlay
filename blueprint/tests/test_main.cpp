@@ -387,6 +387,135 @@ static void test_regret_floor() {
   CHECK(tr.pruned.load() > 0);
 }
 
+// PLAN.md M0: in no-limit, all-in is a legal child of every decision node
+// where both players still have chips behind, including nodes where the
+// street's raise cap is reached; capped nodes offer exactly fold, call,
+// all-in. Limit games keep the hard cap (Leduc's 288 infosets above).
+static void test_capped_allin() {
+  int hb[4] = {169, 10, 10, 10};
+  for (const char* preset : {"tiny", "small", "medium"}) {
+    BettingTree h;
+    h.build(holdem_config(preset), hb);
+    size_t eligible = 0, with_allin = 0, capped = 0, capped_ok = 0;
+    for (const Node& n : h.nodes) {
+      if (n.type != DECISION) continue;
+      int p = n.player, o = 1 - p;
+      int32_t to_call = std::max(n.contrib[0], n.contrib[1]) - n.contrib[p];
+      if (n.contrib[o] >= h.cfg.stack || n.contrib[p] + to_call >= h.cfg.stack) continue;
+      eligible++;
+      bool has = false;
+      for (int a = 0; a < n.nact; a++) has |= h.nodes[n.child + a].act_kind == ACT_ALLIN;
+      with_allin += has;
+      if (n.raises >= h.cfg.street[n.street].max_raises) {
+        capped++;
+        capped_ok += n.nact == 3 && h.nodes[n.child].act_kind == ACT_FOLD &&
+                     h.nodes[n.child + 1].act_kind == ACT_CALL && h.nodes[n.child + 2].act_kind == ACT_ALLIN;
+      }
+    }
+    std::printf("  %s: %zu nodes with chips behind, %zu offer all-in; %zu capped, %zu are fold/call/all-in\n",
+                preset, eligible, with_allin, capped, capped_ok);
+    CHECK(eligible > 0 && with_allin == eligible);
+    CHECK(capped > 0 && capped_ok == capped);
+  }
+  // concrete line: small preset preflop cap is 3 raises; after r0.5 r0.5 r0.5
+  // (SB, BB, SB) the BB faces the third raise and may still shove.
+  BettingTree h;
+  h.build(holdem_config("small"), hb);
+  int64_t capped = h.find({"r0.5", "r0.5", "r0.5"});
+  CHECK(capped > 0 && h.nodes[capped].raises == 3);
+  int64_t shove = h.find({"r0.5", "r0.5", "r0.5", "a"});
+  CHECK(shove > 0 && h.nodes[capped].player == 1 && h.nodes[shove].contrib[1] == h.cfg.stack);
+  int64_t call = h.find({"r0.5", "r0.5", "r0.5", "a", "c"});
+  CHECK(call > 0 && h.nodes[call].type == SHOWDOWN);
+}
+
+// Negative-regret pruning must not change the value a traversal returns.
+// Case 1: a node with one positive-regret action and one action far below
+// the prune threshold: the pruned action has probability 0, so the value is
+// the same pruned and unpruned. Case 2 (the "every action pruned" edge
+// case): all regrets below the threshold. Regret matching then plays
+// uniformly; before the fix every action was skipped and the node returned
+// 0 without updating anything. Now nothing is pruned at such a node.
+static void test_prune_value() {
+  BettingTree tree;
+  int b[4] = {3, 9, 1, 1};
+  tree.build(leduc_config(), b);
+  McfrConfig m;
+  m.regret_scale = 10000;
+  m.prune_threshold = -2000000;
+  m.regret_floor = -5000000;
+  const Node& root = tree.nodes[0];
+  CHECK(root.nact == 2 && tree.nodes[root.child].act_kind == ACT_CHECK);
+  auto run_case = [&](int32_t r_check, int32_t r_bet, bool expect_pruned) {
+    int mism = 0, nonzero = 0;
+    uint64_t pruned_total = 0;
+    for (int trial = 0; trial < 200; trial++) {
+      Rng dr(1000 + trial);
+      Deal d;
+      LeducSampler{}.sample(dr, d);
+      Trainer<LeducSampler> tp(tree, LeducSampler{}, m), tu(tree, LeducSampler{}, m);
+      for (auto* t : {&tp, &tu}) {
+        uint64_t base = root.slot + uint64_t(d.bucket[0][0]) * root.nact;
+        t->R[base] = r_check;
+        t->R[base + 1] = r_bet;
+      }
+      Rng r1(77 + trial), r2(77 + trial);
+      Trainer<LeducSampler>::Counters c1, c2;
+      double vp = tp.traverse(0, 0, d, r1, true, c1);
+      double vu = tu.traverse(0, 0, d, r2, false, c2);
+      mism += vp != vu;
+      nonzero += vu != 0;
+      pruned_total += c1.pruned;
+    }
+    CHECK(mism == 0);
+    CHECK(nonzero > 0);
+    CHECK(expect_pruned ? pruned_total > 0 : pruned_total == 0);
+  };
+  run_case(1000, -3000000, true);       // bet pruned, value unchanged
+  run_case(-3000000, -3000000, false);  // all below threshold: nothing pruned
+  run_case(-3000000, -2500000, false);
+}
+
+// Checkpoint then resume reproduces an uninterrupted run exactly (single
+// thread, same chunking): regrets, sums, iteration counter and effective
+// weight all match, with the Linear-CFR discount schedule and the pruning
+// start both falling after the save point.
+static void test_resume_identical() {
+  BettingTree tree;
+  int b[4] = {3, 9, 1, 1};
+  tree.build(leduc_config(), b);
+  McfrConfig m;
+  m.regret_scale = 10000;
+  m.discount_every = 1000;
+  m.lcfr_until = 7000;
+  m.prune_after = 5000;
+  m.prune_threshold = -200000;
+  m.regret_floor = -210000;
+  Trainer<LeducSampler> full(tree, LeducSampler{}, m), first(tree, LeducSampler{}, m), second(tree, LeducSampler{}, m);
+  full.run(4000, 1e9, 1000, nullptr);
+  full.run(12000, 1e9, 1000, nullptr);
+  first.run(4000, 1e9, 1000, nullptr);
+  std::string path = "/tmp/bp_test_resume.bin";
+  CHECK(first.save(path, 42));
+  CHECK(second.load(path, 42));
+  CHECK(second.iter == 4000 && second.weight == first.weight);
+  second.run(12000, 1e9, 1000, nullptr);
+  CHECK(second.iter == full.iter && second.iter == 12000);
+  CHECK(second.weight == full.weight);
+  CHECK(second.R == full.R);
+  CHECK(second.S == full.S);
+  CHECK(second.pruned.load() > 0);  // pruning did run after the resume
+  // a damaged checkpoint (truncated) is rejected
+  {
+    FILE* f = std::fopen(path.c_str(), "r+b");
+    CHECK(f && ::ftruncate(::fileno(f), 100) == 0);
+    std::fclose(f);
+    Trainer<LeducSampler> t3(tree, LeducSampler{}, m);
+    CHECK(!t3.load(path, 42));
+  }
+  std::remove(path.c_str());
+}
+
 static void test_quantize_and_export() {
   double p[3] = {0.5, 0.3, 0.2};
   uint8_t q[3];
@@ -442,6 +571,9 @@ int main(int argc, char** argv) {
       {"checkpoint + discount", test_checkpoint_and_discount, false},
       {"regret floor + pruning", test_regret_floor, false},
       {"quantize + export", test_quantize_and_export, false},
+      {"all-in legal at capped nodes", test_capped_allin, false},
+      {"pruning keeps node value", test_prune_value, false},
+      {"checkpoint resume is exact", test_resume_identical, false},
   };
   for (auto& t : tests) {
     if (quick && t.slow) continue;
