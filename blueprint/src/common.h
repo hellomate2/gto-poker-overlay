@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -141,7 +142,20 @@ inline uint64_t fnv1a(const std::string& s, uint64_t h = 1469598103934665603ULL)
   return fnv1a(s.data(), s.size(), h);
 }
 
+// `bp serve` answers search requests in-process; there an input error deep
+// inside the search code (a token that is not legal at that point of the line,
+// a board of the wrong size) must become an error reply, not an exit. Serve
+// sets die_throws while it handles a request; every CLI keeps exiting.
+struct DieError : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+inline bool& die_throws() {
+  static bool v = false;
+  return v;
+}
+
 [[noreturn]] inline void die(const std::string& msg) {
+  if (die_throws()) throw DieError(msg);
   std::fprintf(stderr, "fatal: %s\n", msg.c_str());
   std::exit(1);
 }

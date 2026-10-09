@@ -18,6 +18,12 @@
 //              and abstraction flags from GPO_BP_FLAGS, binary from
 //              GPO_BP_BIN or <bot-dir>/blueprint/bin/bp). Heads-up, trained
 //              at 100 BB; average policy, no search. See sim/blueprint-serve.ts.
+//
+//   blueprint+search
+//              the same agent with real-time search at its river decisions
+//              (`bp serve` "search", 1.5 s budget, blueprint fallback on
+//              timeout or error; GPO_BP_SEARCH=turn+river adds the turn).
+//              `npm run play -- --bot blueprint+search --policy CKPT`
 // ============================================================
 
 import { execFileSync } from 'child_process';
@@ -104,9 +110,25 @@ const blueprintBot: BotFactory = async (opts) => {
   };
 };
 
+const blueprintSearchBot: BotFactory = async (opts) => {
+  if (!opts.policyFile) throw new Error('--bot blueprint+search needs --policy <checkpoint>');
+  const seat = await makeBlueprintSeatAgent(`blueprint+search:${opts.policyFile}`, 'Bot', opts.dir);
+  const budget = process.env.GPO_BP_SEARCH_MS ?? '1500';
+  return {
+    info: {
+      kind: 'blueprint+search',
+      label: `Blueprint ${seat.info.abs}, iteration ${seat.info.iterations} + ${seat.agent.searchMode} search (${budget} ms)`,
+      dir: opts.dir, commit: gitDescribe(opts.dir),
+      flags: (process.env.GPO_BP_FLAGS ?? DEFAULT_BP_FLAGS),
+    },
+    agent: seat,
+  };
+};
+
 export const BOT_FACTORIES: Record<string, BotFactory> = {
   engine: engineBot,
   blueprint: blueprintBot,
+  'blueprint+search': blueprintSearchBot,
 };
 
 export async function makePlayBot(kind: string, opts: BotOptions): Promise<PlayBot> {

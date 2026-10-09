@@ -94,5 +94,14 @@ int search_cli(const std::string& cmd, const std::map<std::string, std::string>&
                const Abstraction& abs, const std::vector<float>& pol);
 int subgame_cli(const std::map<std::string, std::string>& kv);
 
+// `bp serve` "search" request: the keys of `bp search` ("history", "board",
+// "hand" or "hole", "budget-ms", "max-iters", "threads", "k", "bias",
+// "rollouts", "seed", "max-hands", "algo", ...) as a flat map. Same parsing
+// and the same run_search as `bp search`; defaults differ only in budget-ms
+// (1500) and threads (1). Returns the reply fields, each starting with ','
+// (labels, probs, bp_probs, iters, complete, timings). Errors call die(),
+// which throws DieError while die_throws() is set.
+std::string serve_search(const BettingTree& tree, const BpView& bv, const std::map<std::string, std::string>& req);
+
 }  // namespace rt
 }  // namespace bp

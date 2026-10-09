@@ -844,12 +844,34 @@ SearchOut run_search(const BpView& bv, const SearchSpot& sp, int k, double bias,
   return o;
 }
 
-int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, const std::vector<float>& pol) {
-  BpView bv = holdem_view(tree, abs, pol);
+// One parsed search request. `bp search` (flags) and `bp serve` (a JSON
+// "search" request with the same keys) both go through parse_search_request
+// and run_search, so a served search equals the command-line search for the
+// same spot and settings.
+struct SearchRequest {
   SearchSpot sp;
+  int street = 0;  // street of the round start
+  int k = 4;
+  double bias = 5;
+  size_t cap = 0;
+  int rollouts = 24;
+  double budget_s = 2;
+  int max_iters = 1000000;
+  int threads = 4;
+  uint64_t seed = 1;
+  SolverConfig sc;
+};
+
+SearchRequest parse_search_request(const KV& a, const BettingTree& tree, const BpView& bv,
+                                   double default_budget_ms = 2000, int default_threads = 4) {
+  SearchRequest r;
+  SearchSpot& sp = r.sp;
   sp.board = parse_cards(a.get("board"));
   std::vector<int> hh = parse_cards(a.get("hand"));
   if (hh.size() != 2) die("search: --hand needs two cards, e.g. 'Qs Qh'");
+  if (hh[0] == hh[1]) die("search: the two hole cards are the same card");
+  for (int c : sp.board)
+    if (c == hh[0] || c == hh[1]) die("search: a hole card is also on the board");
   sp.hero_hand.c[0] = hh[0];
   sp.hero_hand.c[1] = hh[1];
   sp.hero_hand.nc = 2;
@@ -877,17 +899,25 @@ int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, con
     for (size_t x = m; x < toks.size(); x++) in_round.push_back(toks[x]);
     sp.line = in_round;
     sp.node = u;
+    if (tree.nodes[sp.rs].street < 2)
+      die("search: off-tree sizes are supported on the turn and river (flop leaves need blueprint nodes)");
+    if (int(sp.board.size()) != bv.board_len[tree.nodes[sp.rs].street])
+      die("search: board size does not match the street of the history");
     // the player to act after the line: replay it on a throwaway rule build
     Game probe;
     for (int p = 0; p < 2; p++) probe.hands[p].clear();
     build_by_rules(probe, bv, sp.rs, sp.board, sp.line);
     int c = 0;
-    for (const std::string& tk : sp.line)
+    for (const std::string& tk : sp.line) {
+      int nx = -1;
       for (int x = 0; x < probe.nodes[c].nact; x++)
         if (probe.nodes[probe.nodes[c].first + x].label == tk) {
-          c = probe.nodes[c].first + x;
+          nx = probe.nodes[c].first + x;
           break;
         }
+      if (nx < 0) die("search: token '" + tk + "' is not an action of the rebuilt round");
+      c = nx;
+    }
     if (probe.nodes[c].type != S_DEC) die("search: the history does not end at a decision");
     sp.hero = probe.nodes[c].player;
   } else {
@@ -899,22 +929,43 @@ int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, con
   const Node& n = tree.nodes[sp.rs];
   if (n.street == 0) die("search: preflop search is not implemented (play the blueprint preflop)");
   if (int(sp.board.size()) != bv.board_len[n.street]) die("search: board size does not match the street of the history");
-  int k = int(a.i("k", 4));
-  size_t cap = size_t(a.i("max-hands", n.street == 1 ? 120 : n.street == 2 ? 300 : 1326));
-  SolverConfig sc;
+  r.street = n.street;
+  r.k = int(a.i("k", 4));
+  r.cap = size_t(a.i("max-hands", n.street == 1 ? 120 : n.street == 2 ? 300 : 1326));
   std::string algo = a.get("algo", "dcfr");
   if (algo == "cfr+") {
-    sc.algo = SolverConfig::CFRPLUS;
-    sc.cfrp_delay = int(a.i("cfrp-delay", 0));
+    r.sc.algo = SolverConfig::CFRPLUS;
+    r.sc.cfrp_delay = int(a.i("cfrp-delay", 0));
   } else if (algo == "dcfr") {
-    sc.alpha = a.f("alpha", 1.5);
-    sc.beta = a.f("beta", 0.5);
-    sc.gamma = a.f("gamma", 2.0);
+    r.sc.alpha = a.f("alpha", 1.5);
+    r.sc.beta = a.f("beta", 0.5);
+    r.sc.gamma = a.f("gamma", 2.0);
   } else {
     die("search: --algo must be dcfr or cfr+");
   }
-  SearchOut o = run_search(bv, sp, k, a.f("bias", 5), cap, int(a.i("rollouts", 24)), a.f("budget-ms", 2000) / 1000.0,
-                           int(a.i("max-iters", 1000000)), int(a.i("threads", 4)), uint64_t(a.i("seed", 1)), true, sc);
+  r.bias = a.f("bias", 5);
+  r.rollouts = int(a.i("rollouts", 24));
+  r.budget_s = a.f("budget-ms", default_budget_ms) / 1000.0;
+  r.max_iters = int(a.i("max-iters", 1000000));
+  r.threads = int(a.i("threads", default_threads));
+  r.seed = uint64_t(a.i("seed", 1));
+  if (r.threads < 1 || r.threads > 64) die("search: threads must be 1..64");
+  if (r.max_iters < 1) die("search: max-iters must be at least 1");
+  return r;
+}
+
+SearchOut run_request(const BpView& bv, const SearchRequest& r, bool want_expl) {
+  return run_search(bv, r.sp, r.k, r.bias, r.cap, r.rollouts, r.budget_s, r.max_iters, r.threads, r.seed, want_expl,
+                    r.sc);
+}
+
+int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, const std::vector<float>& pol) {
+  BpView bv = holdem_view(tree, abs, pol);
+  SearchRequest r = parse_search_request(a, tree, bv);
+  const SearchSpot& sp = r.sp;
+  const int k = r.k;
+  const Node& n = tree.nodes[sp.rs];
+  SearchOut o = run_request(bv, r, true);
   std::string ln;
   for (auto& x : sp.line) ln += (ln.empty() ? "" : " ") + x;
   std::printf("search: street %d, player %d to act, history '%s', round start '%s'%s%s\n", n.street, sp.hero,
@@ -931,6 +982,15 @@ int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, con
   for (size_t x = 0; x < o.labels.size(); x++) {
     if (o.bp_strat.empty()) std::printf("%-8s %8.4f %8s\n", o.labels[x].c_str(), o.strat[x], "-");
     else std::printf("%-8s %8.4f %8.4f\n", o.labels[x].c_str(), o.strat[x], o.bp_strat[x]);
+  }
+  if (a.has("json")) {
+    // Machine-readable copy of the result (same fields as a serve "search"
+    // reply), used by the serve/CLI parity test.
+    std::printf("json: {\"labels\":[");
+    for (size_t x = 0; x < o.labels.size(); x++) std::printf("%s\"%s\"", x ? "," : "", o.labels[x].c_str());
+    std::printf("],\"probs\":[");
+    for (size_t x = 0; x < o.strat.size(); x++) std::printf("%s%.17g", x ? "," : "", o.strat[x]);
+    std::printf("],\"iters\":%d}\n", o.iters);
   }
   return 0;
 }
@@ -1087,6 +1147,43 @@ int search_cli(const std::string& cmd, const std::map<std::string, std::string>&
   if (cmd == "search") return cmd_search(a, tree, abs, pol);
   if (cmd == "search-h2h") return cmd_search_h2h(a, tree, abs, pol);
   die("unknown search command " + cmd);
+}
+
+// `bp serve` "search" request (see search.h). Keys are the `bp search` flag
+// names; "hole" is accepted for "hand". Serve-only keys: "min-iters" (the
+// reply's "complete" is false when the budget ran out before that many
+// iterations; the client then plays the blueprint) and "expl" (1 = also
+// report the subgame exploitability, computed after the budget).
+std::string serve_search(const BettingTree& tree, const BpView& bv, const std::map<std::string, std::string>& req) {
+  std::map<std::string, std::string> kv = req;
+  if (!kv.count("hand") && kv.count("hole")) kv["hand"] = kv["hole"];
+  KV a{kv};
+  const double t0 = now_sec();
+  SearchRequest r = parse_search_request(a, tree, bv, 1500, 1);
+  const bool want_expl = a.i("expl", 0) != 0;
+  SearchOut o = run_request(bv, r, want_expl);
+  const double total_ms = 1000 * (now_sec() - t0);
+  const int min_iters = int(a.i("min-iters", 0));
+  std::ostringstream out;
+  char buf[48];
+  auto num = [&](double v) {
+    std::snprintf(buf, sizeof buf, "%.17g", v);
+    return std::string(buf);
+  };
+  std::string ln;
+  for (auto& x : r.sp.line) ln += (ln.empty() ? "" : " ") + x;
+  out << ",\"street\":" << r.street << ",\"player\":" << r.sp.hero << ",\"offtree\":" << (r.sp.offtree ? "true" : "false")
+      << ",\"round_start\":\"" << tree.history(r.sp.rs) << "\",\"line\":\"" << ln << "\",\"labels\":[";
+  for (size_t x = 0; x < o.labels.size(); x++) out << (x ? "," : "") << "\"" << o.labels[x] << "\"";
+  out << "],\"probs\":[";
+  for (size_t x = 0; x < o.strat.size(); x++) out << (x ? "," : "") << num(o.strat[x]);
+  out << "],\"bp_probs\":[";
+  for (size_t x = 0; x < o.bp_strat.size(); x++) out << (x ? "," : "") << num(o.bp_strat[x]);
+  out << "],\"iters\":" << o.iters << ",\"complete\":" << (o.iters >= min_iters ? "true" : "false")
+      << ",\"hands\":[" << o.H[0] << "," << o.H[1] << "],\"nodes\":" << o.nodes << ",\"setup_ms\":"
+      << num(1000 * o.setup_s) << ",\"solve_ms\":" << num(1000 * o.solve_s) << ",\"ms\":" << num(total_ms);
+  if (want_expl) out << ",\"expl_pct\":" << num(100 * o.expl / o.pot0);
+  return out.str();
 }
 
 // ---- `bp subgame`: TS spot cross-check ------------------------------------------------
