@@ -79,6 +79,11 @@ export interface SeatView {
   numPlayers: number;
   /** Seats that have not folded (includes this seat). */
   liveSeats: number;
+  /** Smallest legal bet/raise-TO this street (currentBet + last full raise
+   *  increment). May exceed maxTo, in which case the only raise is all-in. */
+  minTo: number;
+  /** Largest legal bet/raise-TO this street: this seat's all-in. */
+  maxTo: number;
 }
 
 export interface ActResult {
@@ -114,6 +119,8 @@ export interface RingHandLog {
   sidePot: boolean;
   reachedStreet: Street;
   button: number;
+  /** Chips each seat put into the pot this hand (blinds included). */
+  committed: number[];
   holes: [number, number][];
   board: number[];
   /** GameState snapshot at hand end (full actionHistory + positions), for
@@ -161,6 +168,73 @@ export function shuffledDeck(rng: () => number): number[] {
     [d[i], d[j]] = [d[j], d[i]];
   }
   return d;
+}
+
+/**
+ * Raise-to target the engine applies for a bet/raise/allin request. Shared by
+ * the betting loop below and by validateAction, so a request that passes
+ * validation is applied exactly as asked.
+ *   - 'allin' or a request at/above the all-in amount -> all-in (maxTo)
+ *   - a missing / non-finite request -> the minimum raise (Infinity -> all-in)
+ *   - below the minimum raise -> floored to the minimum (or all-in if shorter)
+ * `minRaiseInc` is the last full raise increment (bb at the start of a street).
+ */
+export function clampRaiseTo(
+  type: ActionType, req: number | undefined,
+  currentBet: number, minRaiseInc: number, committed: number, stack: number,
+): number {
+  const maxTo = committed + stack;
+  let target: number;
+  if (type === 'allin') target = maxTo;
+  else target = req === undefined || !Number.isFinite(req) ? (req === Infinity ? maxTo : currentBet + minRaiseInc) : Math.round(req);
+  const minTo = currentBet + minRaiseInc;
+  if (target >= maxTo) target = maxTo;                         // all-in
+  else if (target < minTo) target = Math.min(minTo, maxTo);    // floor to a legal raise
+  return target;
+}
+
+/** Can this seat put in more than a call right now? */
+export function canRaiseNow(view: Pick<SeatView, 'canRaise' | 'maxTo' | 'state'>): boolean {
+  return view.canRaise && view.maxTo > view.state.currentBet;
+}
+
+/**
+ * Strict legality check for a requested action at a decision point (the
+ * interactive play server uses it; bots go through the lenient normalization in
+ * the betting loop instead). Rejects instead of coercing:
+ *   fold when checking is free, check facing a bet, call with nothing to call,
+ *   a bet/raise when betting is closed or the stack cannot exceed a call, and a
+ *   raise-to amount outside [min(minTo, maxTo), maxTo] or not a whole chip.
+ * On success `act` is what to hand back to the engine; for bet/raise it carries
+ * the exact raise-to, which clampRaiseTo leaves unchanged.
+ */
+export function validateAction(
+  view: SeatView, req: { action: string; amount?: number },
+): { ok: true; act: ActResult } | { ok: false; error: string } {
+  const a = req.action;
+  if (a === 'fold') {
+    if (view.canCheck) return { ok: false, error: 'nothing to call, so check instead of folding' };
+    return { ok: true, act: { action: 'fold' } };
+  }
+  if (a === 'check') {
+    if (!view.canCheck) return { ok: false, error: `cannot check facing a bet of ${view.toCall} to call` };
+    return { ok: true, act: { action: 'check' } };
+  }
+  if (a === 'call') {
+    if (view.canCheck) return { ok: false, error: 'nothing to call' };
+    return { ok: true, act: { action: 'call' } };
+  }
+  if (a === 'bet' || a === 'raise' || a === 'allin') {
+    if (!canRaiseNow(view)) return { ok: false, error: 'betting is closed for you here: call or fold' };
+    if (a === 'allin') return { ok: true, act: { action: 'raise', toAmount: view.maxTo } };
+    const amt = req.amount;
+    if (typeof amt !== 'number' || !Number.isInteger(amt)) return { ok: false, error: 'bet/raise needs a whole-chip raise-to amount' };
+    const lo = Math.min(view.minTo, view.maxTo);
+    if (amt < lo) return { ok: false, error: `minimum ${a} is to ${lo}` };
+    if (amt > view.maxTo) return { ok: false, error: `maximum ${a} is to ${view.maxTo} (all-in)` };
+    return { ok: true, act: { action: 'raise', toAmount: amt } };
+  }
+  return { ok: false, error: `unknown action "${a}"` };
 }
 
 /**
@@ -375,6 +449,8 @@ export async function playRingHand(
         seat: s,
         numPlayers: n,
         liveSeats: liveCount(),
+        minTo: currentBet + minRaise,
+        maxTo: committedStreet[s] + stack[s],
       };
 
       let res: ActResult;
@@ -414,16 +490,7 @@ export async function playRingHand(
       }
 
       // bet / raise / allin -> a raise-TO target, clamped to legal bounds.
-      const maxTo = committedStreet[s] + stack[s];
-      let target: number;
-      if (type === 'allin') target = maxTo;
-      else {
-        const req = res.toAmount;
-        target = req === undefined || !Number.isFinite(req) ? (req === Infinity ? maxTo : currentBet + minRaise) : Math.round(req);
-      }
-      const minTo = currentBet + minRaise;
-      if (target >= maxTo) target = maxTo;                         // all-in
-      else if (target < minTo) target = Math.min(minTo, maxTo);    // floor to a legal raise
+      const target = clampRaiseTo(type, res.toAmount, currentBet, minRaise, committedStreet[s], stack[s]);
 
       if (target <= currentBet) {
         // Degenerate "raise" that doesn't exceed the live bet (e.g. a short stack
@@ -500,6 +567,6 @@ export async function playRingHand(
     nets, actions, wentToShowdown,
     showdownSeats: wentToShowdown ? live : [],
     sidePot: live.length >= 2 && new Set(live.map(s => committedHand[s])).size > 1,
-    reachedStreet, button, holes, board: boardIds.slice(), finalState,
+    reachedStreet, button, committed: committedHand.slice(), holes, board: boardIds.slice(), finalState,
   };
 }
