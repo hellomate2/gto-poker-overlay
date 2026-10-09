@@ -13,6 +13,8 @@
 //                                 lower bound inside the abstraction)
 //   bp export --ckpt F --out G    write the compact policy file for TS
 //   bp show   --ckpt F            print the preflop opening strategy
+//   bp lbr    --target F          local best response (full-game exploitability
+//                                 lower bound, src/lbr.h)
 //
 // Every hold'em command takes the same tree + abstraction options so it can
 // rebuild the exact tree a checkpoint was trained on; a fingerprint of both
@@ -36,6 +38,7 @@
 #include "eval.h"
 #include "export.h"
 #include "games.h"
+#include "lbr.h"
 #include "mccfr.h"
 #include "tree.h"
 
@@ -708,6 +711,69 @@ int cmd_br(const Args& a) {
   return 0;
 }
 
+// ---- local best response (src/lbr.h) --------------------------------------------------
+// Plays an LBR agent (Lisy and Bowling 2017) against a checkpoint or a simple
+// bot in duplicate and reports LBR's winnings: a lower bound on the target's
+// full-game exploitability (LBR sees real cards, not buckets). LBR's bets are
+// limited to sizes in the target's tree (no action translation).
+int cmd_lbr(const Args& a) {
+  std::string target = a.get("target");
+  if (target.empty()) die("lbr needs --target <ckpt|fold|checkcall|maniac|random>");
+  bool bot = target == "fold" || target == "checkcall" || target == "maniac" || target == "random";
+  auto h = setup_holdem(a, !bot);
+  std::vector<float> pol;
+  if (!fixed_policy(h->tree, target, pol)) pol = make_agent(target, *h).pol;
+  LbrConfig cfg;
+  cfg.actions = parse_lbr_actions(a.get("actions", "fcpa"));
+  std::string rounds = a.get("rounds", "1-4");
+  if (rounds.size() != 3 || rounds[1] != '-' || rounds[2] != '4' || rounds[0] < '1' || rounds[0] > '4')
+    die("--rounds must be 1-4, 2-4, 3-4 or 4-4");
+  cfg.active_from = rounds[0] - '1';
+  HoldemLbrGame g;
+  g.abs = bot ? nullptr : &h->abs;
+  g.pre_samples = int(a.geti("pre-samples", 1000));
+  if (!bot) {
+    // Self-check: the range model's bucket for each real hand must equal the
+    // bucket the trainer's deal sampler assigns (HoldemSampler::fill).
+    HoldemSampler smp{&h->abs};
+    Rng rng(uint64_t(a.geti("seed", 1)) ^ 0xC0FFEEULL);
+    int agree = 0, total = 0;
+    std::vector<int> ob(NUM_COMBOS);
+    for (int i = 0; i < 200; i++) {
+      Deal d;
+      smp.sample(rng, d);
+      for (int s = 0; s < 4; s++) {
+        g.buckets(d, s, ob.data());
+        for (int p = 0; p < 2; p++) agree += ob[g.hand_of(d, p)] == d.bucket[p][s], total++;
+      }
+    }
+    std::printf("bucket self-check vs HoldemSampler: %d/%d agree\n", agree, total);
+    if (agree != total) die("LBR bucket model disagrees with the trainer's abstraction");
+  }
+  int64_t deals = a.geti("hands", 10000);
+  int threads = int(a.geti("threads", 4));
+  double minutes = a.getf("minutes", 1e9);
+  std::printf("lbr: actions %s, rounds %s, target %s, up to %lld duplicate deals, %d threads, %.1f min cap\n",
+              lbr_actions_name(cfg.actions), rounds.c_str(), target.c_str(), (long long)deals, threads, minutes);
+  LbrMatch m = run_lbr_holdem(h->tree, pol, g, cfg, deals, threads, uint64_t(a.geti("seed", 1)), minutes * 60);
+  // chips -> mbb: 1 chip = 1/100 BB = 10 mbb. Headline: realized chips in
+  // duplicate (the LBR paper's protocol); the range-scored estimator has the
+  // same expectation and is printed as a cross-check.
+  std::printf("LBR(%s, rounds %s) vs %s: %+.1f mbb/hand (95%% CI +/- %.1f), realized chips, duplicate\n",
+              lbr_actions_name(cfg.actions), rounds.c_str(), target.c_str(), m.mean_chips * 10, m.ci_chips * 10);
+  std::printf("  cross-check, showdowns scored over LBR's range: %+.1f mbb/hand (95%% CI +/- %.1f)\n",
+              m.mean_io * 10, m.ci_io * 10);
+  std::printf("  LBR as SB %+.1f, as BB %+.1f mbb/hand\n", m.seat_mean[0] * 10, m.seat_mean[1] * 10);
+  std::printf("  %lld duplicate deals (%lld hands) in %.1fs; LBR decisions %llu: fold %.3f call %.3f bet %.3f all-in %.3f\n",
+              (long long)m.deals, (long long)m.deals * 2, m.seconds, (unsigned long long)m.stats.decisions,
+              double(m.stats.folds) / std::max<uint64_t>(1, m.stats.decisions),
+              double(m.stats.calls) / std::max<uint64_t>(1, m.stats.decisions),
+              double(m.stats.bets) / std::max<uint64_t>(1, m.stats.decisions),
+              double(m.stats.allins) / std::max<uint64_t>(1, m.stats.decisions));
+  std::printf("  positive = LBR wins = full-game exploitability lower bound for the target (in-tree bet sizes)\n");
+  return 0;
+}
+
 // ---- export / show ---------------------------------------------------------------
 int cmd_export(const Args& a) {
   auto h = setup_holdem(a, true);
@@ -793,7 +859,7 @@ int cmd_show(const Args& a) {
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show> [--options]\n"
+    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show|lbr> [--options]\n"
                          "see blueprint/README.md\n");
     return 2;
   }
@@ -808,5 +874,6 @@ int main(int argc, char** argv) {
   if (cmd == "br") return cmd_br(a);
   if (cmd == "export") return cmd_export(a);
   if (cmd == "show") return cmd_show(a);
+  if (cmd == "lbr") return cmd_lbr(a);
   die("unknown command " + cmd);
 }
