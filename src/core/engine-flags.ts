@@ -56,7 +56,7 @@ export const ENGINE_FLAG_NAMES: readonly EngineFlagName[] = [
 // ("What the evidence supports") with raw outputs in sim/results/2026-10-09/; rules
 // for new measurements in sim/EVAL_PROTOCOL.md. All CIs are 95%. Field-mode A-B < 0
 // and hu "A vs B" < 0 mean the candidate beat swarm/base.
-// No flag set here has a significant heads-up gain over swarm/base. The old default
+// No flag set here has a significant heads-up gain over swarm/base yet. The old default
 // package FIX+RT+SG scored -6.35 +/- 13.46 (seed 1) and -5.83 +/- 14.13 (seed 101)
 // bb/100 for base heads-up, and with only FIX_LIVE_VILLAINS on the engine plays
 // heads-up exactly like base. The decisive heads-up test is pre-registered in
@@ -71,11 +71,15 @@ export const ENGINE_FLAG_NAMES: readonly EngineFlagName[] = [
 //     -30.97 +/- 156.20). It also reads the scraped action log, and review found
 //     that scraper.ts parseGameLog may walk the log newest-first; it stays off until
 //     the live log order is verified.
-//   SUBGAME_SOLVER OFF: the per-side combo cap that dropped the bluff part of
-//     narrowed ranges is fixed (673724d). With the fix, SUBGAME_SOLVER on vs off is
-//     heads-up neutral (seed 1 -7.58 +/- 15.27, seed 202 +5.77 +/- 12.83) and beats
-//     the barreler probe on both seeds (-49.21 +/- 43.19, -101.34 +/- 43.13). It
-//     stays off pending the scraper log order and the 1500 ms latency budget.
+//   SUBGAME_SOLVER ON (turned on 2026-10-09 09:45 PDT at Dev's request, "turn on
+//     search"): the per-side combo cap that dropped the bluff part of narrowed
+//     ranges is fixed (673724d). FIX+SG vs FIX: heads-up neutral (seed 1
+//     -7.58 +/- 15.27, seed 202 +5.77 +/- 12.83) and beats the barreler probe on both
+//     seeds (-49.21 +/- 43.19, -101.34 +/- 43.13). Overall decision p95 stayed under
+//     0.6 s at load average 62. Two caveats remain: in live play its ranges come from
+//     the scraped action log (scraper.ts parseGameLog order is unverified; the
+//     engine-subgame guard skips the solve when the log does not explain the bet),
+//     and solves can run to the 1500 ms budget under heavy load.
 //   DEFENSE OFF: it beats base against three of four probes but loses heads-up:
 //     +22.61 +/- 18.49 bb/100 for base on seed 1 and +16.59 +/- 18.45 on seed 101.
 //   MULTIWAY_EQUITY OFF: over-folds multiway (+268.73 +/- 204.22 bb/100 for base).
@@ -84,7 +88,7 @@ export const DEFAULT_ENGINE_FLAGS: Readonly<EngineFlags> = Object.freeze({
   RANGE_TRACKER: false,
   MULTIWAY_EQUITY: false,
   DEFENSE: false,
-  SUBGAME_SOLVER: false,
+  SUBGAME_SOLVER: true,
 });
 export const ENGINE_FLAGS: EngineFlags = { ...DEFAULT_ENGINE_FLAGS };
 
