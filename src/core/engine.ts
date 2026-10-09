@@ -14,6 +14,7 @@ import { leadBetProbability } from './cbet';
 import { OpponentTracker } from './exploit/tracker';
 import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
+import { resampleAdjusted } from './exploit/resample';
 import { predictPostflop } from './ml/policy';
 import { Spot } from './ml/features';
 import { ENGINE_FLAGS as F } from './engine-flags';
@@ -168,11 +169,25 @@ export class DecisionEngine {
       // than it gains. confidence = min(1, hands/100), so 0.5 ≈ 50+ hands.
       if (villainProfile.confidence >= 0.5) {
         console.log(`[GTO Bot] Villain ${villain}: ${villainProfile.type} (${(villainProfile.confidence * 100).toFixed(0)}%)`);
-        decision.mixedStrategy = this.adjuster.adjust(
-          decision.mixedStrategy, villainProfile, state,
-        );
-        decision.action = this.pickBestAction(decision.mixedStrategy);
-        decision.amount = this.pickBetAmount(decision.mixedStrategy, state);
+        const base = decision.mixedStrategy;
+        const adjusted = this.adjuster.adjust(base, villainProfile, state);
+        decision.mixedStrategy = adjusted;
+        // Keep the action the policy already sampled unless the adjuster moved
+        // mass away from it; then draw from the adjusted distribution (maximal
+        // coupling, see exploit/resample.ts). The old argmax re-pick made every
+        // mixed spot deterministic once a read existed.
+        const heroBetNow = state.players[state.heroIndex]?.currentBet || 0;
+        const r = resampleAdjusted({
+          action: decision.action, amount: decision.amount, base, adjusted,
+          facingBet: state.currentBet > heroBetNow,
+        });
+        if (r.changed) {
+          decision.reasoning += ` [exploit ${decision.action}->${r.action} vs ${villainProfile.type}]`;
+          decision.action = r.action;
+          decision.amount = r.amount === Infinity
+            ? (state.players[state.heroIndex]?.stack || 0)
+            : r.amount !== undefined ? Math.round(r.amount) : undefined;
+        }
         trustExploitRead = villainProfile.type === 'maniac' || villainProfile.type === 'lag';
       }
     }
@@ -620,6 +635,7 @@ export class DecisionEngine {
     // out, so a real draw's equity counts (a flush draw with the odds still
     // calls); pure air with no equity folds. This makes the basic turn/river
     // decision (call / fold / jam) correct ~always, instead of punting.
+    let raiseDowngraded = false;
     if (facingBet && finalAction !== 'fold') {
       const boardIds = board.map(c => cardToId(c));
       let eqR: number;
@@ -650,7 +666,7 @@ export class DecisionEngine {
       }
       // Have the odds to continue, but not strong enough to raise for value:
       // don't turn a marginal call into a -EV raise/bluff-raise. Just call.
-      if (finalAction === 'raise' && eqR < 0.60) finalAction = 'call';
+      if (finalAction === 'raise' && eqR < 0.60) { finalAction = 'call'; raiseDowngraded = true; }
     }
 
     // ----------------------------------------------------------------
@@ -688,13 +704,18 @@ export class DecisionEngine {
       return {
         action: 'check', amount: undefined, confidence: 1 - equityVsRandom,
         reasoning: `check (${isAggressor ? 'no c-bet' : 'check to raiser'}, ${boardAnalysis.texture}, p${pct(pBet)}) [lead-policy]`,
-        mixedStrategy: { fold: 0, check: 1, call: 0, bets: [] },
+        // Same distribution as the bet branch: the check was sampled from it, and
+        // the exploit step needs the true mix to adjust (exploit/resample.ts).
+        mixedStrategy: { fold: 0, check: 1 - pBet, call: 0, bets: pBet > 0 ? [{ amount: betSize, probability: pBet }] : [] },
       };
     }
 
     const cbetNudged = false;     // c-bet handled by the lead policy above (facingBet only past here)
     const CBET_FREQ = 0;          // retained for the unused reasoning branch below
-    const guarded = flushGuarded; // the flush guard downgraded the net's action
+    // A guard downgraded the net's action (flush board, or raise->call without
+    // the equity to raise): the distribution must not keep the raise mass, or the
+    // exploit step would hand the raise back.
+    const guarded = flushGuarded || raiseDowngraded;
     const sizeForBets = finalAction === 'raise' || facingBet ? raiseSize : betSize;
     let mixedStrategy: StrategyDistribution;
     if (cbetNudged) {
@@ -725,8 +746,10 @@ export class DecisionEngine {
 
     const reasoning = cbetNudged
       ? `net check->c-bet IP (cat${heroCat}, ${boardAnalysis.texture}, ${pct(CBET_FREQ)} freq) [cbet-nudge]`
-      : guarded
+      : flushGuarded
       ? `net ${action}->${finalAction} (behind range on flush board)`
+      : raiseDowngraded
+      ? `net ${action}->${finalAction} (no equity to raise)`
       : `net ${action} (f${pct(probs.fold)} k${pct(probs.check)} ` +
         `c${pct(probs.call)} b${pct(probs.bet)} r${pct(probs.raise)})`;
 
@@ -784,9 +807,8 @@ export class DecisionEngine {
     const board = this.analyzeBoard(state.communityCards);
     const boardIds = state.communityCards.map(c => cardToId(c));
 
-    // DEFENSE: facing a bet, fold/call/raise comes from defense.ts. This also
-    // retires rangedFacingBet's bluff-raise branch, which raised 100% of the time
-    // while its mixedStrategy claimed 10%.
+    // DEFENSE: facing a bet, fold/call/raise comes from defense.ts instead of
+    // rangedFacingBet's pot-odds heuristic.
     if (facingBet && F.DEFENSE) return this.defenseFacingBet(state, heroCards);
 
     // --- Context for the continuing-range model ---
@@ -861,10 +883,19 @@ export class DecisionEngine {
     if (eqStrength >= 0.70 && !dominatedByBoard) {
       const raiseTo = this.roundToStake(state.currentBet * 2.5, bb);
       const raiseFreq = eqStrength >= 0.82 ? 0.8 : 0.6;
+      const mixedStrategy = { fold: 0, check: 0, call: 1 - raiseFreq, bets: [{ amount: raiseTo, probability: raiseFreq }] };
+      // Sample from the mix: the executor and sim play `action`, not the mix.
+      if (Math.random() < raiseFreq) {
+        return {
+          action: 'raise', amount: raiseTo, confidence: eqR,
+          reasoning: `value raise to ${raiseTo} (${pct(eqR)} vs range, ${pct(raiseFreq)} freq)`,
+          mixedStrategy,
+        };
+      }
       return {
-        action: 'raise', amount: raiseTo, confidence: eqR,
-        reasoning: `value raise to ${raiseTo} (${pct(eqR)} vs range)`,
-        mixedStrategy: { fold: 0, check: 0, call: 1 - raiseFreq, bets: [{ amount: raiseTo, probability: raiseFreq }] },
+        action: 'call', confidence: eqR,
+        reasoning: `call (slowplay, ${pct(eqR)} vs range, raise freq ${pct(raiseFreq)})`,
+        mixedStrategy,
       };
     }
 
@@ -877,10 +908,20 @@ export class DecisionEngine {
       // Bluff at a low frequency only.
       const raiseTo = this.roundToStake(state.currentBet * 2.5, bb);
       const bluffFreq = 0.10;
+      const mixedStrategy = { fold: 1 - bluffFreq, check: 0, call: 0, bets: [{ amount: raiseTo, probability: bluffFreq }] };
+      // Sample from the mix (this branch used to raise 100% of the time while the
+      // mix claimed 10%). eqR is below the price here, so the alternative is a fold.
+      if (Math.random() < bluffFreq) {
+        return {
+          action: 'raise', amount: raiseTo, confidence: eqR,
+          reasoning: `bluff raise to ${raiseTo} (${pct(eqR)} vs range, blockers/draw, ${pct(bluffFreq)} freq)`,
+          mixedStrategy,
+        };
+      }
       return {
-        action: 'raise', amount: raiseTo, confidence: eqR,
-        reasoning: `bluff raise to ${raiseTo} (${pct(eqR)} vs range, blockers/draw)`,
-        mixedStrategy: { fold: 1 - bluffFreq, check: 0, call: 0, bets: [{ amount: raiseTo, probability: bluffFreq }] },
+        action: 'fold', confidence: 1 - eqR,
+        reasoning: `fold (${pct(eqR)} vs range < ${pct(callThreshold)} pot odds, no bluff raise this time)`,
+        mixedStrategy,
       };
     }
 
@@ -951,7 +992,12 @@ export class DecisionEngine {
           mixedStrategy: { fold: 0, check: 1 - alpha, call: 0, bets: [{ amount: betSize, probability: alpha }] },
         };
       }
-      return check(`check draw (${pct(eqR)} vs range)`);
+      // Same distribution as the semi-bluff branch, so the exploit step adjusts
+      // the real mix (exploit/resample.ts).
+      return {
+        ...check(`check draw (${pct(eqR)} vs range, alpha=${pct(alpha)})`),
+        mixedStrategy: { fold: 0, check: 1 - alpha, call: 0, bets: [{ amount: betSize, probability: alpha }] },
+      };
     }
 
     // Everything else (medium made hands, no draw): check / pot control.
@@ -1866,24 +1912,6 @@ export class DecisionEngine {
         bets: [],
       },
     };
-  }
-
-  private pickBestAction(strat: StrategyDistribution): ActionType {
-    let best: ActionType = 'fold';
-    let bestProb = strat.fold;
-    if (strat.check > bestProb) { best = 'check'; bestProb = strat.check; }
-    if (strat.call > bestProb) { best = 'call'; bestProb = strat.call; }
-    const totalBet = strat.bets.reduce((s, b) => s + b.probability, 0);
-    if (totalBet > bestProb) best = 'raise';
-    return best;
-  }
-
-  private pickBetAmount(strat: StrategyDistribution, state: GameState): number | undefined {
-    if (strat.bets.length === 0) return undefined;
-    let best = strat.bets[0];
-    for (const b of strat.bets) { if (b.probability > best.probability) best = b; }
-    if (best.amount === Infinity) return state.players[state.heroIndex]?.stack || 0;
-    return Math.round(best.amount);
   }
 
   private identifyVillain(state: GameState): string | null {
