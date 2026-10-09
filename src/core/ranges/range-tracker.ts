@@ -139,6 +139,11 @@ function sameName(a: string, b: string): boolean {
   return a === b || normName(a) === normName(b);
 }
 
+/** True when a log name and a seat name refer to the same player (case and " @ id" insensitive). */
+export function namesMatch(logName: string, seatName: string): boolean {
+  return sameName(logName, seatName);
+}
+
 function playerByName(state: GameState, name: string): Player | undefined {
   return state.players.find(p => p.name === name) ?? state.players.find(p => sameName(p.name, name));
 }

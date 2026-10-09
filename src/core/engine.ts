@@ -19,7 +19,7 @@ import { Spot } from './ml/features';
 import { ENGINE_FLAGS as F } from './engine-flags';
 import {
   liveVillainIndexes, estimateVillainRanges, heroRangeFor, preflopRangeFor,
-  sampleRangeCombos, comboIndex,
+  sampleRangeCombos, comboIndex, namesMatch,
 } from './ranges/range-tracker';
 import { WeightedRange, VillainRange } from './ranges/weighted-range';
 import { equityVsRanges, uniformRange, anyTwoCardsRange } from './equity/multiway-equity';
@@ -1770,6 +1770,18 @@ export class DecisionEngine {
 
       const heroBet = hero.currentBet || 0;
       const toCall = Math.max(0, state.currentBet - heroBet);
+      // The solve is only as good as the tracked ranges. When the log has no
+      // preflop action, or does not show the wager hero is facing, the tracker
+      // could not narrow villain's range (it would solve against a wide,
+      // bluff-heavy range and bluff-raise air), so use the default path.
+      const hist = state.actionHistory;
+      if (!hist.preflop || hist.preflop.length === 0) return null;
+      if (toCall > 0) {
+        const streetLog = hist[state.street] || [];
+        const villainAggressed = streetLog.some(a =>
+          (a.type === 'bet' || a.type === 'raise' || a.type === 'allin') && namesMatch(a.playerName, villain.name));
+        if (!villainAggressed) return null;
+      }
       let pot = state.pot;
       if (pot <= toCall) pot = state.pot + state.players.reduce((s, p) => s + (p.currentBet || 0), 0);
       const effectiveStack = Math.min(hero.stack, villain.stack + toCall);
