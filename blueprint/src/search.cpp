@@ -9,6 +9,8 @@
 #include <sstream>
 #include <thread>
 
+#include <sys/resource.h>
+
 #include <atomic>
 
 #include "abstraction.h"
@@ -402,6 +404,12 @@ BpView holdem_view(const BettingTree& t, const Abstraction& abs, const std::vect
 
 namespace {
 
+double cpu_seconds() {
+  struct rusage ru;
+  getrusage(RUSAGE_SELF, &ru);
+  return ru.ru_utime.tv_sec + ru.ru_utime.tv_usec * 1e-6 + ru.ru_stime.tv_sec + ru.ru_stime.tv_usec * 1e-6;
+}
+
 struct KV {
   const std::map<std::string, std::string>& m;
   std::string get(const std::string& k, const std::string& d = "") const {
@@ -497,17 +505,18 @@ struct SearchSpot {
 struct SearchOut {
   std::vector<std::string> labels;
   std::vector<double> strat, bp_strat;
-  double expl = 0, pot0 = 0, setup_s = 0, solve_s = 0;
+  double expl = 0, pot0 = 0, setup_s = 0, solve_s = 0, setup_cpu = 0, solve_cpu = 0;
   int iters = 0, H[2] = {0, 0}, leaves = 0, nodes = 0;
 };
 
 // One search: ranges from the blueprint, subgame from the round start,
 // solve under the budget, return the hero hand's strategy at `node`.
 SearchOut run_search(const BpView& bv, const SearchSpot& sp, int k, double bias, size_t max_hands, int rollouts,
-                     double budget_s, int max_iters, int threads, uint64_t seed, bool want_expl) {
+                     double budget_s, int max_iters, int threads, uint64_t seed, bool want_expl,
+                     SolverConfig sc = SolverConfig{}) {
   SearchOut o;
   const BettingTree& t = *bv.tree;
-  double t0 = now_sec();
+  double t0 = now_sec(), c0 = cpu_seconds();
   uint64_t bm = 0;
   for (int c : sp.board) bm |= 1ull << c;
   Game g;
@@ -528,7 +537,6 @@ SearchOut run_search(const BpView& bv, const SearchSpot& sp, int k, double bias,
   int hero_idx = -1;
   for (int i = 0; i < g.n(sp.hero); i++)
     if (g.hands[sp.hero][i].mask == sp.hero_hand.mask) hero_idx = i;
-  SolverConfig sc;
   sc.threads = threads;
   Solver S(g, sc);
   for (uint32_t c : path) {
@@ -539,9 +547,11 @@ SearchOut run_search(const BpView& bv, const SearchSpot& sp, int k, double bias,
   }
   if (g.nodes[cur].bp != int(sp.node)) die("search: subgame node does not match the blueprint node");
   o.setup_s = now_sec() - t0;
-  double t1 = now_sec();
+  o.setup_cpu = cpu_seconds() - c0;
+  double t1 = now_sec(), c1 = cpu_seconds();
   while (S.iterations() < max_iters && (S.iterations() < 1 || now_sec() - t0 < budget_s)) S.iterate();
   o.solve_s = now_sec() - t1;
+  o.solve_cpu = cpu_seconds() - c1;
   o.iters = S.iterations();
   const SNode& nd = g.nodes[cur];
   o.strat.resize(nd.nact);
@@ -580,8 +590,20 @@ int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, con
   sp.rs = round_start(tree, sp.node);
   int k = int(a.i("k", 4));
   size_t cap = size_t(a.i("max-hands", n.street == 1 ? 120 : n.street == 2 ? 300 : 1326));
+  SolverConfig sc;
+  std::string algo = a.get("algo", "dcfr");
+  if (algo == "cfr+") {
+    sc.algo = SolverConfig::CFRPLUS;
+    sc.cfrp_delay = int(a.i("cfrp-delay", 0));
+  } else if (algo == "dcfr") {
+    sc.alpha = a.f("alpha", 1.5);
+    sc.beta = a.f("beta", 0.5);
+    sc.gamma = a.f("gamma", 2.0);
+  } else {
+    die("search: --algo must be dcfr or cfr+");
+  }
   SearchOut o = run_search(bv, sp, k, a.f("bias", 5), cap, int(a.i("rollouts", 24)), a.f("budget-ms", 2000) / 1000.0,
-                           int(a.i("max-iters", 1000000)), int(a.i("threads", 4)), uint64_t(a.i("seed", 1)), true);
+                           int(a.i("max-iters", 1000000)), int(a.i("threads", 4)), uint64_t(a.i("seed", 1)), true, sc);
   std::printf("search: street %d, player %d to act, history '%s', round start '%s'\n", n.street, sp.hero,
               tree.history(sp.node).c_str(), tree.history(sp.rs).c_str());
   std::printf("subgame: %d nodes, %d depth-limit leaves (k=%d), hands %d vs %d, pot0 %.0f\n", o.nodes, o.leaves,
@@ -589,6 +611,8 @@ int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, con
   std::printf("setup %.3fs, solve %.3fs, %d iterations, exploitability %.2f chips (%.3f%% of pot0, within the "
               "subgame model)\n",
               o.setup_s, o.solve_s, o.iters, o.expl, 100 * o.expl / o.pot0);
+  std::printf("cpu time (all threads): setup %.3fs, solve %.3fs (%.2f ms of cpu per iteration)\n", o.setup_cpu,
+              o.solve_cpu, 1000 * o.solve_cpu / std::max(1, o.iters));
   std::printf("%-8s %8s %8s\n", "action", "search", "blueprint");
   for (size_t x = 0; x < o.labels.size(); x++)
     std::printf("%-8s %8.4f %8.4f\n", o.labels[x].c_str(), o.strat[x], o.bp_strat[x]);

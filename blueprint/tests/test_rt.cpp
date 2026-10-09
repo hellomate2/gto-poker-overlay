@@ -389,42 +389,44 @@ static void test_leduc_subgame_resolve() {
   CHECK(checked == 15);
 }
 
-// Depth-limited search (M5) on Leduc round 1 with leaves at the round-2 roots.
-static double composite_exploitability(Leduc& base, const Game& g, const Solver& S, bool resolve_round2,
-                                       double* trunk_value = nullptr) {
+// Unsafe re-solve of every reached Leduc round-2 subgame from the beliefs
+// that C's own table induces; writes the re-solved strategies into C.
+static void resolve_round2(Leduc& C, int iters) {
+  Leduc R;
+  R.table = C.table;
+  for (uint32_t ni = 0; ni < C.tree.nodes.size(); ni++) {
+    const Node& n = C.tree.nodes[ni];
+    if (n.type != DECISION || n.street != 1 || C.tree.nodes[n.parent].street != 0) continue;
+    for (int pub = 0; pub < 6; pub += 2) {
+      Game h;
+      C.hands(h);
+      std::vector<int> board = {pub};
+      bool ok = true;
+      for (int p = 0; p < 2; p++) {
+        h.w[p] = blueprint_reach(C.bv, h.hands[p], p, ni, board);
+        double s = 0;
+        for (double x : h.w[p]) s += x;
+        ok &= s > 0;
+      }
+      if (!ok) continue;  // unreached subgame: keep the current strategy
+      build_from_blueprint(h, C.bv, ni, board, false);
+      h.finalize();
+      Solver T(h, SolverConfig{});
+      for (int i = 0; i < iters; i++) T.iterate();
+      R.absorb(h, T);
+    }
+  }
+  C.table = R.table;
+}
+
+// Depth-limited search (M5) on Leduc round 1 with leaves at the round-2 roots:
+// the composite strategy (search trunk, then blueprint or re-solved round 2).
+static double composite_exploitability(Leduc& base, const Game& g, const Solver& S, bool resolve) {
   Leduc C;
   C.table = base.table;
   C.absorb(g, S);  // trunk (round 1) from the search
-  if (resolve_round2) {
-    // Unsafe re-solve of every round-2 subgame from the composite's beliefs.
-    Leduc R;
-    R.table = C.table;
-    for (uint32_t ni = 0; ni < C.tree.nodes.size(); ni++) {
-      const Node& n = C.tree.nodes[ni];
-      if (n.type != DECISION || n.street != 1 || C.tree.nodes[n.parent].street != 0) continue;
-      for (int pub = 0; pub < 6; pub += 2) {
-        Game h;
-        C.hands(h);
-        std::vector<int> board = {pub};
-        bool ok = true;
-        for (int p = 0; p < 2; p++) {
-          h.w[p] = blueprint_reach(C.bv, h.hands[p], p, ni, board);
-          double s = 0;
-          for (double x : h.w[p]) s += x;
-          ok &= s > 0;
-        }
-        if (!ok) continue;  // unreached subgame: keep the blueprint
-        build_from_blueprint(h, C.bv, ni, board, false);
-        h.finalize();
-        Solver T(h, SolverConfig{});
-        for (int i = 0; i < 500; i++) T.iterate();
-        R.absorb(h, T);
-      }
-    }
-    C.table = R.table;
-  }
+  if (resolve) resolve_round2(C, 500);
   ExactEval ev(C.tree, LeducSampler::enumerate());
-  if (trunk_value) *trunk_value = ev.value_p0(C.fn());
   return ev.exploitability(C.fn());
 }
 
@@ -471,6 +473,22 @@ static void test_leduc_depth_limited() {
                 rms[0], rms[1], rms[0] / rms[1]);
     CHECK(rms[1] > 0 && rms[0] / rms[1] > 2.0 && rms[0] / rms[1] < 5.0);
     CHECK(rms[1] < 0.05);
+  }
+  // Control: equilibrium trunk + unsafe round-2 re-solve. Each re-solved
+  // subgame keeps the equilibrium's value (test above), but the combined
+  // strategy need not be an equilibrium: unsafe re-solving ignores the
+  // opponent's option to reach the subgame with other hands (Brown and
+  // Sandholm 2017, "Safe and nested subgame solving"). Printed, not bounded.
+  {
+    Leduc C;
+    C.table = g_star->table;
+    ExactEval ev(C.tree, LeducSampler::enumerate());
+    double e0 = ev.exploitability(C.fn());
+    resolve_round2(C, 2000);
+    double e1 = ev.exploitability(C.fn());
+    std::printf("  control: equilibrium (exploitability %.2e) with every round-2 subgame unsafely re-solved: %.2e\n", e0,
+                e1);
+    CHECK(std::isfinite(e1) && e1 >= 0);
   }
   // (b) a weak blueprint; compare blueprint, k=1 and k=4 search (round 1),
   // and k=4 search plus unsafe round-2 re-solving. Exact exploitability.
