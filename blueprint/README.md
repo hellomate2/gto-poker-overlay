@@ -47,8 +47,10 @@ code can be moved to a rented many-core box unchanged.
 | `src/games.h` | deal samplers: Kuhn, Leduc, hold'em (cards projected to buckets) |
 | `src/mccfr.h` | the trainer (one template for every game) and the exact best response |
 | `src/export.{h,cpp}` | policy export format |
+| `src/serve.{h,cpp}` | `bp serve`: the blueprint as a JSON-lines policy service for the TS BlueprintAgent |
 | `src/main.cpp` | the `bp` CLI |
 | `tests/test_main.cpp` | C++ tests (`make test`) |
+| `tests/test_serve.cpp` | `bp serve` tests (`make test`) |
 | `../src/core/blueprint/loader.ts` | TS reader for exported policies |
 | `../tests/blueprint-loader.test.ts` | vitest suite for the loader, using real exports as fixtures |
 
@@ -256,6 +258,90 @@ bp.riverBucket(riverEhs([c1, c2], board));                 // river bucket in TS
 Tokens: `f` fold, `k` check, `c` call, `b<frac>` bet, `r<frac>` raise,
 `a` all-in (limit games use bare `b` and `r`). Flop and turn buckets need the
 k-means tables from `cache/abs-*.bin`, which the loader does not read yet.
+
+## Serving the blueprint to the TS harness (`bp serve`)
+
+Added 2026-10-09 (BACKLOG NOW-3). The blueprint can now play real hands in the
+TS simulator and the play app, with no search yet.
+
+Pieces:
+
+* `bp serve` (`src/serve.{h,cpp}`): line-delimited JSON on stdin/stdout.
+  `{"cmd":"policy","history":"r0.5 c","hole":"AhKd","board":"2c7d9h"}`
+  returns the node, its actions with commitments, the card bucket and the
+  average-strategy probabilities. The bucket comes from the same
+  `Abstraction` object and the node from the same `BettingTree::find` the
+  trainer uses, so serving cannot drift from training. `info` and `node`
+  queries need no cards; `--tree-only` answers them without loading a
+  checkpoint. Setup logs go to stderr. Serve never builds an abstraction:
+  pass `--cache DIR` holding the run's `abs-*.bin`.
+* `src/core/blueprint/abstract-tree.ts`: a TS port of `legal_actions` and
+  the street flow in `tree.cpp`, built from the tree description that
+  `info` returns.
+* `src/core/blueprint/translate.ts`: randomized pseudo-harmonic action
+  translation (Ganzfried and Sandholm, IJCAI 2013): an off-tree size x
+  between abstract sizes A < B maps to A with probability
+  ((B - x)(1 + A)) / ((B - A)(1 + x)). Sizes are pot fractions measured the
+  way the tree defines them; a real all-in maps to the abstract all-in.
+* `src/core/blueprint/agent.ts`: BlueprintAgent. Replays the real hand from
+  `GameState.actionHistory`, walks the abstract tree in step (memoizing each
+  translation for the rest of the hand), asks a `PolicySource` for the
+  strategy, samples an abstract action and maps it back to a legal real bet
+  with the tree's sizing rule applied to the real pot. When an off-tree
+  raise was translated to the abstract all-in and called while real chips
+  remain, it plays check/call for the rest of the hand (counted as a
+  fallback).
+* `sim/blueprint-serve.ts` (Node `ServeClient` plus the SeatAgent wrapper),
+  `sim/seat-agents.ts` (spec `engine` or `blueprint:<ckpt>`),
+  `sim/match.ts --a-agent/--b-agent`, `sim/play/bots.ts` kind `blueprint`
+  (`npm run play -- --bot blueprint --policy CKPT`). Tree and abstraction
+  flags come from `GPO_BP_FLAGS` (default: the overnight run's, with
+  `--cache blueprint/cache`), the binary from `GPO_BP_BIN`.
+
+Exact-reference checks (all run 2026-10-09):
+
+| Check | Command | Result |
+| --- | --- | --- |
+| C++ serve unit tests | `make test` (`bin/bp_serve_tests`) | 417 checks, 0 failures |
+| TS tree port vs C++ tree, every node | `npx tsx sim/blueprint-parity.ts tree --flags "--preset P"` | tiny 2,758, small 31,938, medium 425,086 nodes, and a custom small tree (`--stack 20000 --bet-fracs 0.33,0.75,1.5 --raise-fracs 0.7,2 --max-raises 3`) 301,254 nodes: 0 mismatches |
+| serve vs trainer on 1,000 infosets drawn from the trainer's own deal sampler (250 per street) | `bp serve FLAGS --ckpt C --parity-dump 1000 --out F` then `npx tsx sim/blueprint-parity.ts policy --fixture F --ckpt C --flags FLAGS` | 0 mismatches in node, bucket or tokens; max probability difference 3.0e-8 (float32 storage), on two checkpoint copies (iterations 701,930,101 and 915,307,849). Corrupting 100 fixture buckets makes it report 100 mismatches |
+| translation formula, round trip, scripted off-tree hand, legality over 2,000 hands | `npx vitest run tests/blueprint-agent.test.ts` | 8 tests pass |
+| play app end to end | `npx tsx sim/play/e2e.ts --hands 24 --bot blueprint --policy C` | E2E OK |
+
+`FLAGS` for the overnight run: `--preset small --flop 200 --turn 200 --river
+200 --bins 50 --abs-seed 7 --cache DIR`. Serve answers a policy request in
+39 us median, 60 us p95 (2,000 requests through the TS client, load average
+76 at the time).
+
+Pilot match, 2026-10-09 04:24 to 04:33 PDT: BlueprintAgent on a copy of the
+overnight checkpoint (iteration 915,307,849) against the swarm/next
+DecisionEngine with default flags, heads-up duplicate, 100 BB, blinds 10/20,
+2,000 deals (4,000 hands), seed 1:
+
+```
+GPO_BP_FLAGS="$FLAGS" npx tsx sim/match.ts --a-agent blueprint:CKPT --deals 2000 --seed 1 --workers 8
+```
+
+(run here as `--shard k/8` one shard at a time and combined with
+`sim/match-combine.ts`; the runner seeds every deal, so this gives the same
+numbers). Result: +26.21 bb/100 for the blueprint, 95% CI +/- 26.31
+([-0.10, 52.52], not significant at 95%), sd per deal 12.01 bb. Over 8,257
+blueprint decisions: 0 illegal actions (strict validator), 13 fallbacks
+(0.16%, all of the committed all-in kind), 2,696 engine bets and raises
+translated, 2,549 of them off-tree. A +/- 10 bb/100 CI needs about
+(98 x 12.01 / 10)^2, about 13,850 deals.
+
+Held-out seed, same checkpoint and command with `--seed 101` (04:33 to 04:40
+PDT): +29.51 bb/100, 95% CI +/- 23.30 ([6.21, 52.80]), sd per deal 10.63 bb;
+8,216 decisions, 0 illegal, 7 fallbacks, 2,596 translations (2,458
+off-tree). Both seeds pooled (4,000 deals, 8,000 hands, deal-level samples):
++27.86 bb/100, 95% CI +/- 17.57, sd per deal 11.34 bb. These are
+head-to-head numbers against one opponent (the current rule-and-solver
+engine), not an exploitability measurement.
+
+Not done yet: real-time search on later streets, depths other than 100 BB
+(the agent plays them but the abstraction assumes 100 BB), and an export
+path for the browser (the agent needs `bp serve` for flop/turn buckets).
 
 ## Correctness gate (Kuhn and Leduc)
 

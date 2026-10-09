@@ -161,7 +161,8 @@ describe('BlueprintAgent round trip at tree-chip scale', () => {
     const mismatches: string[] = [];
     const a = bpSeat('A', rules, 1, played, mismatches), b = bpSeat('B', rules, 2, played, mismatches);
     const cfg: RingConfig = { bb: 100, sb: 50, startStackBB: 100, rng: () => 0 };
-    let decisions = 0, streetsSeen = new Set<string>();
+    let decisions = 0;
+    const streetsSeen = new Set<string>();
     for (let h = 0; h < 1500; h++) {
       played.length = 0;
       const deck = shuffledDeck(makeRng(mixSeed(77, h)));
@@ -180,6 +181,78 @@ describe('BlueprintAgent round trip at tree-chip scale', () => {
     expect(a.agent.stats.translations + b.agent.stats.translations).toBeGreaterThan(500);
     expect(decisions).toBeGreaterThan(4000);
     expect(streetsSeen.has('river')).toBe(true);
+  });
+});
+
+/** Plays a fixed token per query, in order; records the histories it saw. */
+class ScriptedSource implements PolicySource {
+  seen: string[][] = [];
+  constructor(private rules: TreeRules, private picks: string[]) {}
+  async policy(history: readonly string[]): Promise<PolicyAnswer> {
+    const s = walkTokens(this.rules, history)!;
+    const toks = legalActions(this.rules, s).map(a => a.tok);
+    const want = this.picks[this.seen.length];
+    this.seen.push([...history]);
+    if (!toks.includes(want)) throw new Error(`scripted pick ${want} not legal at '${history.join(' ')}' (${toks})`);
+    return { toks, probs: toks.map(t => (t === want ? 1 : 0)) };
+  }
+}
+
+/** Opponent that replays a fixed list of actions. */
+function scriptedSeat(acts: ActResult[]): SeatAgent {
+  let k = 0;
+  return { name: 'OPP', act: () => acts[k++] ?? { action: 'fold' } };
+}
+
+describe('BlueprintAgent on a scripted off-tree hand (10/20 blinds, deterministic translation)', () => {
+  it('maps each real action to the expected abstract token and back to the expected chips', async () => {
+    const rules = holdemRules('small');
+    const src = new ScriptedSource(rules, ['r1', 'b0.5', 'c', 'k', 'k', 'f']);
+    const agent = new BlueprintAgent({ rules, source: src, rng: makeRng(1), deterministicTranslation: true });
+    const sent: ActResult[] = [];
+    const bp: SeatAgent = {
+      name: 'BP',
+      async act(v: SeatView) { const a = decisionToAct(await agent.decide(v.state), v); sent.push(a); return a; },
+    };
+    // Opponent is seat 0 = button / SB.
+    const opp = scriptedSeat([
+      { action: 'raise', toAmount: 50 },   // open 2.5 bb: x = 30/40 = 0.75 > median(0.5, 1) = 0.714 -> r1
+      { action: 'call' },                  // calls the 3-bet
+      { action: 'raise', toAmount: 600 },  // flop raise: x = 450/600 = 0.75, below the only size r1 -> r1
+      { action: 'check' },                 // turn
+      { action: 'raise', toAmount: 1250 }, // river shove (2000 - 750 committed) -> a
+    ]);
+    const cfg: RingConfig = { bb: 20, sb: 10, startStackBB: 100, rng: () => 0 };
+    const log = await playRingHand([opp, bp], 0, cfg, 1, shuffledDeck(makeRng(42)));
+    expect(src.seen).toEqual([
+      ['r1'],
+      ['r1', 'r1', 'c'],
+      ['r1', 'r1', 'c', 'b0.5', 'r1'],
+      ['r1', 'r1', 'c', 'b0.5', 'r1', 'c'],
+      ['r1', 'r1', 'c', 'b0.5', 'r1', 'c', 'k', 'k'],
+      ['r1', 'r1', 'c', 'b0.5', 'r1', 'c', 'k', 'k', 'k', 'a'],
+    ]);
+    // Back to real chips with the tree's sizing rule on the REAL pot:
+    //   3-bet r1: to = 50 + max(30, 1.0 * (70 + 30)) = 150
+    //   flop b0.5 into 300: 150
+    expect(sent).toEqual([
+      { action: 'raise', toAmount: 150 },
+      { action: 'raise', toAmount: 150 },
+      { action: 'call' },
+      { action: 'check' },
+      { action: 'check' },
+      { action: 'fold' },
+    ]);
+    expect(log.actions.map(a => `${a.seat}:${a.type}${a.amount ?? ''}`)).toEqual([
+      '0:raise50', '1:raise150', '0:call100',
+      '1:bet150', '0:raise600', '1:call450',
+      '1:check', '0:check',
+      '1:check', '0:bet1250', '1:fold',
+    ]);
+    expect(log.nets[1]).toBe(-750);
+    expect(agent.stats.fallbacks).toBe(0);
+    expect(agent.stats.translations).toBe(3);
+    expect(agent.stats.offTreeTranslations).toBe(2);
   });
 });
 

@@ -792,7 +792,6 @@ int cmd_show(const Args& a) {
   return 0;
 }
 
-
 // ---- serve (BlueprintAgent bridge) ------------------------------------------------
 // bp serve [tree + abstraction flags] --ckpt F [--parity-dump N --out FILE]
 // Line-delimited JSON on stdin/stdout (protocol in src/serve.h). Setup logs go
@@ -817,28 +816,29 @@ int cmd_serve(const Args& a) {
   ctx.tree = &h->tree;
   ctx.abs_id = h->acfg.id();
   std::vector<float> pol;
-  McfrConfig m;
-  Trainer<HoldemSampler> tr(h->tree, HoldemSampler{&h->abs}, m);
+  std::unique_ptr<Trainer<HoldemSampler>> tr;  // not allocated in --tree-only mode
   if (!tree_only) {
+    McfrConfig m;
+    tr = std::make_unique<Trainer<HoldemSampler>>(h->tree, HoldemSampler{&h->abs}, m);
     std::string ck = a.get("ckpt");
-    if (ck.empty() || !tr.load(ck, h->hash)) die("serve: cannot load checkpoint '" + ck + "' for this tree/abstraction");
-    pol = policy_table(tr, h->tree);
+    if (ck.empty() || !tr->load(ck, h->hash)) die("serve: cannot load checkpoint '" + ck + "' for this tree/abstraction");
+    pol = policy_table(*tr, h->tree);
     ctx.abs = &h->abs;
     ctx.pol = &pol;
-    ctx.iterations = tr.iter;
+    ctx.iterations = tr->iter;
   }
   if (a.has("parity-dump")) {
     if (tree_only) die("serve: --parity-dump needs a checkpoint");
     std::string out = a.get("out", "parity.jsonl");
     FILE* f = std::fopen(out.c_str(), "w");
     if (!f) die("serve: cannot write " + out);
-    AvgFn avg = [&](uint64_t b, int n, double* o) { tr.average(b, n, o); };
+    AvgFn avg = [&](uint64_t b, int n, double* o) { tr->average(b, n, o); };
     int n = serve_parity_dump(h->tree, h->abs, avg, int(a.geti("parity-dump", 1000)), uint64_t(a.geti("seed", 5)), f);
     std::fclose(f);
     std::fprintf(stderr, "serve: wrote %d parity infosets to %s\n", n, out.c_str());
     return 0;
   }
-  std::fprintf(stderr, "serve: ready (%zu nodes, iteration %lld)\n", h->tree.nodes.size(), (long long)tr.iter);
+  std::fprintf(stderr, "serve: ready (%zu nodes, iteration %lld)\n", h->tree.nodes.size(), (long long)ctx.iterations);
   return serve_loop(ctx, stdin, proto);
 }
 
