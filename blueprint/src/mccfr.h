@@ -20,9 +20,18 @@
 //   * Negative-regret pruning: after prune_after iterations, 95% of
 //     traversals skip any traverser action whose regret is below
 //     prune_threshold, unless the action ends the hand or the node is on the
-//     last street. Pruned actions already have zero probability under regret
-//     matching, so the node value is unchanged; only their (very negative)
-//     regret stops being refreshed.
+//     last street. Pruning is applied only at nodes where some action has
+//     positive regret. There, every pruned action (regret < threshold < 0)
+//     has probability exactly zero under regret matching, so the node value
+//     is unchanged and at least one action (the max-regret one) is always
+//     explored; only the pruned actions' very negative regrets stop being
+//     refreshed. At a node with no positive regret, regret matching plays
+//     uniformly, so skipping an action would drop a nonzero term from the
+//     node value, and if every action were skipped the node would return 0
+//     and update nothing. Pluribus's Algorithm 1 (Brown & Sandholm 2019,
+//     supplementary) leaves that case implicit; its stated intent is that
+//     pruning skips only actions the current strategy does not play, which
+//     is exactly the rule here. Such a node is explored in full.
 //   * Regrets are int32 with a floor (regret_floor) so permanently bad
 //     actions cannot run away to -infinity and can still recover. Values are
 //     rounded from utility * regret_scale and saturate at INT32_MAX.
@@ -33,6 +42,8 @@
 //     path and renamed so a crash never leaves a torn checkpoint.
 // ============================================================
 #pragma once
+
+#include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
@@ -164,9 +175,19 @@ class Trainer {
       bool explored[MAX_ACTIONS];
       double v = 0;
       const bool last_street = n.street + 1 >= tree.cfg.nstreets;
+      // Prune action a only if sigma[a] == 0. Under regret matching that
+      // holds exactly when the node has some positive regret and a's regret
+      // is not positive, so: (1) the skipped term sigma[a] * va[a] is zero and
+      // v is the same as without pruning; (2) at least one action (the one
+      // with the largest regret) is always explored; (3) a node with no
+      // positive regret (uniform play) is never pruned. Testing sigma, which
+      // is the strategy this thread uses for v, rather than re-reading the
+      // shared regrets keeps (1) true even if another thread writes between
+      // reads.
+      const bool prune_here = prune && !last_street;
       for (int a = 0; a < na; a++) {
         const Node& c = tree.nodes[n.child + a];
-        if (prune && !last_street && c.type == DECISION && aload(Rr + a) < cfg.prune_threshold) {
+        if (prune_here && sigma[a] == 0.0 && c.type == DECISION && aload(Rr + a) < cfg.prune_threshold) {
           explored[a] = false;
           cnt.pruned++;
           continue;
@@ -271,6 +292,9 @@ class Trainer {
               std::fwrite(&iter, 8, 1, f) == 1 && std::fwrite(&weight, 8, 1, f) == 1 &&
               std::fwrite(&ns, 8, 1, f) == 1 && std::fwrite(R.data(), 4, ns, f) == ns &&
               std::fwrite(S.data(), 8, ns, f) == ns;
+    // Flush to disk before the rename so a power loss or kernel panic cannot
+    // leave a renamed but incomplete checkpoint.
+    ok = ok && std::fflush(f) == 0 && ::fsync(::fileno(f)) == 0;
     ok = (std::fclose(f) == 0) && ok;
     return ok && std::rename(tmp.c_str(), path.c_str()) == 0;
   }

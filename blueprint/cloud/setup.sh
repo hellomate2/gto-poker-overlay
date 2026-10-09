@@ -14,7 +14,7 @@
 set -euo pipefail
 
 : "${REPO_URL:=https://github.com/hellomate2/gto-poker-overlay.git}"
-: "${BRANCH:=master/cloud}"
+: "${BRANCH:=master/r1-launch}"
 : "${COMMIT:=}"
 : "${DEST:=$HOME/gpo}"
 DRY="${DRY_RUN:-0}"
