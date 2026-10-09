@@ -20,6 +20,7 @@
 //   bp aivat-log --a F --log G    AIVAT for a logged match (A = checkpoint F)
 //   (bp h2h --aivat scores a hold'em match with AIVAT, see aivat.h)
 //   bp absv2  --mode check|h2h|br abstraction v2 checks and A/B (src/abs_v2.h)
+//   bp search / search-h2h / subgame  real-time search (src/search.h, src/subgame.h)
 //
 // Every hold'em command takes the same tree + abstraction options so it can
 // rebuild the exact tree a checkpoint was trained on; a fingerprint of both
@@ -49,6 +50,7 @@
 #include "lbr.h"
 #include "mccfr.h"
 #include "serve.h"
+#include "search.h"
 #include "tree.h"
 
 using namespace bp;
@@ -1444,7 +1446,7 @@ int cmd_absv2(const Args& a) {
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show|serve|lbr|aivat|aivat-log|absv2> [--options]\n"
+    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show|serve|lbr|aivat|aivat-log|absv2|search|search-h2h|subgame> [--options]\n"
                          "see blueprint/README.md\n");
     return 2;
   }
@@ -1464,5 +1466,16 @@ int main(int argc, char** argv) {
   if (cmd == "aivat") return cmd_aivat(a);
   if (cmd == "aivat-log") return cmd_aivat_log(a);
   if (cmd == "absv2") return cmd_absv2(a);
+  // ---- real-time search (PLAN.md M4/M5): src/subgame.*, src/search.* ----
+  if (cmd == "subgame") return rt::subgame_cli(a.kv);
+  if (cmd == "search" || cmd == "search-h2h") {
+    auto h = setup_holdem(a, true);
+    McfrConfig m;
+    Trainer<HoldemSampler> tr(h->tree, HoldemSampler{&h->abs}, m);
+    if (!tr.load(a.get("ckpt"), h->hash)) die("cannot load checkpoint " + a.get("ckpt") + " for this tree/abstraction");
+    std::vector<float> pol = policy_table(tr, h->tree);
+    return rt::search_cli(cmd, a.kv, h->tree, h->abs, pol);
+  }
+  // ---- end real-time search ----
   die("unknown command " + cmd);
 }

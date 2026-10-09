@@ -957,3 +957,11 @@ against the engine, so its match runs outside `bp`. To score it with AIVAT:
   action translation yet, so the LBR paper's "56 bets" setting is missing).
 * River tables support at most 255 river buckets; above that, river buckets
   are computed per deal.
+
+## Real-time search
+
+The subgame solver and the depth-limited search agent (PLAN.md M4 and M5:
+`src/subgame.*`, `src/search.*`, `bp search`, `bp search-h2h`,
+`bp subgame`, tests in `make test-rt`) are documented in
+[SEARCH.md](SEARCH.md), with every validation number and the command that
+produced it.

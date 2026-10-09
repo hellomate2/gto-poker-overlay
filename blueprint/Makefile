@@ -5,7 +5,7 @@
 CXX      ?= clang++
 ARCH     ?= -march=native
 CXXFLAGS ?= -O3 $(ARCH) -std=c++17 -Wall -Wextra -pthread
-LIB_SRC  := src/eval.cpp src/abstraction.cpp src/tree.cpp src/export.cpp src/serve.cpp
+LIB_SRC  := src/eval.cpp src/abstraction.cpp src/tree.cpp src/export.cpp src/serve.cpp src/subgame.cpp src/search.cpp
 HEADERS  := $(wildcard src/*.h)
 # ---- abstraction v2 (PLAN.md M2): Waugh hand isomorphism (vendored C, BSD-style
 # license in third_party/hand-isomorphism/LICENSE.txt), potential-aware flop, OCHS river
@@ -65,7 +65,16 @@ test-aivat: bin/aivat_tests
 	./bin/aivat_tests
 # ---- end AIVAT tests ----
 
+# Real-time search tests (PLAN.md M4/M5): toy closed forms, brute-force
+# showdowns, Leduc against ExactEval. `make test-rt`
+bin/rt_tests: $(LIB_SRC) tests/test_rt.cpp $(HEADERS) $(C_OBJ)
+	@mkdir -p bin
+	$(CXX) $(CXXFLAGS) -Isrc $(LIB_SRC) tests/test_rt.cpp $(C_OBJ) -o $@
+
+test-rt: bin/rt_tests
+	./bin/rt_tests
+
 clean:
 	rm -rf bin
 
-.PHONY: all test test-lbr test-aivat test-v2 clean
+.PHONY: all test test-lbr test-aivat test-v2 test-rt clean
