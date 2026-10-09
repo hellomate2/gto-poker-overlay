@@ -131,7 +131,7 @@ then `--resume --iters 100000000`, with `--discount-every 1000000
 --lcfr-until 10000000 --prune-after 5000000 --prune-threshold -30000000
 --regret-floor -31000000`, plus the arm's abstraction flags. Wall time per arm
 at 100M iterations: legacy 400 s, potential-aware flop 336 s, OCHS river 376
-s (machine shared with other jobs). Head-to-head: `bp absv2 --mode h2h`, 20M
+s, legacy with `--seed 2` 284 s (machine shared with other jobs). Head-to-head: `bp absv2 --mode h2h`, 20M
 duplicate deals, seed 321. Exploiters: `bp absv2 --mode br --iters 30000000
 --hands 4000000 --seed 123`, each in its own blueprint's abstraction.
 
@@ -140,6 +140,9 @@ duplicate deals, seed 321. Exploiters: `bp absv2 --mode br --iters 30000000
 | potential-aware flop, 40M iterations (4M deals, seed 123) | -3.8 +/- 6.6 |
 | potential-aware flop, 100M iterations | -0.2 +/- 2.8 |
 | OCHS river, 100M iterations | -16.4 +/- 2.9 |
+| legacy, training seed 1 vs a legacy run with `--seed 2` (training noise baseline) | -2.0 +/- 2.8 |
+| potential-aware flop vs the seed-2 legacy run | -2.7 +/- 2.8 |
+| OCHS river vs the seed-2 legacy run | -12.9 +/- 2.8 |
 
 | blueprint at 100M iterations | exploiter (current), mbb/hand | exploiter (greedy) |
 | --- | ---: | ---: |
@@ -152,11 +155,13 @@ blueprint and +49.4 / +48.1 against the potential-aware one (2M deals, about
 +/- 9.8 each).
 
 Reading. At 50 buckets on the small tree, the potential-aware flop is not
-distinguishable from the old flop head to head (-0.2 +/- 2.8 mbb/hand). Its
+distinguishable from the old flop head to head (-0.2 +/- 2.8 and -2.7 +/- 2.8
+mbb/hand against two legacy runs; two legacy runs that differ only in the
+training seed scored -2.0 +/- 2.8 against each other). Its
 exploiters are no stronger than the legacy ones, but the two exploitability
 numbers live in different abstractions, so they are not a like-for-like
 comparison. The OCHS river is significantly worse at this size (-16.4 +/-
-2.9), plausibly because 50 clusters in 8 dimensions give less resolution
+2.9 and -12.9 +/- 2.8 against the two legacy runs), plausibly because 50 clusters in 8 dimensions give less resolution
 along hand strength than 50 clusters on the EHS line; J13 used OCHS with
 9,000 river buckets. Neither change is turned on by default. Both should be
 retested at 200 or more buckets (GS14 reported +2.2 to +2.6 mbb/hand at
