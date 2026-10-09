@@ -46,9 +46,11 @@ code can be moved to a rented many-core box unchanged.
 | `src/tree.{h,cpp}` | abstract betting tree for limit (Kuhn, Leduc) and no-limit rules |
 | `src/games.h` | deal samplers: Kuhn, Leduc, hold'em (cards projected to buckets) |
 | `src/mccfr.h` | the trainer (one template for every game) and the exact best response |
+| `src/compact.h` | compact trainer (PLAN.md M3): preflop-only average, snapshot averaging, lazy arena regrets, `GPOCKPT2` checkpoints |
 | `src/export.{h,cpp}` | policy export format |
 | `src/main.cpp` | the `bp` CLI |
 | `tests/test_main.cpp` | C++ tests (`make test`) |
+| `tests/test_scale.cpp` | compact trainer tests (`make test-scale`; `make test` runs both) |
 | `../src/core/blueprint/loader.ts` | TS reader for exported policies |
 | `../tests/blueprint-loader.test.ts` | vitest suite for the loader, using real exports as fixtures |
 
@@ -193,7 +195,8 @@ current strategy (external sampling). Then:
 * Average strategy is accumulated in `double` at the opponent's nodes during
   the traversal (Lanctot's simple averaging for external sampling). Pluribus
   kept an average only for preflop and used the current strategy postflop to
-  save memory; that would cut memory per slot from 12 to 4 bytes.
+  save memory; `bp scale` does that (4 bytes per postflop slot, see "Compact
+  trainer and scaling").
 * Threads share the regret and average tables without locks, as Pluribus did.
   Every shared access is a relaxed atomic load or store (`common.h`), which is
   free on arm64 and x86-64 and keeps the program free of data races in the C++
@@ -433,9 +436,138 @@ Moving to a rented machine: `cloud/README.md` has the step-by-step package
 (setup, bench gate, cost math, resumable training, fetch). By hand: copy `blueprint/`, `make`, run `bp abs` with the
 target bucket counts (the abstraction build is multithreaded), then `bp train`
 with `--threads` set to the core count and a long `--minutes`; `--resume`
-picks up after an interruption. For memory, the first lever is storing
-average strategies only for preflop (as Pluribus did), which takes the cost
-per slot from 12 bytes to 4.
+picks up after an interruption. For memory, `bp scale train` stores average
+strategies only for preflop (as Pluribus did), which takes the cost per
+postflop slot from 12 bytes to 4; see "Compact trainer and scaling" below.
+
+## Compact trainer and scaling (PLAN.md M3, `bp scale`)
+
+`src/compact.h` holds `CompactTrainer`, the same external-sampling MCCFR as
+`Trainer` (same traversal, RNG stream, Linear-CFR discount, pruning rule and
+regret floor) with the two Pluribus memory changes from
+`gpo-research/pluribus.md` section 3:
+
+* Running average only preflop. Flop, turn and river keep the int32 regret
+  alone, 4 bytes per slot instead of 12. Their blueprint is a uniform average
+  of current-strategy snapshots, which Pluribus took every 200 minutes and
+  averaged offline. `bp scale train` adds each snapshot into a streaming
+  on-disk sum (`snapavg.f32`, 4 bytes per slot, read and written one node at a
+  time), so taking hundreds of snapshots costs neither memory nor one
+  checkpoint file each.
+* Lazy allocation. A node's regret block is created from a bump arena the
+  first time a traverser writes to it; reads of a missing block see the
+  uniform strategy, which is what an all-zero dense row gives.
+
+Checkpoints are a new versioned format, `GPOCKPT2` (header, sorted list of
+allocated blocks, preflop sums, end marker). The compact loader refuses a
+dense `GPOCKPT1` file with a message naming the format, and the dense loader
+refuses `GPOCKPT2` on its magic check, so old checkpoints never load into the
+wrong trainer. `bp h2h` and `bp br` accept either: for a `GPOCKPT2` file they
+use the snapshot average in `snapavg.f32` next to it.
+
+```bash
+./bin/bp scale gate --game leduc --iters 4000000 --threads 1   # dense vs snapshot averaging, exact exploitability
+./bin/bp scale verify --preset small --iters 300000 ...         # dense == compact on hold'em, bit for bit
+./bin/bp scale tree --preset medium --stack 20000 --probe-seconds 60 --threads 1
+./bin/bp scale tree --preset small --flop 200 --turn 200 --river 200 --v1-ckpt <dense ckpt.bin>
+./bin/bp scale bench --preset small --threads-list 1,2,4,8 --seconds 20 --max-load 14 --dense --csv bench.csv
+./bin/bp scale train --preset small --threads 4 --minutes 25 --accum-from-iter N --accum-every-sec 60 --out runs/x
+./bin/bp scale export --preset small --ckpt runs/x/ckpt.cbin --snap-accum runs/x/snapavg.f32 --out x.gpobp
+```
+
+### Correctness checks
+
+* Equivalence with the dense trainer (`make test-scale`, `tests/test_scale.cpp`).
+  Single-threaded with the same seed, the compact trainer with averages on
+  every street ends with exactly the dense regrets and sums on Kuhn and Leduc
+  (lazy and eager allocation); with the preflop-only average its regrets are
+  still identical and its preflop sums equal the dense ones. On hold'em itself,
+  `bp scale verify --preset small --iters 300000 --chunk 5000 --discount-every
+  20000 --lcfr-until 100000 --prune-after 50000 --prune-threshold -3000
+  --regret-floor -3100` printed 0 regret mismatches over 1,617,913 slots, 0
+  preflop sum mismatches over 29,913, and equal visit (11,576,003) and pruned
+  (1,545,632) counts.
+* Lazy allocation: after one Leduc iteration 10 of 36 nodes are allocated, and
+  every node the dense trainer wrote a nonzero regret to is among them; 20 runs
+  of 8 threads racing on fresh tables allocate exactly one block per node. The
+  test binary built with `-fsanitize=thread` and with
+  `-fsanitize=address,undefined` ran the quick tests with no report.
+* Checkpoints: round trip of a partly allocated table; a run saved and resumed
+  across the discount and pruning start ends identical to an uninterrupted
+  one; wrong fingerprint, wrong average-street setting, a `GPOCKPT1` file,
+  trailing bytes and truncation are each refused. Snapshot sums from
+  checkpoint files and from the on-disk accumulator equal the in-memory sums.
+
+### Leduc gate with snapshot averaging
+
+PLAN.md M3 asks for the Leduc exploitability with snapshot averaging to stay
+within 2x of the dense average at 4M iterations. `bp scale gate --game leduc
+--iters 4000000 --threads 1 --seed S --snap-start-frac A --snap-every-frac B`,
+same schedule as `bp gate` (Linear CFR to 1M, pruning from 400k), dense
+average vs preflop running average plus postflop snapshot average:
+
+| seed | snapshots (start, spacing) | dense | snapshot average | ratio |
+| ---: | --- | ---: | ---: | ---: |
+| 1 | 55 (6.9%, every 1.74%: Pluribus's 800 and 200 of 11,520 minutes) | 0.008655 | 0.031924 | 3.69 |
+| 2 | 55 (same) | 0.008967 | 0.034519 | 3.85 |
+| 3 | 55 (same) | 0.008893 | 0.040244 | 4.53 |
+| 1 | 151 (25%, every 0.5%) | 0.008655 | 0.016299 | 1.88 |
+| 2 | 151 | 0.008967 | 0.018676 | 2.08 |
+| 3 | 151 | 0.008893 | 0.014056 | 1.58 |
+| 1 | 376 (25%, every 0.2%) | 0.008655 | 0.010614 | 1.23 |
+| 2 | 376 | 0.008967 | 0.011209 | 1.25 |
+| 3 | 376 | 0.008893 | 0.011212 | 1.26 |
+| 1 | 751 (25%, every 0.1%; the default) | 0.008655 | 0.010086 | 1.17 |
+| 2 | 751 | 0.008967 | 0.010901 | 1.22 |
+| 3 | 751 | 0.008893 | 0.010721 | 1.21 |
+| 1 | 3,751 (25%, every 0.02%) | 0.008655 | 0.012093 | 1.40 |
+| 2 | 3,751 | 0.008967 | 0.010692 | 1.19 |
+| 3 | 3,751 | 0.008893 | 0.010980 | 1.24 |
+
+So the gate passes with a few hundred snapshots and fails with Pluribus's
+count. The current strategy alone (no averaging after preflop) is at 0.33 to
+0.42 in the same runs, so the snapshot average does most of the work. Whether
+hold'em needs as many snapshots as Leduc is not measured; the accumulator
+makes a high count cheap, so `bp scale train` defaults to one snapshot a
+minute. The slow test `Leduc snapshot gate (4M)` reruns the 751-snapshot
+setting (1 thread, seed 1, its own chunking): 0.00932 dense, 0.01009 snapshot.
+
+On hold'em, at equal iterations: `bp train` and `bp scale train`, both with
+`--preset small --threads 2 --seed 5 --iters 12000000 --discount-every 300000
+--lcfr-until 3000000 --prune-after 1500000 --prune-threshold -3000000
+--regret-floor -3100000`, the compact run with `--accum-every-sec 1
+--accum-from-iter 3000000` (39 snapshots). `bp h2h --a <compact ckpt.cbin>
+--b <dense ckpt.bin> --hands 1000000 --threads 2 --seed 12`: compact +5.9
+mbb/hand (95% CI +/- 13.8, 2M hands); a 300,000-deal run with seed 11 gave
++20.8 +/- 25.2. No difference is detectable at this size. Two threads make
+the runs nondeterministic, so their regrets differ slightly, not only their
+averaging.
+
+### Memory
+
+`bp tree` now prints the compact layout next to the dense one. Measured with
+`bp scale tree` on the current tree (after M0):
+
+| tree | dense, 12 B/slot | compact, 12 B preflop + 4 B postflop | ratio |
+| --- | ---: | ---: | ---: |
+| small, 100 BB, 50 buckets | 19.4 MB | 6.7 MB + 0.51 MB index | 0.37 |
+| small, 100 BB, 200 buckets (overnight run) | 76.6 MB | 25.8 MB + 0.51 MB index | 0.34 |
+| medium, 200 BB, 200 buckets (R1) | 2,778.5 MB | 927.9 MB + 18.5 MB index | 0.34 |
+
+`python3 cloud/cost.py memory` gives the same arithmetic for R2 (23.47 GB
+dense, 7.84 GB compact) and R3 (94.88 GB, 31.65 GB).
+
+Lazy allocation saves little heads-up, measured two ways. The overnight
+run's checkpoint (dense, iteration 915,307,849, copied and read with `bp
+scale tree --v1-ckpt`) has touched 100% of the node blocks on every street.
+A fresh lazy run on the medium 200 BB tree (`--probe-seconds 60 --threads 1`,
+772,500 iterations) had allocated every preflop and flop block, 64,047 of
+64,060 turn blocks and 352,901 of 356,900 river blocks (98.9%): 250.4 MB of
+tables against 696.6 MB dense, peak RSS 557 MB with the abstraction. External
+sampling explores every traverser action, so nearly every node is reached
+early. Pluribus reported more than 2x from lazy allocation in six-player
+poker, where most action sequences are rare; that is where it should pay off
+here too (M8). Plan heads-up RAM for every block.
 
 ## Known limitations
 
