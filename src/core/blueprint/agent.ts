@@ -31,11 +31,26 @@
 //
 // The agent does no I/O: the PolicySource is injected (sim/blueprint-serve.ts
 // implements it over a `bp serve` child process).
+//
+// Real-time search (option `search`, default 'off'). With 'river' (or
+// 'turn+river') the agent asks a SearchSource (`bp serve` "search", the same
+// code as `bp search`) for the strategy at its own decisions on those
+// streets instead of the blueprint table. The request carries the abstract
+// history of the earlier streets (on-tree, as translated above) and, for the
+// current round, the REAL actions: an opponent bet or raise whose size is not
+// in the tree's menu is sent as its real pot fraction ("b0.83"), and the
+// subgame is rebuilt with that size inserted (blueprint/SEARCH.md, off-tree
+// bets), so the search answers the bet actually made instead of its
+// translation. The searched action is mapped back to a real bet exactly like
+// a blueprint action. The search has a hard time budget (C++ stops iterating
+// at budgetMs; a TS timer adds a safety margin); when the reply is late, is
+// an error, or ran fewer than minIters iterations, the agent plays the
+// blueprint policy for that decision and counts a search fallback.
 // ============================================================
 
 import { Card, GameState, Street, Action } from '../../types/poker';
 import {
-  TreeRules, AbsState, AbsAction, rootState, legalActions, applyAction, potFraction,
+  TreeRules, AbsState, AbsAction, rootState, legalActions, applyAction, potFraction, walkTokens,
 } from './abstract-tree';
 import { translateSize } from './translate';
 
@@ -48,6 +63,51 @@ export interface PolicyAnswer {
 
 export interface PolicySource {
   policy(history: readonly string[], hole: readonly [Card, Card], board: readonly Card[]): Promise<PolicyAnswer>;
+}
+
+export interface SearchRequest {
+  /** Abstract tokens from the root; the current round may hold off-tree sizes. */
+  history: string[];
+  hole: readonly [Card, Card];
+  board: readonly Card[];
+  budgetMs: number;
+  minIters: number;
+  maxIters?: number;
+  threads?: number;
+}
+
+export interface SearchAnswer {
+  /** Actions at the hero's node, in subgame order (same tokens as the tree rules). */
+  labels: string[];
+  probs: number[];
+  iters: number;
+  /** iters >= minIters. */
+  complete: boolean;
+  /** Wall time inside `bp serve` (setup plus solve). */
+  ms: number;
+  offtree: boolean;
+}
+
+export interface SearchSource {
+  search(req: SearchRequest): Promise<SearchAnswer>;
+}
+
+export type SearchMode = 'off' | 'river' | 'turn+river';
+
+export interface SearchStats {
+  /** Decisions on a searched street (search attempted). */
+  attempts: number;
+  /** Decisions played from a completed search. */
+  searched: number;
+  /** Of those, how many had an off-tree size in the current round. */
+  offTree: number;
+  /** Attempts that fell back to the blueprint policy. */
+  fallbacks: number;
+  fallbackReasons: Record<string, number>;
+  /** Round-trip wall time of every search reply that arrived (ms). */
+  ms: number[];
+  /** Iterations of every completed search. */
+  iters: number[];
 }
 
 export interface BlueprintDecision {
@@ -63,6 +123,8 @@ export interface BlueprintDecision {
   /** Every abstract action at the decision mapped to its real action, with its probability. */
   options?: BlueprintOption[];
   fallback?: string;
+  /** Set when the action came from real-time search. */
+  searched?: { iters: number; ms: number; offtree: boolean; history: string[] };
 }
 
 export interface BlueprintOption {
@@ -89,6 +151,22 @@ export interface BlueprintAgentOptions {
   rng?: () => number;
   /** Use the deterministic pseudo-harmonic median rule instead of the coin. */
   deterministicTranslation?: boolean;
+  /** Real-time search on the river (and turn). Default 'off'. */
+  search?: SearchMode;
+  /** Needed when search is not 'off'. */
+  searchSource?: SearchSource;
+  /** Hard solve budget per searched decision (ms). Default 1500 river, 2500 turn. */
+  searchBudgetMs?: number;
+  searchTurnBudgetMs?: number;
+  /** A search with fewer iterations falls back to the blueprint. Default 100. */
+  searchMinIters?: number;
+  /** Iteration cap (default: none, the budget decides). */
+  searchMaxIters?: number;
+  searchThreads?: number;
+  /** Extra wait beyond the budget before the TS side gives up. Default 1000 ms. */
+  searchGraceMs?: number;
+  /** Called after every search attempt (for logs). */
+  onSearch?: (rec: { street: number; ok: boolean; reason?: string; ms?: number; iters?: number; offtree?: boolean }) => void;
 }
 
 const STREETS: Street[] = ['preflop', 'flop', 'turn', 'river'];
@@ -211,16 +289,155 @@ export class BlueprintAgent {
   readonly stats: BlueprintAgentStats = {
     decisions: 0, fallbacks: 0, fallbackReasons: {}, offTreeTranslations: 0, translations: 0,
   };
+  readonly searchStats: SearchStats = {
+    attempts: 0, searched: 0, offTree: 0, fallbacks: 0, fallbackReasons: {}, ms: [], iters: [],
+  };
   private rng: () => number;
   private deterministic: boolean;
   private handKey = '';
   private memo = new Map<string, string>();
+  private opts: BlueprintAgentOptions;
+  readonly searchMode: SearchMode;
 
   constructor(opts: BlueprintAgentOptions) {
     this.rules = opts.rules;
     this.source = opts.source;
     this.rng = opts.rng ?? Math.random;
     this.deterministic = !!opts.deterministicTranslation;
+    this.opts = opts;
+    this.searchMode = opts.search ?? 'off';
+    if (this.searchMode !== 'off' && !opts.searchSource) throw new Error('BlueprintAgent: search needs a searchSource');
+  }
+
+  /** Streets this agent searches (2 = turn, 3 = river). */
+  searchesStreet(street: number): boolean {
+    if (this.searchMode === 'river') return street === 3;
+    if (this.searchMode === 'turn+river') return street === 2 || street === 3;
+    return false;
+  }
+
+  /**
+   * The search history for the current decision: the abstract tokens of the
+   * earlier streets (the translated walk) plus the current round's real
+   * actions. Passive actions map to k / c. A bet or raise maps to the menu
+   * action with the same chip amount at the subgame state when there is one,
+   * to "a" when it is all-in, and otherwise to its real pot fraction
+   * ("b0.8312"), which `bp serve` inserts into the rebuilt round. Our own
+   * earlier actions this round reuse the token we chose. Returns the tokens
+   * and the subgame state at the decision, or the reason it cannot.
+   */
+  searchLine(
+    state: GameState, m: { toks: string[]; real: RealReplay }, heroSeat: number, curStreet: number,
+  ): { ok: true; history: string[]; at: AbsState } | { ok: false; why: string } {
+    const real = m.real;
+    let nPrior = 0;
+    while (nPrior < real.acts.length && real.acts[nPrior].street < curStreet) nPrior++;
+    const prefix = m.toks.slice(0, nPrior);
+    let s = walkTokens(this.rules, prefix);
+    if (!s || s.type !== 'decision' || s.street !== curStreet) return { ok: false, why: 'round start not on the tree' };
+    const start = [0, 1].map(seat => {
+      const pi = seat === heroSeat ? state.heroIndex : 1 - state.heroIndex;
+      return state.players[pi].stack + real.c[seat];
+    });
+    const rc: [number, number] = [real.streetBase, real.streetBase];
+    const line: string[] = [];
+    for (let k = nPrior; k < real.acts.length; k++) {
+      const ra = real.acts[k];
+      if (s.type !== 'decision' || s.player !== ra.actor) return { ok: false, why: 'line actor mismatch' };
+      const legal = legalActions(this.rules, s);
+      let act: AbsAction | undefined;
+      if (ra.cls === 'fold') return { ok: false, why: 'fold inside the line' };
+      if (ra.cls === 'passive') {
+        act = legal.find(x => x.kind === 'check' || x.kind === 'call');
+      } else {
+        const memoTok = ra.actor === heroSeat ? this.memo.get(`${ra.street}:${ra.idx}`) : undefined;
+        act = memoTok !== undefined ? legal.find(x => x.tok === memoTok && tokClass(x.tok) === 'aggressive') : undefined;
+        if (!act) {
+          const allin = legal.find(x => x.kind === 'allin');
+          if (ra.toTotal >= start[ra.actor]) {
+            act = allin;
+          } else {
+            // Real size as a pot fraction, sized at the subgame state the way
+            // `bp serve` will size the token (search.cpp token_action, double f).
+            const x = Number(potFraction(rc, ra.actor, ra.toTotal).toFixed(4));
+            const p = s.player, mine = s.c[p], theirs = s.c[1 - p], maxc = Math.max(mine, theirs);
+            const toCall = maxc - mine, pot = s.c[0] + s.c[1];
+            const lr = (v: number) => (v < 0 ? -Math.round(-v) : Math.round(v));
+            const to = toCall === 0 ? mine + Math.max(this.rules.minBet, lr(x * pot))
+              : maxc + Math.max(s.lastInc, lr(x * (pot + toCall)));
+            const sized = legal.filter(a => a.kind === 'bet' || a.kind === 'raise' || a.kind === 'allin');
+            const chipsBehind = theirs < this.rules.stack && mine + toCall < this.rules.stack;
+            if (!chipsBehind || sized.length === 0) return { ok: false, why: 'no raise possible in the line' };
+            if (to >= this.rules.stack) act = allin;
+            else {
+              act = sized.find(a => a.to === to);
+              if (!act) {
+                const kind = toCall === 0 ? 'bet' : 'raise';
+                const tok = (kind === 'bet' ? 'b' : 'r') + String(x);
+                if (legal.some(a => a.tok === tok)) return { ok: false, why: 'off-tree token collides with the menu' };
+                act = { kind, to, fracMilli: 0, tok };
+              }
+            }
+          }
+        }
+      }
+      if (!act) return { ok: false, why: 'no line action for real action' };
+      line.push(act.tok);
+      s = applyAction(this.rules, s, act);
+      rc[ra.actor] = ra.toTotal;
+    }
+    if (s.type !== 'decision' || s.player !== heroSeat || s.street !== curStreet) {
+      return { ok: false, why: 'line does not end at our decision' };
+    }
+    return { ok: true, history: [...prefix, ...line], at: s };
+  }
+
+  private searchFallback(why: string, street: number): void {
+    this.searchStats.fallbacks++;
+    this.searchStats.fallbackReasons[why] = (this.searchStats.fallbackReasons[why] ?? 0) + 1;
+    this.opts.onSearch?.({ street, ok: false, reason: why });
+  }
+
+  /** Run the search with the hard budget; null means play the blueprint. */
+  private async trySearch(
+    state: GameState, m: { toks: string[]; real: RealReplay }, heroSeat: number, curStreet: number,
+  ): Promise<{ legal: AbsAction[]; probs: number[]; ans: SearchAnswer; history: string[] } | null> {
+    this.searchStats.attempts++;
+    const ln = this.searchLine(state, m, heroSeat, curStreet);
+    if (!ln.ok) { this.searchFallback(`line: ${ln.why}`, curStreet); return null; }
+    const budgetMs = curStreet === 2 ? (this.opts.searchTurnBudgetMs ?? 2500) : (this.opts.searchBudgetMs ?? 1500);
+    const req: SearchRequest = {
+      history: ln.history, hole: state.heroCards as [Card, Card], board: state.communityCards, budgetMs,
+      minIters: this.opts.searchMinIters ?? 100, maxIters: this.opts.searchMaxIters, threads: this.opts.searchThreads,
+    };
+    const t0 = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let ans: SearchAnswer;
+    try {
+      const late = new Promise<never>((_, rej) => {
+        timer = setTimeout(() => rej(new Error('timeout')), budgetMs + (this.opts.searchGraceMs ?? 1000));
+      });
+      ans = await Promise.race([this.opts.searchSource!.search(req), late]);
+    } catch (e) {
+      const msg = (e as Error).message;
+      this.searchFallback(msg === 'timeout' ? 'timeout' : 'error', curStreet);
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    const ms = Date.now() - t0;
+    this.searchStats.ms.push(ms);
+    if (!ans.complete) { this.searchFallback('too few iterations', curStreet); return null; }
+    const legal = legalActions(this.rules, ln.at);
+    if (ans.labels.length !== legal.length || ans.labels.some((t, i) => t !== legal[i].tok)) {
+      this.searchFallback('search actions differ from the TS line', curStreet);
+      return null;
+    }
+    this.searchStats.searched++;
+    if (ans.offtree) this.searchStats.offTree++;
+    this.searchStats.iters.push(ans.iters);
+    this.opts.onSearch?.({ street: curStreet, ok: true, ms, iters: ans.iters, offtree: ans.offtree });
+    return { legal, probs: ans.probs, ans: { ...ans, ms }, history: ln.history };
   }
 
   setRng(rng: () => number): void { this.rng = rng; }
@@ -304,21 +521,36 @@ export class BlueprintAgent {
     // Consistency with what the table shows for this street.
     if (real.c[heroSeat] - real.streetBase !== hero.currentBet) return this.fallback(state, 'commitment mismatch');
 
-    const ans = await this.source.policy(m.toks, state.heroCards, state.communityCards);
-    const legal = legalActions(this.rules, m.abs);
-    if (ans.toks.length !== legal.length || ans.toks.some((t, i) => t !== legal[i].tok)) {
-      return this.fallback(state, 'policy actions differ from the TS tree');
+    let legal: AbsAction[], probs: number[], history: string[];
+    let searched: BlueprintDecision['searched'];
+    const sr = this.searchesStreet(curStreet) ? await this.trySearch(state, m, heroSeat, curStreet) : null;
+    if (sr) {
+      legal = sr.legal;
+      probs = sr.probs;
+      history = sr.history;
+      searched = { iters: sr.ans.iters, ms: sr.ans.ms, offtree: sr.ans.offtree, history: sr.history };
+    } else {
+      const ans = await this.source.policy(m.toks, state.heroCards, state.communityCards);
+      legal = legalActions(this.rules, m.abs);
+      if (ans.toks.length !== legal.length || ans.toks.some((t, i) => t !== legal[i].tok)) {
+        return this.fallback(state, 'policy actions differ from the TS tree');
+      }
+      probs = ans.probs;
+      history = m.toks;
     }
-    let r = this.rng(), pick = ans.probs.length - 1;
-    for (let i = 0; i < ans.probs.length; i++) {
-      r -= ans.probs[i];
+    let r = this.rng(), pick = probs.length - 1;
+    for (let i = 0; i < probs.length; i++) {
+      r -= probs[i];
       if (r < 0) { pick = i; break; }
     }
     const act = legal[pick];
     const street = STREETS[curStreet];
     this.memo.set(`${curStreet}:${(state.actionHistory[street] ?? []).length}`, act.tok);
-    const options: BlueprintOption[] = legal.map((a, i) => ({ token: a.tok, prob: ans.probs[i], ...this.realAction(state, real, heroSeat, a) }));
-    return { ...options[pick], token: act.tok, history: m.toks, probs: ans.probs, toks: ans.toks, options };
+    const options: BlueprintOption[] = legal.map((a, i) => ({ token: a.tok, prob: probs[i], ...this.realAction(state, real, heroSeat, a) }));
+    return {
+      ...options[pick], token: act.tok, history, probs, toks: legal.map(a => a.tok), options,
+      ...(searched ? { searched } : {}),
+    };
   }
 
   /**

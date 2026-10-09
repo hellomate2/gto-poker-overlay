@@ -135,6 +135,30 @@ static void test_preflop_policy_lookup() {
             "terminal"));
 }
 
+// "search" dispatch: without a hook it is an error reply; a hook that calls
+// die() (as the search code does on a bad request) yields an error reply
+// instead of exiting, the loop keeps serving, and die() exits again outside
+// a request; a working hook's fields are spliced after "ok" and "id".
+static void test_search_dispatch() {
+  BettingTree tree;
+  int b[4] = {169, 3, 3, 3};
+  tree.build(holdem_config("tiny"), b);
+  ServeCtx ctx;
+  ctx.tree = &tree;
+  CHECK(has(serve_handle(ctx, "{\"cmd\":\"search\",\"id\":4}"), "\"ok\":false"));
+  ctx.search = [](const std::map<std::string, std::string>& req) -> std::string {
+    if (req.count("history") && req.at("history") == "bad") die("search: token 'bad' is not legal");
+    return ",\"labels\":[\"k\"],\"probs\":[1]";
+  };
+  std::string r = serve_handle(ctx, "{\"cmd\":\"search\",\"id\":5,\"history\":\"bad\"}");
+  CHECK(has(r, "\"ok\":false") && has(r, "\"id\":5") && has(r, "not legal"));
+  CHECK(!die_throws());
+  r = serve_handle(ctx, "{\"cmd\":\"search\",\"id\":6,\"history\":\"r1 c\"}");
+  CHECK(r == "{\"ok\":true,\"id\":6,\"labels\":[\"k\"],\"probs\":[1]}");
+  r = serve_handle(ctx, "{\"cmd\":\"info\"}");
+  CHECK(has(r, "\"ok\":true"));
+}
+
 int main() {
   struct T {
     const char* name;
@@ -143,6 +167,7 @@ int main() {
       {"serve json parser", test_json_parser},
       {"serve node queries", test_node_queries},
       {"serve preflop policy lookup", test_preflop_policy_lookup},
+      {"serve search dispatch and error replies", test_search_dispatch},
   };
   for (auto& t : tests) {
     int before = g_fail;

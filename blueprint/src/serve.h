@@ -24,6 +24,15 @@
 //     -> the node fields above plus "bucket" and "probs" (average strategy,
 //        same order as "actions"). The board must have exactly the cards of
 //        the node's street (0, 3, 4 or 5).
+//   {"cmd":"search","history":"r1 c k k k k k b0.8","hole":"QhJh",
+//    "board":"Qs7h2d9c3s","budget-ms":1500,"min-iters":100}
+//     -> real-time search at the hero's decision (src/search.h,
+//        serve_search): the same request parsing and solver run as
+//        `bp search` with the same keys. The history may end with off-tree
+//        sizes in the current turn or river round ("b0.8"). Reply: "labels"
+//        (the hero node's actions), "probs" (searched average strategy),
+//        "bp_probs" (the blueprint's, empty off-tree), "iters", "complete"
+//        (iters >= min-iters), "setup_ms", "solve_ms", "ms".
 //
 // Errors come back as {"ok":false,"error":"..."} and the loop keeps going.
 // ============================================================
@@ -57,6 +66,10 @@ struct ServeCtx {
   const std::vector<float>* pol = nullptr;  // average strategy per slot
   long long iterations = 0;
   std::string abs_id;
+  // "search" handler (set by cmd_serve when a checkpoint is loaded): returns
+  // the reply fields after "ok"/"id", each starting with ','. May throw
+  // (DieError); serve_handle turns that into an error reply.
+  std::function<std::string(const std::map<std::string, std::string>&)> search;
 };
 
 // Answer one request line (no trailing newline in the result).

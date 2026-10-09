@@ -1220,6 +1220,15 @@ int cmd_serve(const Args& a) {
     ctx.pol = &pol;
     ctx.iterations = tr->iter;
   }
+  // Real-time search requests (src/search.h serve_search): the same float
+  // policy table `bp search` builds, so served and command-line searches match.
+  rt::BpView search_view;
+  if (!tree_only) {
+    search_view = rt::holdem_view(h->tree, h->abs, pol);
+    const BettingTree* tp = &h->tree;
+    const rt::BpView* vp = &search_view;
+    ctx.search = [tp, vp](const std::map<std::string, std::string>& req) { return rt::serve_search(*tp, *vp, req); };
+  }
   if (a.has("parity-dump")) {
     if (tree_only) die("serve: --parity-dump needs a checkpoint");
     std::string out = a.get("out", "parity.jsonl");

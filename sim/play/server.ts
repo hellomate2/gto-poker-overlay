@@ -5,7 +5,7 @@
 //   npm run play -- [--port 8765] [--bot engine] [--bot-dir PATH] [--flags SPEC]
 //                   [--sb 10] [--bb 20] [--stack-bb 100] [--you-bb N] [--bot-bb N]
 //                   [--delay 600] [--seed N] [--exploit] [--no-history]
-//                   [--history-dir DIR] [--policy CKPT (with --bot blueprint)]
+//                   [--history-dir DIR] [--policy CKPT (with --bot blueprint or blueprint+search)]
 //
 // API (JSON):
 //   GET  /api/state[?since=V&wait=MS]  snapshot; with wait, long-polls until the

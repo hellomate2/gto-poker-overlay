@@ -92,21 +92,24 @@ export const ENGINE_FLAG_NAMES: readonly EngineFlagName[] = [
 //   DEFENSE OFF: it beats base against three of four probes but loses heads-up:
 //     +22.61 +/- 18.49 bb/100 for base on seed 1 and +16.59 +/- 18.45 on seed 101.
 //   MULTIWAY_EQUITY OFF: over-folds multiway (+268.73 +/- 204.22 bb/100 for base).
-//   BLUEPRINT OFF (added 2026-10-09): the pre-registered heads-up test passed. With
-//     +BLUEPRINT on top of these defaults, against the original bot (swarm/base,
-//     sim/match.ts --mode hu, 3000 deals per seed): +26.74 +/- 20.20 bb/100 (seed 7)
-//     and +25.79 +/- 19.29 (seed 101), 0 illegal actions in 24,786 decisions
-//     (sim/results/2026-10-09/bp-web/). It stays off until it has been checked live:
-//     it replays the scraped action log (same open question on log order as
-//     RANGE_TRACKER; replays that do not match the table fall back to the normal path),
-//     and the asset fetch has not run in a real Chrome profile yet.
+//   BLUEPRINT ON (added 2026-10-09; turned on 11:20 PDT at Dev's request, "put the
+//     blueprint bot in the extension too"). Heads-up only, 50 to 200 BB; anything
+//     else, and any failure, falls back to the normal engine path. Pre-registered
+//     heads-up tests vs the original bot (swarm/base, sim/match.ts --mode hu, 3000
+//     deals per seed): +26.74 +/- 20.20 bb/100 (seed 7) and +25.79 +/- 19.29 (seed
+//     101), 0 illegal actions in 24,786 decisions (sim/results/2026-10-09/bp-web/).
+//     Against main's previous defaults (FIX+SG), seed 303, 3000 deals:
+//     +9.14 +/- 22.24, not significant. Caveats: it replays the scraped action log
+//     (same open question on log order as RANGE_TRACKER; replays that do not match
+//     the table fall back), and the chrome-extension:// asset fetch has not run in
+//     a real Chrome profile yet (a failed fetch falls back to the normal engine).
 export const DEFAULT_ENGINE_FLAGS: Readonly<EngineFlags> = Object.freeze({
   FIX_LIVE_VILLAINS: true,
   RANGE_TRACKER: false,
   MULTIWAY_EQUITY: false,
   DEFENSE: false,
   SUBGAME_SOLVER: true,
-  BLUEPRINT: false,
+  BLUEPRINT: true,
 });
 export const ENGINE_FLAGS: EngineFlags = { ...DEFAULT_ENGINE_FLAGS };
 

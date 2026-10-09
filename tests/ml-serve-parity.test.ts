@@ -45,10 +45,10 @@ import { Action, GameState, Player, Street } from '../src/types/poker';
 import { card } from './helpers';
 
 beforeEach(() => {
-  // These tests pin the distilled-net path. With SUBGAME_SOLVER on (the default since
+  // These tests pin the distilled-net path. With SUBGAME_SOLVER and BLUEPRINT on (defaults since
   // 2026-10-09) heads-up turn/river decisions go to the subgame solver instead, so
   // turn it off here to keep exercising the net's feature encoding.
-  setEngineFlags({ SUBGAME_SOLVER: false });
+  setEngineFlags({ SUBGAME_SOLVER: false, BLUEPRINT: false });
   captured.spots.length = 0;
   vi.spyOn(Math, 'random').mockReturnValue(0.99);
   vi.spyOn(console, 'log').mockImplementation(() => {});

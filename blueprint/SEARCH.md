@@ -4,7 +4,10 @@ Status on 2026-10-09: the C++ subgame solver and a first depth-limited search
 agent exist, are checked against exact references, and run on the overnight
 checkpoint. Off-tree opponent bets are handled on the turn and river. Preflop
 search, off-tree sizes on the flop and safe re-solving gadgets are not built
-yet (see "Not done" below).
+yet (see "Not done" below). The TS BlueprintAgent uses this search at its
+river decisions through `bp serve` (seat `blueprint+search:<ckpt>`, play bot
+`blueprint+search`); see README.md, "Blueprint plus real-time search in the
+agent", for the protocol, the parity test and the match results.
 
 ## Files and commands
 

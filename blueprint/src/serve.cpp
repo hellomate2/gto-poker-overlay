@@ -196,6 +196,20 @@ std::string serve_handle(const ServeCtx& ctx, const std::string& line) {
       << "],\"nodes\":" << tree.nodes.size() << "}";
     return o.str();
   }
+  if (cmd == "search") {
+    if (!ctx.search) return error_reply(id, "search not available (no checkpoint loaded)");
+    bool prev = die_throws();
+    die_throws() = true;
+    try {
+      std::string fields = ctx.search(req);
+      die_throws() = prev;
+      o << fields << "}";
+      return o.str();
+    } catch (const std::exception& e) {
+      die_throws() = prev;
+      return error_reply(id, e.what());
+    }
+  }
   if (cmd != "node" && cmd != "policy") return error_reply(id, "unknown cmd '" + cmd + "'");
 
   int64_t ni = tree.find(split_ws(req.count("history") ? req["history"] : ""));

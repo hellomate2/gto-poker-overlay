@@ -484,9 +484,122 @@ off-tree). Both seeds pooled (4,000 deals, 8,000 hands, deal-level samples):
 head-to-head numbers against one opponent (the current rule-and-solver
 engine), not an exploitability measurement.
 
-Not done yet: real-time search on later streets and depths other than 100 BB
-(the agent plays them but the abstraction assumes 100 BB). The browser path
-without `bp serve` is the next section.
+Not done yet: depths other than 100 BB (the agent plays them but the
+abstraction assumes 100 BB). The next two sections cover real-time search in
+the agent and the browser path without `bp serve`.
+
+## Blueprint plus real-time search in the agent (`blueprint+search`)
+
+Added 2026-10-09. The BlueprintAgent can replace the blueprint table with a
+real-time search at its own river decisions, in the simulator, in
+`sim/match.ts` and in the play app.
+
+Pieces:
+
+* `bp serve` request `{"cmd":"search","history":...,"hole":...,"board":...,
+  "budget-ms":1500,"min-iters":100}`. It runs the same
+  `parse_search_request` and `run_search` as `bp search` (src/search.cpp),
+  with the same float policy table, so a served search is the command-line
+  search. Defaults differ only in `budget-ms` (1,500) and `threads` (1). The
+  reply holds the hero node's `labels`, the searched `probs`, the
+  blueprint's `bp_probs` (empty off-tree), `iters`, `complete` (iterations
+  at least `min-iters`) and the timings. A bad request (an illegal token, a
+  board of the wrong size) is an error reply; `die()` throws while serve
+  handles a request, so the process keeps serving.
+* `src/core/blueprint/agent.ts`, option `search: 'off' | 'river' |
+  'turn+river'` (default `off`). On a searched street the agent sends the
+  earlier streets' abstract tokens (the translated walk) plus the current
+  round's REAL actions: an opponent bet or raise that matches a menu size in
+  chips at that point of the rebuilt round keeps the menu token, a real
+  all-in becomes `a`, and any other size goes as its real pot fraction
+  (`b0.8312`). `bp serve` inserts that size and re-solves the round from its
+  start (blueprint/SEARCH.md, off-tree bets), so the search answers the bet
+  that was made instead of its translation. The searched action maps back
+  to real chips with the blueprint path's sizing code. Legality checks are
+  unchanged.
+* Hard budget and fallback. C++ stops iterating at `budget-ms` measured from
+  the start of setup (overshoot at most one iteration). The TS side waits at
+  most budget plus 1,000 ms. On a late reply, an error reply, or fewer than
+  `min-iters` (default 100) iterations, the agent plays the blueprint policy
+  for that decision and counts a search fallback by reason
+  (`agent.searchStats`).
+* Seat spec `blueprint+search:<ckpt>` (sim/seat-agents.ts), play bot kind
+  `blueprint+search` (sim/play/bots.ts). Knobs: `GPO_BP_SEARCH` (`river`,
+  default, or `turn+river`), `GPO_BP_SEARCH_MS`, `GPO_BP_SEARCH_TURN_MS`,
+  `GPO_BP_SEARCH_MIN_ITERS`, `GPO_BP_SEARCH_MAX_ITERS`,
+  `GPO_BP_SEARCH_THREADS`, `GPO_BP_SEARCH_LOG` (one JSON line per search).
+
+Why river only. A turn solve runs to the end of the game (48 river
+branches, 300 combos per side). Through `bp serve` with a 2,500 ms budget
+and 4 threads on the final checkpoint (board Qs 7h 2d 9c, hero Qh Jh,
+09:42 PDT, load average 17 to 21 on 11 cores): line `r1 c k k` reached 65
+iterations and 5.66% of the pot exploitability inside the subgame; the
+off-tree line `r1 c k k k b0.7` reached 35 iterations and 12.77%; capping
+the ranges at 150 combos gave 104 iterations and 2.30%. The river spot
+`r1 c k k k k k b0.8` reached 1,446 iterations and 0.013% in 1,500 ms on
+one thread. A turn search that is several percent of the pot from
+equilibrium does not reliably fit the budget, so `turn+river` stays an
+opt-in and the shipped seat searches the river only.
+
+### Validation
+
+| Check | Command | Result |
+| --- | --- | --- |
+| served search equals `bp search`, 20 seeded spots (12 river, 8 turn; half with an off-tree bet in the current round), fixed iteration count (300 river, 20 turn) | `npx tsx sim/blueprint-search-parity.ts --ckpt CKPT --spots 20 --seed 7` | same labels and iteration counts on all 20; largest probability difference 0 ([output](../sim/results/2026-10-09/bp-search/parity-20-spots.txt)) |
+| serve search dispatch, `die()` as an error reply | `make test` (`bin/bp_serve_tests`) | 422 checks, 0 failures |
+| round trip (search history equals the played tokens, no off-tree insertions, 1,000 hands), legality over 1,000 hands with turn and river search against a random-size bettor and scripted opponents, error / timeout / under-iterated fallbacks, a scripted off-tree river bet | `npx vitest run tests/blueprint-search.test.ts` | 6 tests pass; 0 illegal actions; every search the legality run made was accepted by a stub that mirrors `bp serve`'s token rules |
+| search code after the refactor | `make test-rt` | 108 checks, 0 failures |
+| play app end to end, 40 hands | `npx tsx sim/play/e2e.ts --hands 40 --seed 9 --bot blueprint+search --policy CKPT` | E2E OK; 14 river searches (3 with an off-tree size), all 1,500 to 1,501 ms |
+
+### Matches (pre-registered)
+
+Pre-registered in sim/results/2026-10-09/bp-search/PREREGISTRATION.md
+before the runs: seeds 7 and 101, 3,000 duplicate deals each, heads-up,
+100 BB, blinds 10/20, a gain counts only if the 95% CI excludes 0. The
+agent: final overnight checkpoint (12,749,175,749 iterations), river search
+at every own river decision, 1,500 ms budget, at least 100 iterations, one
+thread. Run 09:49 to 11:01 PDT through `sim/match.ts` as 3 shard processes
+per match ([driver](../sim/results/2026-10-09/bp-search/run-matches.sh),
+[full results](../sim/results/2026-10-09/bp-search/RESULTS.md)).
+
+| match | seed 7 | seed 101 | pooled, 6,000 deals | counts as a gain |
+| --- | --- | --- | --- | --- |
+| (a) blueprint+search vs pure blueprint, same checkpoint | +10.40 +/- 18.28 | +8.85 +/- 15.34 | +9.62 +/- 11.93, [-2.31, 21.56] | no (CI covers 0) |
+| (b) blueprint+search vs the ORIGINAL bot (swarm/base b39bc8b DecisionEngine, default flags) | +19.88 +/- 19.65 | +24.08 +/- 18.82 | +21.98 +/- 13.60, [8.38, 35.58] | yes |
+
+bb/100 for blueprint+search with 95% CIs. Over the 24,000 hands: 59,613
+agent decisions, 0 illegal actions, 7,746 river searches (505 with an
+off-tree opponent size inserted), 0 search fallbacks, 27 fallbacks of the
+known committed-all-in kind on the blueprint path. Round trip per searched
+decision: p50 1,501 ms, p95 1,503 ms, max 1,583 ms; iterations per search
+p50 2,608, minimum 500. Wall time 1,305 s and 1,386 s for (a), 841 s and
+767 s for (b). Match (b) compares the whole agent with the original bot; it
+does not isolate what search adds against that bot.
+
+### Demo
+
+```bash
+cd blueprint && make bin/bp && cd ..
+export GPO_BP_FLAGS="--preset small --flop 200 --turn 200 --river 200 --bins 50 --abs-seed 7 --cache /Users/rg/.gpo/overnight/cache"
+CKPT=/Users/rg/.gpo/eval/final.bin
+
+# play heads-up against blueprint + river search in the browser (http://localhost:8765)
+npm run play -- --bot blueprint+search --policy $CKPT
+
+# one live search on an off-tree river spot: the opponent bet 0.8 pot, the menu has 0.5 and 1
+blueprint/bin/bp search $GPO_BP_FLAGS --ckpt $CKPT --board "Qs 7h 2d 9c 3s" \
+    --history "r1 c k k k k k b0.8" --hand "Qh Jh" --budget-ms 1500 --threads 1
+
+# the same spot through the serve protocol the agent uses
+echo '{"cmd":"search","history":"r1 c k k k k k b0.8","hole":"QhJh","board":"Qs7h2d9c3s","budget-ms":1500}' \
+  | blueprint/bin/bp serve $GPO_BP_FLAGS --ckpt $CKPT
+```
+
+The `bp search` line above, run at 10:13 PDT (load average 11): subgame of
+69 nodes, 1,081 combos per side, 1,857 iterations in 1.499 s, 0.008% of the
+pot from equilibrium inside the subgame; with Qh Jh facing the 0.8 pot bet
+it calls 34.71% and raises pot 65.29%
+([output](../sim/results/2026-10-09/bp-search/demo-bp-search-offtree-river.txt)).
 
 ## The blueprint in the extension (`export-web`, engine flag `BLUEPRINT`)
 
