@@ -42,3 +42,6 @@ src/solver/preflop/probe-*.ts
 
 # generated simulation report
 sim/REPORT.md
+
+# local play app hand histories (sim/play)
+sim/play/history/

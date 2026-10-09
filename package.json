@@ -20,6 +20,8 @@
     "sim:selftest": "npx tsx sim/run.ts --selftest && npx tsx sim/ring-run.ts --selftest",
     "sim:ring": "npx tsx sim/ring-run.ts",
     "sim:match": "npx tsx sim/match.ts",
+    "play": "npx tsx sim/play/server.ts",
+    "play:e2e": "npx tsx sim/play/e2e.ts",
     "lint": "eslint \"src/**/*.ts\" \"ml/**/*.ts\" \"tests/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"ml/**/*.ts\" \"tests/**/*.ts\" \"*.md\" \"docs/**/*.md\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"ml/**/*.ts\" \"tests/**/*.ts\""
