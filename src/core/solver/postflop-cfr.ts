@@ -2,42 +2,48 @@
 // Depth-Limited Postflop CFR Subgame Solver (pure TypeScript).
 // ------------------------------------------------------------
 // A genuine counterfactual-regret-minimization solve of the CURRENT postflop
-// decision, modelled as a two-player extensive-form subgame: hero's range vs an
-// estimated villain range on the actual board, given the live pot and effective
-// stack. It is "depth-limited" in the Pluribus / Brown-Sandholm sense
-// (Brown, Sandholm & Amos 2018, "Depth-Limited Solving for Imperfect-Information
-// Games"; Brown & Sandholm 2019, "Superhuman AI for multiplayer poker"
-// (Pluribus)): we build out the betting tree for the current street only and,
-// instead of recursing into future chance/board cards, value every leaf where
-// the action sequence resolves the hand with an EXACT equity computation from
-// the perfect-hash evaluator:
-//   - a leaf where someone folds  => the other player wins the current pot,
-//   - a leaf where betting is matched ("call"/"check-through") and chips are
-//     still behind => an equity-weighted showdown of the two ranges over the
-//     remaining runout (all-in equity of the surviving ranges).
+// street, modelled as a two-player extensive-form subgame: hero's weighted range
+// vs villain's weighted range on the actual board, given the live pot, the
+// effective stack and any bet hero is facing. It is "depth-limited" in the
+// Pluribus / Brown-Sandholm sense (Brown, Sandholm & Amos 2018, "Depth-Limited
+// Solving for Imperfect-Information Games"; Brown & Sandholm 2019, Pluribus): the
+// betting tree is built for the current street only, and every leaf where the
+// street's betting resolves is valued exactly from the perfect-hash evaluator:
+//   - a leaf where someone folds  => the other player wins the pot,
+//   - a leaf where chips are matched => an equity-weighted showdown of the two
+//     hands over the remaining runout (exact on the river and turn, exact or
+//     deterministically sub-sampled on the flop).
 //
-// This is the standard tractable real-time method: full CFR on the current
-// street's action abstraction with an equity-evaluated leaf, rather than a full
-// multi-street solve. It is honest CFR (regret matching over a real game tree),
-// NOT heuristics: we run regret-matching+ updates over enumerated range pairs
-// and return the converged AVERAGE strategy.
+// Algorithm: range-vs-range (vectorized) CFR. Every player's information set is
+// (betting line, own hand), so each hand in each range gets its own regrets.
+// Each iteration traverses the public tree once per player (alternating
+// updates), carrying the OPPONENT's reach as a vector over the opponent's
+// range; the traverser's counterfactual values come back as a vector over its
+// own range. Regrets and average strategies use Discounted CFR (Brown &
+// Sandholm 2019, "Solving Imperfect-Information Games via Discounted Regret
+// Minimization") with alpha = 1.5, beta = 0.5, gamma = 2.
 //
-// Action abstraction (kept deliberately small for tractability):
-//   fold / check / call / bet-or-raise at a SMALL set of pot fractions
-//   (default 33% pot, 75% pot, all-in). Raises are capped (one raise then
-//   call/all-in) to bound the tree.
+// Range weights enter as CHANCE reach at the root: the probability that hero
+// holds combo i and villain holds combo j is proportional to
+//   w_hero[i] * w_villain[j] * compatible(i, j)
+// where compatible() is 0 when the two combos share a card. Card-conflicting
+// pairs are therefore excluded, not counted as ties.
+//
+// A best-response pass over each player's average strategy gives the
+// exploitability of the current solution within the abstraction (NashConv / 2,
+// reported as a percentage of the pot), which is what tells us whether a
+// time-boxed solve actually converged.
 //
 // Runs on the MAIN thread under a HARD time/iteration budget so it can never
 // hang the UI; callers fall back to a heuristic on timeout/error.
 // ============================================================
 
 import { CardId, StrategyDistribution } from '../../types/poker';
-import { createDeck, removeCards } from '../cfr/card-utils';
 import { evaluateHand } from '../equity/hand-eval';
 import { SeededRng } from '../../solver/rng';
 
 // ------------------------------------------------------------
-// Public API
+// Public types
 // ------------------------------------------------------------
 
 /** A weighted hand in a range: two hole-card ids plus a relative weight. */
@@ -46,652 +52,803 @@ export interface RangeHand {
   weight: number;
 }
 
-export interface SolvePostflopInput {
-  /** Board cards as ids (3, 4, or 5 of them). */
-  board: CardId[];
-  /** Hero's exact hole cards. */
-  heroCards: [CardId, CardId];
-  /** Current pot size (chips) at the moment of decision. */
-  pot: number;
-  /** Effective remaining stack behind, per player (chips). */
-  effectiveStack: number;
-  /** Amount hero must call right now (0 when hero is not facing a bet). */
-  toCall?: number;
-  /** Whether hero is in position (acts last). Used only to pick a default
-   *  villain range; the solve itself is position-agnostic. */
-  heroInPosition?: boolean;
-  /** Optional explicit hero range. When omitted, a wide single-raised-pot
-   *  continuing range is used and hero's exact hand is guaranteed present. */
-  heroRange?: RangeHand[];
-  /** Optional explicit villain range. When omitted a sensible continuing
-   *  range is generated. */
-  villainRange?: RangeHand[];
-  /** Pot-fraction bet sizes to include in the abstraction. Default [0.33,0.75]
-   *  plus an implicit all-in. */
-  betFractions?: number[];
-  /** Hard iteration budget (CFR passes). Default 300. */
-  maxIterations?: number;
-  /** Hard wall-clock budget in ms. Default 200. Whichever limit is hit first
-   *  stops the solve; the average strategy so far is returned. */
-  timeBudgetMs?: number;
-  /** Seed for the deterministic RNG used in range sampling. Default 1. */
-  seed?: number;
-  /** Cap on the number of villain combos enumerated (for tractability).
-   *  Default 60. Larger ranges are sub-sampled deterministically. */
-  maxVillainCombos?: number;
-}
-
-export interface SolvePostflopResult {
-  /** Converged average strategy for hero's root decision. */
-  strategy: StrategyDistribution;
-  /** CFR iterations actually performed before the budget was hit. */
-  iterations: number;
-  /** Wall-clock time spent in the solve (ms). */
-  timeMs: number;
-  /** Hero's root counterfactual EV under the solved strategy (chips). */
-  ev: number;
-}
-
-// ------------------------------------------------------------
-// Betting-tree node model
-// ------------------------------------------------------------
-
-const A_FOLD = 'F';
-const A_CHECK = 'X';
-const A_CALL = 'C';
-// Bets/raises are encoded as 'B<index>' where index keys into the size list.
-
-type Player = 0 | 1; // 0 = hero, 1 = villain
-
 /**
- * A betting-tree node. The tree is shared across all range pairs; each player's
- * actual hole cards only enter at the LEAVES (via equity/showdown valuation).
- * Information sets are therefore keyed purely by (player, betting-line),
- * matching the depth-limited subgame formulation where the board is fixed.
+ * Action abstraction for one street. All sizes are pot-relative and are turned
+ * into chip amounts at each node from the pot at that node.
  */
-interface TreeNode {
-  kind: 'decision' | 'terminal';
-  /** For decision nodes: who acts. */
-  player: Player;
-  /** Legal action labels at a decision node, in fixed order. */
-  actions: string[];
-  /** Child node per action (parallel to `actions`). */
-  children: TreeNode[];
-  /** Info-set key (player + line). Identical lines for the same player share a
-   *  node, so this is just the node's own key. */
-  infoSetKey: string;
-  // Terminal-leaf valuation metadata (only set when kind === 'terminal'):
-  /** 'fold' => `folder` folds; 'showdown' => chips matched, go to equity. */
-  terminalKind?: 'fold' | 'showdown';
-  /** The player who folded (for 'fold' leaves). */
-  folder?: Player;
-  /** Pot at this leaf (chips), i.e. starting pot + all chips committed. */
-  leafPot?: number;
-  /** Chips hero committed in THIS subgame at this leaf (for EV bookkeeping). */
-  heroCommitted?: number;
-  /** Chips villain committed in this subgame at this leaf. */
-  villainCommitted?: number;
-}
-
-// ------------------------------------------------------------
-// Tree construction
-// ------------------------------------------------------------
-
-interface BuildCtx {
-  startingPot: number;
-  effectiveStack: number;
-  /** Absolute bet sizes (chips) usable as an opening bet, smallest..largest. */
-  // Sizes are computed contextually from the pot at each node instead.
+export interface BetAbstraction {
+  /** Opening bet sizes as fractions of the pot (e.g. 0.33, 0.75, 1.25). */
   betFractions: number[];
+  /** Raise sizes: after matching the bet, add this fraction of the pot that
+   *  would exist after the call (1.0 == a "pot-sized" raise). */
+  raiseFractions: number[];
+  /** Total bets + raises allowed on this street, INCLUDING any bet hero is
+   *  already facing at the root. 3 == bet, raise, re-raise. The last allowed
+   *  level offers all-in only. */
+  maxAggressions: number;
+  /** Offer all-in only when (stack behind after calling) / (pot after calling)
+   *  is at most this. All-in is also offered when no other size is legal. */
+  allInMaxSpr: number;
+  /** A size that would commit at least this fraction of the remaining stack is
+   *  replaced by all-in (avoids near-all-in bets that leave a sliver behind). */
+  allInThreshold: number;
 }
 
-/**
- * Build the current-street betting tree. State carried while recursing:
- *   - committed[p]:   chips player p has put into THIS subgame so far.
- *   - toCall:         outstanding amount the player-to-act must match (0 => may
- *                     check; >0 => must call/fold/raise).
- *   - raisesLeft:     remaining raise budget (caps the tree).
- *   - player:         who acts.
- *   - line:           action-string so far (for info-set keys).
- */
-function buildTree(ctx: BuildCtx): TreeNode {
-  // Hero (player 0) acts first at the root of the subgame. When hero is facing
-  // a bet, the caller models that by seeding `toCall` via the input (handled in
-  // solvePostflop by pre-committing villain's bet). Here we always start with
-  // hero to act; an outstanding `toCall` is supplied through the root builder.
-  return buildNode(ctx, 0, [0, 0], 0, 1, '');
-}
-
-function buildNode(
-  ctx: BuildCtx,
-  player: Player,
-  committed: [number, number],
-  toCall: number,
-  raisesLeft: number,
-  line: string,
-): TreeNode {
-  const opp: Player = player === 0 ? 1 : 0;
-  const actions: string[] = [];
-
-  // Determine legal actions.
-  const facingBet = toCall > 0;
-  if (facingBet) actions.push(A_FOLD);
-  if (facingBet) actions.push(A_CALL);
-  else actions.push(A_CHECK);
-
-  // Available bet/raise sizes (only if there is stack behind and raise budget).
-  const stackBehind = ctx.effectiveStack - committed[player];
-  const canAggress = stackBehind > 0 && raisesLeft > 0;
-  const betLabels: string[] = [];
-  if (canAggress) {
-    // Pot at this node (starting pot + both players' committed chips).
-    const potNow = ctx.startingPot + committed[0] + committed[1];
-    const sizes = candidateBetSizes(ctx, potNow, toCall, committed, player);
-    for (let i = 0; i < sizes.length; i++) {
-      const label = `B${i}:${sizes[i]}`;
-      betLabels.push(label);
-      actions.push(label);
-    }
+/** Defaults by board size. River: three bet sizes, one raise, all-in up to
+ *  SPR 4 (the river leaf is an exact showdown, so overbet shoves are sound).
+ *  Turn: same sizes, all-in only at SPR <= 2.5 (a single-street equity leaf
+ *  over-realizes deep shoves with a card to come). Flop: two bet sizes to keep
+ *  the tree small; the flop leaf is the least accurate, see docs. */
+export function defaultAbstraction(boardSize: number): BetAbstraction {
+  if (boardSize >= 5) {
+    return { betFractions: [0.33, 0.75, 1.25], raiseFractions: [0.7], maxAggressions: 3, allInMaxSpr: 4, allInThreshold: 0.8 };
   }
+  if (boardSize === 4) {
+    return { betFractions: [0.33, 0.75, 1.25], raiseFractions: [0.7], maxAggressions: 3, allInMaxSpr: 2.5, allInThreshold: 0.8 };
+  }
+  return { betFractions: [0.33, 0.75], raiseFractions: [0.7], maxAggressions: 3, allInMaxSpr: 2.5, allInThreshold: 0.8 };
+}
 
-  const node: TreeNode = {
+/** One action available at a decision node. */
+export interface TreeAction {
+  kind: 'fold' | 'check' | 'call' | 'bet' | 'raise' | 'allin';
+  /** Chips the acting player adds to the pot with this action (0 for fold and
+   *  check). For bet/raise/allin this is the increment from what the actor had
+   *  already committed in this subgame, i.e. call amount + raise increment. */
+  chips: number;
+  /** Total chips the actor has committed in this subgame after the action. */
+  totalCommitted: number;
+  /** For bet/raise/allin: chips added divided by the pot before the action. */
+  potFraction: number;
+  /** Compact label, e.g. 'X', 'F', 'C', 'B33', 'R70', 'A'. */
+  label: string;
+}
+
+// ------------------------------------------------------------
+// Betting tree
+// ------------------------------------------------------------
+
+/** 0 = hero, 1 = villain. */
+export type SubgamePlayer = 0 | 1;
+
+export interface GameNode {
+  kind: 'decision' | 'fold' | 'showdown';
+  /** Acting player (decision nodes) or the folder (fold leaves). */
+  player: SubgamePlayer;
+  actions: TreeAction[];
+  children: GameNode[];
+  /** Betting line from the root, e.g. 'X/B75/C'. */
+  line: string;
+  /** Pot at this node: starting pot + both players' subgame commitments. */
+  pot: number;
+  /** Chips each player has committed in this subgame so far. */
+  committed: [number, number];
+  // Solver storage (decision nodes only). Layout: [action * N + hand].
+  regrets?: Float64Array;
+  strategySum?: Float64Array;
+  /** Scratch: current-iteration strategy, same layout as regrets. */
+  current?: Float64Array;
+  /** Scratch: per-action reach vectors of the acting player (used when the
+   *  actor is not the traverser). */
+  reachBuf?: Float64Array[];
+  /** Scratch: counterfactual-value buffer per player (index = player). */
+  cfvBuf?: [Float64Array, Float64Array];
+}
+
+export interface TreeParams {
+  /** Pot at the start of the subgame, EXCLUDING any outstanding bet hero faces. */
+  startingPot: number;
+  /** Max chips either player can commit in this subgame (effective stack). */
+  effectiveStack: number;
+  /** Outstanding bet hero faces at the root (villain has committed this). */
+  toCall: number;
+  /** Hero is in position. With toCall == 0 and hero IP, villain has already
+   *  checked, so a hero check closes the street. */
+  heroIsIP: boolean;
+  /** Bets/raises already made this street before the root (0 or more). If
+   *  toCall > 0 this should be at least 1. */
+  priorAggressions: number;
+  abstraction: BetAbstraction;
+}
+
+interface BuildState {
+  player: SubgamePlayer;
+  committed: [number, number];
+  toCall: number;
+  aggressions: number;
+  /** A check by the actor ends the street (actor is IP after an OOP check, or
+   *  hero IP at a root where villain already checked). */
+  checkCloses: boolean;
+  /** Size of the last bet/raise increment, for the min-raise rule. */
+  lastIncrement: number;
+  line: string;
+}
+
+/** Round chips to cents so labels and amounts stay readable. */
+function roundChips(x: number): number {
+  return Math.round(x * 100) / 100;
+}
+
+/** Build the current-street betting tree rooted at hero's decision. */
+export function buildSubgameTree(p: TreeParams): GameNode {
+  const toCall = Math.min(Math.max(0, p.toCall), p.effectiveStack);
+  return buildNode(p, {
+    player: 0,
+    committed: [0, toCall],
+    toCall,
+    aggressions: toCall > 0 ? Math.max(1, p.priorAggressions) : p.priorAggressions,
+    checkCloses: toCall === 0 && p.heroIsIP,
+    lastIncrement: toCall,
+    line: '',
+  });
+}
+
+function buildNode(p: TreeParams, s: BuildState): GameNode {
+  const me = s.player;
+  const opp: SubgamePlayer = me === 0 ? 1 : 0;
+  const pot = p.startingPot + s.committed[0] + s.committed[1];
+  const node: GameNode = {
     kind: 'decision',
-    player,
-    actions,
+    player: me,
+    actions: [],
     children: [],
-    infoSetKey: `P${player}|${line}`,
+    line: s.line,
+    pot,
+    committed: [s.committed[0], s.committed[1]],
   };
+  const sep = s.line ? '/' : '';
 
-  for (const action of actions) {
-    if (action === A_FOLD) {
-      node.children.push(
-        makeFoldLeaf(ctx, player, committed),
-      );
-    } else if (action === A_CHECK) {
-      if (player === 1) {
-        // Both checked through (hero checked, villain checks) => showdown.
-        node.children.push(makeShowdownLeaf(ctx, committed));
-      } else {
-        // Hero checks; action passes to villain (no bet outstanding).
-        node.children.push(
-          buildNode(ctx, opp, committed, 0, raisesLeft, line + A_CHECK),
-        );
-      }
-    } else if (action === A_CALL) {
-      // Caller matches the outstanding bet => chips matched => showdown.
-      const newCommitted: [number, number] = [committed[0], committed[1]];
-      newCommitted[player] = committed[opp];
-      node.children.push(makeShowdownLeaf(ctx, newCommitted));
+  if (s.toCall > 0) {
+    // Fold: the folder's commitments stay in the pot.
+    node.actions.push({ kind: 'fold', chips: 0, totalCommitted: s.committed[me], potFraction: 0, label: 'F' });
+    node.children.push(leaf('fold', me, s.line + sep + 'F', pot, s.committed));
+    // Call: match the bet => chips matched => the street ends at a showdown leaf.
+    const callTo = s.committed[opp];
+    const after: [number, number] = [s.committed[0], s.committed[1]];
+    after[me] = callTo;
+    node.actions.push({
+      kind: 'call', chips: roundChips(callTo - s.committed[me]), totalCommitted: callTo, potFraction: 0, label: 'C',
+    });
+    node.children.push(leaf('showdown', me, s.line + sep + 'C', p.startingPot + after[0] + after[1], after));
+  } else {
+    node.actions.push({ kind: 'check', chips: 0, totalCommitted: s.committed[me], potFraction: 0, label: 'X' });
+    if (s.checkCloses) {
+      node.children.push(leaf('showdown', me, s.line + sep + 'X', pot, s.committed));
     } else {
-      // Bet or raise.
-      const amt = parseBetAmount(action);
-      const newCommitted: [number, number] = [committed[0], committed[1]];
-      // To raise, first match outstanding, then add the raise increment is
-      // already folded into `amt` (total chips this player now has in).
-      newCommitted[player] = amt;
-      const newToCall = newCommitted[player] - newCommitted[opp];
-      node.children.push(
-        buildNode(ctx, opp, newCommitted, newToCall, raisesLeft - 1, line + action),
-      );
+      node.children.push(buildNode(p, {
+        player: opp,
+        committed: s.committed,
+        toCall: 0,
+        aggressions: s.aggressions,
+        checkCloses: true,
+        lastIncrement: 0,
+        line: s.line + sep + 'X',
+      }));
     }
   }
 
+  // Aggressive actions.
+  for (const a of aggressiveActions(p, s, pot)) {
+    const after: [number, number] = [s.committed[0], s.committed[1]];
+    after[me] = a.totalCommitted;
+    const increment = a.totalCommitted - s.committed[opp];
+    node.actions.push(a);
+    node.children.push(buildNode(p, {
+      player: opp,
+      committed: after,
+      toCall: a.totalCommitted - s.committed[opp],
+      aggressions: s.aggressions + 1,
+      checkCloses: false,
+      lastIncrement: Math.max(increment, s.lastIncrement),
+      line: s.line + sep + a.label,
+    }));
+  }
   return node;
 }
 
 /**
- * Candidate bet/raise sizes (total chips the acting player would have committed
- * AFTER the bet) for this node, derived from pot fractions plus all-in, capped
- * at the effective stack and de-duplicated.
+ * Bet/raise/all-in actions at a node. Sizes are de-duplicated, sizes that
+ * commit at least `allInThreshold` of the remaining stack collapse into all-in,
+ * raises respect the no-limit min-raise rule, and all-in is gated on SPR.
  */
-function candidateBetSizes(
-  ctx: BuildCtx,
-  potNow: number,
-  toCall: number,
-  committed: [number, number],
-  player: Player,
-): number[] {
-  const opp: Player = player === 0 ? 1 : 0;
-  const allInTotal = ctx.effectiveStack; // total chips in when shoving
-  const callAmount = committed[opp]; // chips the player would have after calling
-  const out = new Set<number>();
+function aggressiveActions(p: TreeParams, s: BuildState, pot: number): TreeAction[] {
+  const ab = p.abstraction;
+  const me = s.player;
+  const opp = me === 0 ? 1 : 0;
+  const E = p.effectiveStack;
+  const callTo = s.committed[opp];
+  // Nobody can raise once the opponent is all-in, or once the cap is reached.
+  if (s.aggressions >= ab.maxAggressions) return [];
+  if (callTo >= E || s.committed[me] >= E) return [];
 
-  for (const frac of ctx.betFractions) {
-    // Pot-relative raise: after calling `toCall`, the pot would be potNow+toCall;
-    // bet `frac` of that on top. Total commit = callAmount + toCall? Simplify:
-    // total = committed[opp] + frac * (potNow + toCall).
-    const raiseIncrement = frac * (potNow + toCall);
-    let total = callAmount + raiseIncrement;
-    total = Math.round(total);
-    // Must be a genuine raise strictly larger than just calling, and <= all-in.
-    if (total > callAmount && total < allInTotal) {
-      out.add(total);
+  const facing = s.toCall > 0;
+  const potAfterCall = pot + s.toCall;
+  const behindAfterCall = E - callTo;
+  const minTo = facing ? callTo + Math.max(s.lastIncrement, 1e-9) : s.committed[me];
+  const fracs = facing ? ab.raiseFractions : ab.betFractions;
+  // The last allowed aggression level (re-raise when maxAggressions == 3) is
+  // all-in only: a re-raise in practice is almost always a commitment anyway.
+  const lastLevel = s.aggressions + 1 >= ab.maxAggressions && s.aggressions >= 2;
+
+  const totals = new Map<number, number>(); // total committed -> pot fraction label
+  let sawAllInBySize = false;
+  if (!lastLevel) {
+    for (const f of fracs) {
+      let to = callTo + f * potAfterCall;
+      if (facing && to < minTo) to = minTo;
+      to = roundChips(to);
+      if (to <= callTo) continue;
+      const remaining = E - s.committed[me];
+      if (to >= E || (to - s.committed[me]) >= ab.allInThreshold * remaining) {
+        sawAllInBySize = true;
+        continue;
+      }
+      if (!totals.has(to)) totals.set(to, f);
     }
   }
-  // Offer all-in as the polar size only when the stack is shallow relative to
-  // the pot (low SPR). With deep stacks and cards still to come, a single-street
-  // depth-limited leaf OVER-realizes shove equity (no future-street risk is
-  // modelled), so unconditionally offering all-in collapses the strategy onto
-  // shoving. Gating it on SPR <= 2.5 keeps the abstraction honest: shoves only
-  // appear where they are genuinely a normal size. (When pot-fraction sizes are
-  // all suppressed because the stack is tiny, fall back to offering all-in so a
-  // bet is always available.)
-  const potNowForSpr = ctx.startingPot + committed[0] + committed[1];
-  const spr = (allInTotal - callAmount) / Math.max(1, potNowForSpr);
-  if (allInTotal > callAmount && (spr <= 2.5 || out.size === 0)) {
-    out.add(allInTotal);
+  const spr = behindAfterCall / Math.max(1e-9, potAfterCall);
+  const offerAllIn = sawAllInBySize || lastLevel || spr <= ab.allInMaxSpr || totals.size === 0;
+
+  const out: TreeAction[] = [];
+  const sorted = Array.from(totals.keys()).sort((a, b) => a - b);
+  for (const to of sorted) {
+    const f = totals.get(to)!;
+    const chips = roundChips(to - s.committed[me]);
+    out.push({
+      kind: facing ? 'raise' : 'bet',
+      chips,
+      totalCommitted: to,
+      potFraction: chips / Math.max(1e-9, pot),
+      label: `${facing ? 'R' : 'B'}${Math.round(f * 100)}`,
+    });
   }
-
-  return Array.from(out).sort((a, b) => a - b);
+  if (offerAllIn) {
+    const chips = roundChips(E - s.committed[me]);
+    out.push({ kind: 'allin', chips, totalCommitted: E, potFraction: chips / Math.max(1e-9, pot), label: 'A' });
+  }
+  return out;
 }
 
-function parseBetAmount(label: string): number {
-  // Label form 'B<idx>:<amount>'.
-  const colon = label.indexOf(':');
-  return Number(label.slice(colon + 1));
-}
-
-function makeFoldLeaf(
-  ctx: BuildCtx,
-  player: Player,
+function leaf(
+  kind: 'fold' | 'showdown',
+  player: SubgamePlayer,
+  line: string,
+  pot: number,
   committed: [number, number],
-): TreeNode {
-  return {
-    kind: 'terminal',
-    player,
-    actions: [],
-    children: [],
-    infoSetKey: '',
-    terminalKind: 'fold',
-    folder: player,
-    leafPot: ctx.startingPot + committed[0] + committed[1],
-    heroCommitted: committed[0],
-    villainCommitted: committed[1],
-  };
+): GameNode {
+  return { kind, player, actions: [], children: [], line, pot, committed: [committed[0], committed[1]] };
 }
 
-function makeShowdownLeaf(
-  ctx: BuildCtx,
-  committed: [number, number],
-): TreeNode {
-  return {
-    kind: 'terminal',
-    player: 0,
-    actions: [],
-    children: [],
-    infoSetKey: '',
-    terminalKind: 'showdown',
-    leafPot: ctx.startingPot + committed[0] + committed[1],
-    heroCommitted: committed[0],
-    villainCommitted: committed[1],
-  };
+/** Count decision and terminal nodes (for diagnostics / tests). */
+export function countTree(root: GameNode): { decisions: number; terminals: number } {
+  let decisions = 0;
+  let terminals = 0;
+  const stack = [root];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (n.kind === 'decision') {
+      decisions++;
+      for (const c of n.children) stack.push(c);
+    } else terminals++;
+  }
+  return { decisions, terminals };
 }
 
 // ------------------------------------------------------------
-// Regret store (re-using the regret-matching+ idea from src/solver/store.ts,
-// but with a compact per-info-set numeric layout for speed).
+// Showdown equity matrix
 // ------------------------------------------------------------
 
-class Node {
-  regretSum: Float64Array;
-  strategySum: Float64Array;
-  private cur: Float64Array;
-  constructor(readonly numActions: number) {
-    this.regretSum = new Float64Array(numActions);
-    this.strategySum = new Float64Array(numActions);
-    this.cur = new Float64Array(numActions);
-  }
-  /** Regret-matching+ current strategy (positive regrets normalized). */
-  strategy(): Float64Array {
-    let pos = 0;
-    for (let i = 0; i < this.numActions; i++) {
-      const r = this.regretSum[i];
-      this.cur[i] = r > 0 ? r : 0;
-      pos += this.cur[i];
+/**
+ * Hero's showdown share for every (hero combo, villain combo) pair, plus the
+ * 0/1 compatibility mask. share[i*V + j] in [0,1] (0.5 on a tie), 0 where the
+ * combos conflict.
+ *
+ * River: one comparison. Turn: exact average over every river card. Flop: exact
+ * average over every (turn, river) pair when `maxFlopRunouts` allows it,
+ * otherwise a deterministic seeded sample of that many runouts. The loop is
+ * per runout (evaluate each combo once, then compare all pairs), which costs
+ * runouts * (H + V) evaluations instead of runouts * H * V.
+ */
+export function showdownMatrix(
+  board: CardId[],
+  hero: [CardId, CardId][],
+  villain: [CardId, CardId][],
+  maxFlopRunouts = 1200,
+  seed = 1,
+): { share: Float64Array; compat: Float64Array } {
+  const H = hero.length;
+  const V = villain.length;
+  const compat = new Float64Array(H * V);
+  for (let i = 0; i < H; i++) {
+    const [a, b] = hero[i];
+    for (let j = 0; j < V; j++) {
+      const [c, d] = villain[j];
+      compat[i * V + j] = a === c || a === d || b === c || b === d ? 0 : 1;
     }
-    if (pos > 0) {
-      for (let i = 0; i < this.numActions; i++) this.cur[i] /= pos;
-    } else {
-      const u = 1 / this.numActions;
-      for (let i = 0; i < this.numActions; i++) this.cur[i] = u;
-    }
-    return this.cur;
   }
-  average(): number[] {
-    const avg = new Array<number>(this.numActions).fill(0);
-    let s = 0;
-    for (let i = 0; i < this.numActions; i++) s += this.strategySum[i];
-    if (s > 0) for (let i = 0; i < this.numActions; i++) avg[i] = this.strategySum[i] / s;
-    else for (let i = 0; i < this.numActions; i++) avg[i] = 1 / this.numActions;
+
+  // Runouts to average over.
+  const dead = new Set<number>(board);
+  const live: CardId[] = [];
+  for (let c = 0; c < 52; c++) if (!dead.has(c)) live.push(c);
+  let runouts: CardId[][];
+  const toCome = 5 - board.length;
+  if (toCome === 0) runouts = [[]];
+  else if (toCome === 1) runouts = live.map((c) => [c]);
+  else {
+    const all: CardId[][] = [];
+    for (let x = 0; x < live.length; x++) {
+      for (let y = x + 1; y < live.length; y++) all.push([live[x], live[y]]);
+    }
+    if (all.length <= maxFlopRunouts) runouts = all;
+    else {
+      // Deterministic partial Fisher-Yates: the first maxFlopRunouts entries.
+      const rng = new SeededRng(seed);
+      for (let k = 0; k < maxFlopRunouts; k++) {
+        const r = k + rng.nextInt(all.length - k);
+        const tmp = all[k]; all[k] = all[r]; all[r] = tmp;
+      }
+      runouts = all.slice(0, maxFlopRunouts);
+    }
+  }
+
+  const win = new Float64Array(H * V);
+  const cnt = new Float64Array(H * V);
+  const hs = new Float64Array(H);
+  const vs = new Float64Array(V);
+  const cards7: CardId[] = new Array(7);
+  for (const ro of runouts) {
+    const full = board.concat(ro);
+    const blocked = new Set<number>(ro);
+    for (let k = 0; k < full.length; k++) cards7[2 + k] = full[k];
+    cards7.length = 2 + full.length;
+    for (let i = 0; i < H; i++) {
+      const [a, b] = hero[i];
+      if (blocked.has(a) || blocked.has(b)) { hs[i] = -1; continue; }
+      cards7[0] = a; cards7[1] = b;
+      hs[i] = evaluateHand(cards7);
+    }
+    for (let j = 0; j < V; j++) {
+      const [a, b] = villain[j];
+      if (blocked.has(a) || blocked.has(b)) { vs[j] = -1; continue; }
+      cards7[0] = a; cards7[1] = b;
+      vs[j] = evaluateHand(cards7);
+    }
+    for (let i = 0; i < H; i++) {
+      const h = hs[i];
+      if (h < 0) continue;
+      const row = i * V;
+      for (let j = 0; j < V; j++) {
+        const v = vs[j];
+        if (v < 0 || compat[row + j] === 0) continue;
+        win[row + j] += h > v ? 1 : h < v ? 0 : 0.5;
+        cnt[row + j] += 1;
+      }
+    }
+  }
+  const share = new Float64Array(H * V);
+  for (let k = 0; k < H * V; k++) {
+    // A compatible pair with no sampled runout (possible only under flop
+    // sampling) falls back to 0.5; it is vanishingly rare with >= 200 samples.
+    share[k] = compat[k] === 0 ? 0 : cnt[k] > 0 ? win[k] / cnt[k] : 0.5;
+  }
+  return { share, compat };
+}
+
+// ------------------------------------------------------------
+// The range-vs-range CFR solver
+// ------------------------------------------------------------
+
+// Discounted CFR parameters (Brown & Sandholm 2019). Positive regrets are
+// scaled by t^a/(t^a+1), negative ones by t^b/(t^b+1), and the average-strategy
+// accumulator by (t/(t+1))^g, each iteration.
+const DCFR_ALPHA = 1.5;
+const DCFR_BETA = 0.5;
+const DCFR_GAMMA = 2;
+
+export interface RangeCfrInput {
+  board: CardId[];
+  /** Hero's range (combos must not touch the board). Weights > 0. */
+  hero: RangeHand[];
+  /** Villain's range (combos must not touch the board). Weights > 0. */
+  villain: RangeHand[];
+  tree: TreeParams;
+  /** Flop only: cap on runouts in the showdown matrix (default 1200, i.e.
+   *  effectively exact: a flop has C(49,2) = 1176 runouts). */
+  maxFlopRunouts?: number;
+  seed?: number;
+}
+
+/**
+ * Range-vs-range DCFR over one street's betting tree. Construct, call
+ * `iterate()` repeatedly, then read average strategies / exploitability.
+ */
+export class RangeVsRangeCfr {
+  readonly root: GameNode;
+  readonly hands: [[CardId, CardId][], [CardId, CardId][]];
+  /** Normalized chance weights per player (each sums to 1). */
+  readonly weights: [Float64Array, Float64Array];
+  readonly startingPot: number;
+  /** Number of completed iterations. */
+  iterations = 0;
+
+  /** payoff matrices from each player's perspective: share[p][i*No + j]. */
+  private share: [Float64Array, Float64Array];
+  /** compatibility masks per perspective, same layout. */
+  private compat: [Float64Array, Float64Array];
+  /** For combo i of player p: index of the identical combo in the opponent's
+   *  range, or -1. Used for the O(N) card-removal reach sum. */
+  private sameIdx: [Int32Array, Int32Array];
+  private N: [number, number];
+  /** Joint chance mass Z = sum_ij w0[i] w1[j] compat(i,j). */
+  readonly jointMass: number;
+  private cardSum = new Float64Array(52);
+
+  constructor(input: RangeCfrInput) {
+    const h = input.hero;
+    const v = input.villain;
+    if (h.length === 0 || v.length === 0) throw new Error('Both ranges must be non-empty.');
+    this.hands = [h.map((x) => x.cards), v.map((x) => x.cards)];
+    this.N = [h.length, v.length];
+    this.weights = [normWeights(h), normWeights(v)];
+    this.startingPot = input.tree.startingPot;
+    this.root = buildSubgameTree(input.tree);
+
+    const H = h.length;
+    const V = v.length;
+    const { share, compat } = showdownMatrix(input.board, this.hands[0], this.hands[1], input.maxFlopRunouts ?? 1200, input.seed ?? 1);
+    // Villain-perspective matrices are the transposes, with share = 1 - hero's.
+    const shareV = new Float64Array(V * H);
+    const compatV = new Float64Array(V * H);
+    for (let i = 0; i < H; i++) {
+      for (let j = 0; j < V; j++) {
+        const c = compat[i * V + j];
+        compatV[j * H + i] = c;
+        shareV[j * H + i] = c === 0 ? 0 : 1 - share[i * V + j];
+      }
+    }
+    this.share = [share, shareV];
+    this.compat = [compat, compatV];
+
+    const key = (c: [CardId, CardId]) => Math.min(c[0], c[1]) * 64 + Math.max(c[0], c[1]);
+    const idx0 = new Map<number, number>();
+    const idx1 = new Map<number, number>();
+    this.hands[0].forEach((c, i) => idx0.set(key(c), i));
+    this.hands[1].forEach((c, j) => idx1.set(key(c), j));
+    this.sameIdx = [
+      Int32Array.from(this.hands[0].map((c) => idx1.get(key(c)) ?? -1)),
+      Int32Array.from(this.hands[1].map((c) => idx0.get(key(c)) ?? -1)),
+    ];
+
+    let z = 0;
+    for (let i = 0; i < H; i++) {
+      let row = 0;
+      for (let j = 0; j < V; j++) row += compat[i * V + j] * this.weights[1][j];
+      z += this.weights[0][i] * row;
+    }
+    if (!(z > 0)) throw new Error('Ranges are fully card-blocked against each other.');
+    this.jointMass = z;
+
+    this.allocate(this.root);
+  }
+
+  private allocate(node: GameNode): void {
+    node.cfvBuf = [new Float64Array(this.N[0]), new Float64Array(this.N[1])];
+    if (node.kind !== 'decision') return;
+    const n = this.N[node.player];
+    const A = node.actions.length;
+    node.regrets = new Float64Array(n * A);
+    node.strategySum = new Float64Array(n * A);
+    node.current = new Float64Array(n * A);
+    // Reach buffers hold the ACTING player's reach split by action; they are
+    // used when the actor is the non-traverser.
+    node.reachBuf = node.actions.map(() => new Float64Array(n));
+    for (const c of node.children) this.allocate(c);
+  }
+
+  /** One DCFR iteration: a hero traversal then a villain traversal. */
+  iterate(): void {
+    const t = this.iterations + 1;
+    const ta = Math.pow(t, DCFR_ALPHA);
+    const tb = Math.pow(t, DCFR_BETA);
+    const dPos = ta / (ta + 1);
+    const dNeg = tb / (tb + 1);
+    const dStrat = Math.pow(t / (t + 1), DCFR_GAMMA);
+    for (const p of [0, 1] as SubgamePlayer[]) {
+      const opp = p === 0 ? 1 : 0;
+      this.cfr(this.root, p, this.weights[opp], dPos, dNeg, dStrat);
+    }
+    this.iterations = t;
+  }
+
+  /**
+   * Vectorized CFR traversal for traverser `p`. `rOpp[j]` is the opponent's
+   * reach for its combo j (chance weight times its action probabilities so far).
+   * Returns p's counterfactual value per own combo i, i.e.
+   *   sum_j rOpp[j] * compat(i,j) * payoff_p(i, j | this subtree).
+   */
+  private cfr(
+    node: GameNode,
+    p: SubgamePlayer,
+    rOpp: Float64Array,
+    dPos: number,
+    dNeg: number,
+    dStrat: number,
+  ): Float64Array {
+    if (node.kind !== 'decision') return this.terminal(node, p, rOpp);
+    const out = node.cfvBuf![p];
+    const A = node.actions.length;
+
+    if (node.player === p) {
+      const n = this.N[p];
+      const sigma = this.currentStrategy(node);
+      out.fill(0);
+      const childVals: Float64Array[] = new Array(A);
+      for (let a = 0; a < A; a++) {
+        const cv = this.cfr(node.children[a], p, rOpp, dPos, dNeg, dStrat);
+        childVals[a] = cv;
+        const off = a * n;
+        for (let i = 0; i < n; i++) out[i] += sigma[off + i] * cv[i];
+      }
+      // Regret update with DCFR discounting of the accumulated regret.
+      const R = node.regrets!;
+      for (let a = 0; a < A; a++) {
+        const cv = childVals[a];
+        const off = a * n;
+        for (let i = 0; i < n; i++) {
+          const old = R[off + i];
+          R[off + i] = old * (old > 0 ? dPos : dNeg) + (cv[i] - out[i]);
+        }
+      }
+      return out;
+    }
+
+    // Opponent node: split the opponent reach by its current strategy and
+    // accumulate its average strategy (weighted by its own reach, rOpp).
+    const no = this.N[node.player];
+    const sigma = this.currentStrategy(node);
+    const S = node.strategySum!;
+    for (let k = 0; k < S.length; k++) S[k] *= dStrat;
+    out.fill(0);
+    for (let a = 0; a < A; a++) {
+      const rChild = node.reachBuf![a];
+      const off = a * no;
+      for (let j = 0; j < no; j++) {
+        const pr = sigma[off + j] * rOpp[j];
+        rChild[j] = pr;
+        S[off + j] += pr;
+      }
+      const cv = this.cfr(node.children[a], p, rChild, dPos, dNeg, dStrat);
+      const n = this.N[p];
+      for (let i = 0; i < n; i++) out[i] += cv[i];
+    }
+    return out;
+  }
+
+  /** Regret-matching strategy per hand at a decision node (into node.current). */
+  private currentStrategy(node: GameNode): Float64Array {
+    const n = this.N[node.player];
+    const A = node.actions.length;
+    const R = node.regrets!;
+    const cur = node.current!;
+    for (let i = 0; i < n; i++) {
+      let pos = 0;
+      for (let a = 0; a < A; a++) {
+        const r = R[a * n + i];
+        if (r > 0) pos += r;
+      }
+      if (pos > 0) {
+        for (let a = 0; a < A; a++) {
+          const r = R[a * n + i];
+          cur[a * n + i] = r > 0 ? r / pos : 0;
+        }
+      } else {
+        for (let a = 0; a < A; a++) cur[a * n + i] = 1 / A;
+      }
+    }
+    return cur;
+  }
+
+  /** Average strategy per hand at a decision node: [action * N + hand]. */
+  averageStrategy(node: GameNode): Float64Array {
+    const n = this.N[node.player];
+    const A = node.actions.length;
+    const S = node.strategySum!;
+    const avg = new Float64Array(n * A);
+    for (let i = 0; i < n; i++) {
+      let tot = 0;
+      for (let a = 0; a < A; a++) tot += S[a * n + i];
+      for (let a = 0; a < A; a++) avg[a * n + i] = tot > 0 ? S[a * n + i] / tot : 1 / A;
+    }
     return avg;
   }
-}
 
-// ------------------------------------------------------------
-// The solver
-// ------------------------------------------------------------
-
-interface RangeEntry {
-  cards: [CardId, CardId];
-  weight: number;
-}
-
-class PostflopCfr {
-  private store = new Map<string, Node>();
-  private root: TreeNode;
-  private board: CardId[];
-  private heroIdx: number; // index into heroRange of hero's actual hand
-  private heroRange: RangeEntry[];
-  private villainRange: RangeEntry[];
-  /** Cached showdown win-fraction for hero hand i vs villain hand j on the
-   *  current board + average runout: result[i*V + j] in [0,1]. */
-  private wins: Float64Array;
-  private V: number;
-
-  constructor(
-    root: TreeNode,
-    board: CardId[],
-    heroRange: RangeEntry[],
-    villainRange: RangeEntry[],
-    heroIdx: number,
-    private rng: SeededRng,
-  ) {
-    this.root = root;
-    this.board = board;
-    this.heroRange = heroRange;
-    this.villainRange = villainRange;
-    this.heroIdx = heroIdx;
-    this.V = villainRange.length;
-    this.wins = this.precomputeShowdown();
+  /**
+   * Leaf values for player p. Net chips relative to the start of the subgame:
+   *   p folded:          -committed[p]
+   *   opponent folded:    pot - committed[p]
+   *   showdown:           share * pot - committed[p]
+   * each weighted by the compatible opponent reach. Both players' payoffs sum
+   * to the starting pot at every leaf, so the game is constant-sum.
+   */
+  private terminal(node: GameNode, p: SubgamePlayer, rOpp: Float64Array): Float64Array {
+    const out = node.cfvBuf![p];
+    const n = this.N[p];
+    const c = node.committed[p];
+    const mass = this.compatibleMass(p, rOpp, out);
+    if (node.kind === 'fold') {
+      const payoff = node.player === p ? -c : node.pot - c;
+      for (let i = 0; i < n; i++) out[i] = payoff * mass[i];
+      return out;
+    }
+    // Showdown: pot * (share-weighted opponent reach) - c * (compatible reach).
+    const no = this.N[p === 0 ? 1 : 0];
+    const M = this.share[p];
+    const pot = node.pot;
+    for (let i = 0; i < n; i++) {
+      let s = 0;
+      const row = i * no;
+      for (let j = 0; j < no; j++) s += M[row + j] * rOpp[j];
+      out[i] = pot * s - c * mass[i];
+    }
+    return out;
   }
 
-  private getNode(key: string, numActions: number): Node {
-    let n = this.store.get(key);
-    if (!n) {
-      n = new Node(numActions);
-      this.store.set(key, n);
+  /**
+   * sum_j compat(i,j) * r[j] for each of p's combos i, in O(N + 52) via card
+   * removal: total - (reach of opponent combos containing card a) - (the same for card b)
+   * + (reach of the identical combo, which was subtracted twice).
+   * Writes into `out` and returns it.
+   */
+  private compatibleMass(p: SubgamePlayer, r: Float64Array, out: Float64Array): Float64Array {
+    const opp = p === 0 ? 1 : 0;
+    const oppHands = this.hands[opp];
+    const cs = this.cardSum;
+    cs.fill(0);
+    let total = 0;
+    for (let j = 0; j < oppHands.length; j++) {
+      const w = r[j];
+      total += w;
+      cs[oppHands[j][0]] += w;
+      cs[oppHands[j][1]] += w;
+    }
+    const mine = this.hands[p];
+    const same = this.sameIdx[p];
+    for (let i = 0; i < mine.length; i++) {
+      const s = same[i];
+      out[i] = total - cs[mine[i][0]] - cs[mine[i][1]] + (s >= 0 ? r[s] : 0);
+    }
+    return out;
+  }
+
+  /**
+   * Value vector for player p when p plays a best response (mode 'br') or its
+   * own average strategy (mode 'avg'), and the opponent plays its average
+   * strategy. Same vector convention as cfr().
+   */
+  private evaluate(node: GameNode, p: SubgamePlayer, rOpp: Float64Array, mode: 'br' | 'avg'): Float64Array {
+    if (node.kind !== 'decision') return Float64Array.from(this.terminal(node, p, rOpp));
+    const A = node.actions.length;
+    const n = this.N[p];
+    const out = new Float64Array(n);
+    if (node.player === p) {
+      const avg = mode === 'avg' ? this.averageStrategy(node) : null;
+      if (mode === 'br') out.fill(-Infinity);
+      for (let a = 0; a < A; a++) {
+        const cv = this.evaluate(node.children[a], p, rOpp, mode);
+        if (avg) {
+          for (let i = 0; i < n; i++) out[i] += avg[a * n + i] * cv[i];
+        } else {
+          for (let i = 0; i < n; i++) if (cv[i] > out[i]) out[i] = cv[i];
+        }
+      }
+      return out;
+    }
+    const no = this.N[node.player];
+    const avg = this.averageStrategy(node);
+    for (let a = 0; a < A; a++) {
+      const rChild = new Float64Array(no);
+      for (let j = 0; j < no; j++) rChild[j] = avg[a * no + j] * rOpp[j];
+      const cv = this.evaluate(node.children[a], p, rChild, mode);
+      for (let i = 0; i < n; i++) out[i] += cv[i];
+    }
+    return out;
+  }
+
+  /** Expected value (chips, net from subgame start) of player p's whole range
+   *  under the given mode, normalized by the joint chance mass. */
+  private rangeValue(p: SubgamePlayer, mode: 'br' | 'avg'): number {
+    const opp = p === 0 ? 1 : 0;
+    const cv = this.evaluate(this.root, p, this.weights[opp], mode);
+    const w = this.weights[p];
+    let s = 0;
+    for (let i = 0; i < cv.length; i++) s += w[i] * cv[i];
+    return s / this.jointMass;
+  }
+
+  /**
+   * Exploitability of the current average strategies within the abstraction:
+   *   NashConv = BRvalue(hero vs avg villain) + BRvalue(villain vs avg hero) - P0
+   * where P0 is the constant sum of payoffs (the subgame's starting pot).
+   * Returns NashConv / 2 in chips (the average amount a best-responder gains).
+   */
+  exploitability(): number {
+    const br0 = this.rangeValue(0, 'br');
+    const br1 = this.rangeValue(1, 'br');
+    return Math.max(0, (br0 + br1 - this.startingPot) / 2);
+  }
+
+  /** Per-combo EV (chips, net from subgame start) of player p's combos when
+   *  both players follow their average strategies. NaN for a combo that is
+   *  fully card-blocked. */
+  comboValues(p: SubgamePlayer): Float64Array {
+    const opp = p === 0 ? 1 : 0;
+    const cv = this.evaluate(this.root, p, this.weights[opp], 'avg');
+    const mass = this.compatibleMass(p, this.weights[opp], new Float64Array(this.N[p]));
+    const out = new Float64Array(cv.length);
+    for (let i = 0; i < cv.length; i++) out[i] = mass[i] > 0 ? cv[i] / mass[i] : NaN;
+    return out;
+  }
+
+  /** Follow a sequence of action labels from the root ('X', 'B75', 'C', ...). */
+  nodeAt(labels: string[]): GameNode {
+    let n = this.root;
+    for (const l of labels) {
+      const k = n.actions.findIndex((a) => a.label === l);
+      if (k < 0) throw new Error(`No action '${l}' at line '${n.line}' (have ${n.actions.map((a) => a.label).join(',')})`);
+      n = n.children[k];
     }
     return n;
   }
 
   /**
-   * Precompute the showdown win-fraction (hero perspective) for every
-   * (hero hand, villain hand) pair on this board, enumerating the remaining
-   * runout EXACTLY when few cards remain, or sampling it deterministically when
-   * the runout is large (flop). This is the equity-leaf valuation; it is the
-   * only place hole cards matter, which is what makes the depth-limited solve
-   * cheap. Returns win share in [0,1] (0.5 on a tie).
+   * Range-weighted frequency of each action at a decision node: each combo's
+   * average strategy weighted by its chance weight times its own reach along the
+   * line (from strategySum, which is accumulated with exactly that reach).
    */
-  private precomputeShowdown(): Float64Array {
-    const H = this.heroRange.length;
-    const V = this.villainRange.length;
-    const out = new Float64Array(H * V);
-
-    const cardsToCome = 5 - this.board.length;
-
-    for (let i = 0; i < H; i++) {
-      const hero = this.heroRange[i].cards;
-      for (let j = 0; j < V; j++) {
-        const vill = this.villainRange[j].cards;
-        // Skip card-conflicting matchups: treat as a tie (no information).
-        if (conflict(hero, vill, this.board)) {
-          out[i * V + j] = 0.5;
-          continue;
-        }
-        out[i * V + j] = this.showdownEquity(hero, vill, cardsToCome);
-      }
+  rangeFrequencies(node: GameNode): number[] {
+    const n = this.N[node.player];
+    const A = node.actions.length;
+    const S = node.strategySum!;
+    const f = new Array<number>(A).fill(0);
+    let tot = 0;
+    for (let a = 0; a < A; a++) {
+      for (let i = 0; i < n; i++) f[a] += S[a * n + i];
+      tot += f[a];
     }
-    return out;
-  }
-
-  /** Exact (river/turn) or sampled (flop) all-in equity of hero vs villain. */
-  private showdownEquity(
-    hero: [CardId, CardId],
-    vill: [CardId, CardId],
-    cardsToCome: number,
-  ): number {
-    if (cardsToCome === 0) {
-      const h = evaluateHand([...hero, ...this.board]);
-      const v = evaluateHand([...vill, ...this.board]);
-      return h > v ? 1 : h < v ? 0 : 0.5;
-    }
-
-    const known = [...hero, ...vill, ...this.board];
-    const deck = removeCards(createDeck(), known);
-
-    if (cardsToCome === 1) {
-      // Turn: enumerate all single river cards EXACTLY.
-      let win = 0;
-      let total = 0;
-      for (const c of deck) {
-        const full = [...this.board, c];
-        const h = evaluateHand([...hero, ...full]);
-        const v = evaluateHand([...vill, ...full]);
-        win += h > v ? 1 : h < v ? 0 : 0.5;
-        total++;
-      }
-      return total > 0 ? win / total : 0.5;
-    }
-
-    // Flop: two cards to come. Exact enumeration is C(45,2)=990 evals per pair,
-    // which times many pairs blows the time budget. Sample a bounded number of
-    // runouts deterministically via the seeded RNG instead.
-    const SAMPLES = 80;
-    let win = 0;
-    const n = deck.length;
-    for (let s = 0; s < SAMPLES; s++) {
-      const a = this.rng.nextInt(n);
-      let b = this.rng.nextInt(n);
-      if (b === a) b = (b + 1) % n;
-      const full = [...this.board, deck[a], deck[b]];
-      const h = evaluateHand([...hero, ...full]);
-      const v = evaluateHand([...vill, ...full]);
-      win += h > v ? 1 : h < v ? 0 : 0.5;
-    }
-    return win / SAMPLES;
-  }
-
-  /**
-   * One external-sampling-style CFR pass for the hero traverser, vectorized
-   * over the villain range. We update hero's info sets exactly (full villain
-   * range reach) and villain's info sets too (alternating not required: we run
-   * both traversers each iteration like vanilla CFR but keep villain's hand
-   * distribution as a reach-weighted vector).
-   *
-   * Implementation: a standard recursive CFR over the betting tree where the
-   * "private information" of each player is their hand index. We fix hero's
-   * actual hand (`heroIdx`) for the returned strategy but TRAIN over hero's
-   * whole range so the strategy is range-consistent. Villain reach is a weight
-   * vector over the villain range.
-   *
-   * For tractability and determinism we train hero hand-by-hand: each pass
-   * traverses the tree once per hero hand with the full villain reach vector.
-   */
-  iterate(t: number): number {
-    let evAccum = 0;
-    const H = this.heroRange.length;
-    // Villain reach vector (probability villain holds each combo), normalized.
-    const villReach = new Float64Array(this.V);
-    let wsum = 0;
-    for (let j = 0; j < this.V; j++) wsum += this.villainRange[j].weight;
-    for (let j = 0; j < this.V; j++) {
-      villReach[j] = wsum > 0 ? this.villainRange[j].weight / wsum : 1 / this.V;
-    }
-
-    for (let i = 0; i < H; i++) {
-      // Traverse for hero hand i with full villain reach; update both players.
-      evAccum += this.cfr(this.root, i, villReach, 1, t);
-    }
-    return evAccum / H;
-  }
-
-  /**
-   * Recursive CFR. `heroHand` is hero's fixed hand index this pass; `villReach`
-   * is the per-villain-combo reach weight reaching this node (already includes
-   * villain's strategy probabilities). `heroReach` is the scalar probability
-   * hero reached this node under hero's current strategy. Returns hero's EV at
-   * this node, range-weighted over the villain vector.
-   */
-  private cfr(
-    node: TreeNode,
-    heroHand: number,
-    villReach: Float64Array,
-    heroReach: number,
-    t: number,
-  ): number {
-    if (node.kind === 'terminal') {
-      return this.leafEv(node, heroHand, villReach);
-    }
-
-    const key = node.player === 0
-      ? `${node.infoSetKey}|h${heroHand}`
-      : node.infoSetKey; // villain info set shared across villain combos here
-    const numActions = node.actions.length;
-
-    if (node.player === 0) {
-      // Hero decision: standard regret-matching over villain reach mass.
-      const cfrNode = this.getNode(key, numActions);
-      const strat = cfrNode.strategy();
-      const utils = new Array<number>(numActions).fill(0);
-      let nodeEv = 0;
-      for (let a = 0; a < numActions; a++) {
-        const u = this.cfr(node.children[a], heroHand, villReach, heroReach * strat[a], t);
-        utils[a] = u;
-        nodeEv += strat[a] * u;
-      }
-      // Counterfactual reach for hero = villain reach mass (sum of villReach).
-      let villMass = 0;
-      for (let j = 0; j < this.V; j++) villMass += villReach[j];
-      for (let a = 0; a < numActions; a++) {
-        const regret = villMass * (utils[a] - nodeEv);
-        let r = cfrNode.regretSum[a] + regret;
-        if (r < 0) r = 0; // regret-matching+
-        cfrNode.regretSum[a] = r;
-        cfrNode.strategySum[a] += heroReach * strat[a];
-      }
-      return nodeEv;
-    } else {
-      // Villain decision: villain mixes per its own strategy. Villain wants to
-      // MINIMIZE hero EV, so we run regret matching on villain's NEGATED
-      // utility. We update villain's info set using the reach-weighted vector.
-      const cfrNode = this.getNode(key, numActions);
-      const strat = cfrNode.strategy();
-      const utils = new Array<number>(numActions).fill(0);
-      let nodeEv = 0;
-      for (let a = 0; a < numActions; a++) {
-        // Scale villain reach into this child by villain's strategy prob.
-        const childReach = new Float64Array(this.V);
-        for (let j = 0; j < this.V; j++) childReach[j] = villReach[j] * strat[a];
-        const u = this.cfr(node.children[a], heroHand, childReach, heroReach, t);
-        utils[a] = u;
-        nodeEv += strat[a] * u;
-      }
-      // Villain minimizes hero EV => villain's regret is on (nodeEv - utils).
-      // Counterfactual reach for villain = hero reach (scalar).
-      for (let a = 0; a < numActions; a++) {
-        const regret = heroReach * (nodeEv - utils[a]);
-        let r = cfrNode.regretSum[a] + regret;
-        if (r < 0) r = 0;
-        cfrNode.regretSum[a] = r;
-        cfrNode.strategySum[a] += strat[a];
-      }
-      return nodeEv;
-    }
-  }
-
-  /**
-   * Hero EV at a terminal leaf, summed (reach-weighted) over the villain range.
-   * Hero EV is measured as net chips relative to the start of the subgame:
-   *   - fold by villain  => hero wins (leafPot - heroCommitted - startingPot?)…
-   * We use NET stack change: hero's payoff = (chips hero ends with) - (chips
-   * hero put in this subgame). Concretely:
-   *   - villain folds   => hero collects the whole pot => +villainCommitted
-   *                        (hero's own committed chips come back; net gain is
-   *                         what villain put in plus the dead starting pot it
-   *                         already "owned" half of — but for decision EV the
-   *                         consistent measure is: hero net = pot_won - hero_in).
-   * To keep it simple and consistent we define hero net payoff at a leaf as:
-   *   showdown: heroShare*leafPot - heroCommitted
-   *   fold:     if villain folds -> leafPot - heroCommitted (hero takes pot)
-   *             if hero folds    -> -heroCommitted (hero loses what it put in)
-   * leafPot already includes startingPot, so "pot - heroCommitted" credits hero
-   * with the dead money, which is the correct counterfactual EV for the spot.
-   */
-  private leafEv(node: TreeNode, heroHand: number, villReach: Float64Array): number {
-    const pot = node.leafPot ?? 0;
-    const heroIn = node.heroCommitted ?? 0;
-
-    let mass = 0;
-    for (let j = 0; j < this.V; j++) mass += villReach[j];
-    if (mass <= 0) return 0;
-
-    if (node.terminalKind === 'fold') {
-      if (node.folder === 1) {
-        // Villain folds: hero wins the pot regardless of villain hand.
-        return mass * (pot - heroIn);
-      }
-      // Hero folds: hero simply loses what it committed.
-      return mass * (-heroIn);
-    }
-
-    // Showdown: equity-weighted over the villain range.
-    let ev = 0;
-    for (let j = 0; j < this.V; j++) {
-      const w = villReach[j];
-      if (w === 0) continue;
-      const share = this.wins[heroHand * this.V + j]; // [0,1]
-      ev += w * (share * pot - heroIn);
-    }
-    return ev;
-  }
-
-  /** Extract the converged root strategy for hero's ACTUAL hand. */
-  rootStrategy(): { actions: string[]; probs: number[] } {
-    const key = `${this.root.infoSetKey}|h${this.heroIdx}`;
-    const node = this.store.get(key);
-    if (!node) {
-      const u = this.root.actions.map(() => 1 / this.root.actions.length);
-      return { actions: this.root.actions, probs: u };
-    }
-    return { actions: this.root.actions, probs: node.average() };
+    return f.map((x) => (tot > 0 ? x / tot : 1 / A));
   }
 }
 
-// ------------------------------------------------------------
-// Card-conflict helper
-// ------------------------------------------------------------
-
-function conflict(hero: [CardId, CardId], vill: [CardId, CardId], board: CardId[]): boolean {
-  const seen = new Set<number>(board);
-  for (const c of hero) {
-    if (seen.has(c)) return true;
-    seen.add(c);
+function normWeights(r: RangeHand[]): Float64Array {
+  const w = new Float64Array(r.length);
+  let s = 0;
+  for (let i = 0; i < r.length; i++) {
+    const x = r[i].weight > 0 ? r[i].weight : 0;
+    w[i] = x;
+    s += x;
   }
-  for (const c of vill) {
-    if (seen.has(c)) return true;
-  }
-  return false;
+  if (!(s > 0)) throw new Error('Range has no positive weight.');
+  for (let i = 0; i < r.length; i++) w[i] /= s;
+  return w;
 }
 
 // ------------------------------------------------------------
-// Default range construction
+// Default range construction (used only when no range is supplied)
 // ------------------------------------------------------------
 
 /**
  * A reasonable wide single-raised-pot continuing range: all pocket pairs, all
  * suited broadways/connectors, and strong offsuit broadways. We materialize it
- * as concrete combos that do not conflict with the board (and, for hero, that
- * include hero's exact hand). Combos that overlap the board are dropped.
+ * as concrete combos that do not conflict with the board. One representative
+ * combo per hand class keeps it small.
  */
-function defaultRangeCombos(board: CardId[], exclude: CardId[]): RangeEntry[] {
+function defaultRangeCombos(board: CardId[], exclude: CardId[]): RangeHand[] {
   const dead = new Set<number>([...board, ...exclude]);
-  const out: RangeEntry[] = [];
-  // Iterate canonical hand groups and pick one or two representative suit combos
-  // each so the range stays small but textured.
+  const out: RangeHand[] = [];
   for (let r1 = 12; r1 >= 0; r1--) {
     for (let r2 = r1; r2 >= 0; r2--) {
       const isPair = r1 === r2;
-      // Keep mid-strength-and-up: pairs >= 4 ('5'?) and connected/broadway combos.
       const keep = handGroupKeep(r1, r2);
       if (!keep.weight) continue;
       const combos = pickCombos(r1, r2, isPair, dead, keep.suitedOnly);
@@ -705,24 +862,15 @@ function handGroupKeep(r1: number, r2: number): { weight: number; suitedOnly: bo
   const high = Math.max(r1, r2);
   const low = Math.min(r1, r2);
   const gap = high - low;
-  const isPair = r1 === r2;
-  if (isPair) {
-    // All pairs continue, weighted slightly higher for the strong ones.
-    return { weight: high >= 8 ? 1 : 0.8, suitedOnly: false };
-  }
-  // Broadway both cards (>=T, idx 8): keep offsuit + suited.
+  if (r1 === r2) return { weight: high >= 8 ? 1 : 0.8, suitedOnly: false };
   if (low >= 8) return { weight: 1, suitedOnly: false };
-  // One broadway + decent kicker: keep suited, sometimes offsuit.
   if (high >= 10 && low >= 5) return { weight: 0.7, suitedOnly: false };
   if (high >= 8 && gap <= 1) return { weight: 0.6, suitedOnly: true };
-  // Suited connectors / one-gappers in the middle.
   if (gap <= 2 && low >= 3 && high <= 11) return { weight: 0.5, suitedOnly: true };
-  // Suited aces.
   if (high === 12) return { weight: 0.5, suitedOnly: true };
   return { weight: 0, suitedOnly: false };
 }
 
-/** Pick concrete card-id combos for a (rank1, rank2) group, avoiding dead cards. */
 function pickCombos(
   r1: number,
   r2: number,
@@ -732,7 +880,6 @@ function pickCombos(
 ): [CardId, CardId][] {
   const out: [CardId, CardId][] = [];
   if (isPair) {
-    // One representative pair combo (first two free suits).
     const cards: CardId[] = [];
     for (let s = 0; s < 4 && cards.length < 2; s++) {
       const id = r1 * 4 + s;
@@ -743,14 +890,12 @@ function pickCombos(
   }
   const high = Math.max(r1, r2);
   const low = Math.min(r1, r2);
-  // Suited: one representative (matching suits).
   for (let s = 0; s < 4; s++) {
     const a = high * 4 + s;
     const b = low * 4 + s;
     if (!dead.has(a) && !dead.has(b)) { out.push([a, b]); break; }
   }
   if (!suitedOnly) {
-    // Offsuit: one representative (different suits).
     outer: for (let sa = 0; sa < 4; sa++) {
       for (let sb = 0; sb < 4; sb++) {
         if (sa === sb) continue;
@@ -764,20 +909,60 @@ function pickCombos(
 }
 
 // ------------------------------------------------------------
-// Public entry point
+// Legacy entry point: solvePostflop (RangeHand[] ranges, optional defaults)
 // ------------------------------------------------------------
 
-const DEFAULT_BET_FRACTIONS = [0.33, 0.75];
+export interface SolvePostflopInput {
+  /** Board cards as ids (3, 4, or 5 of them). */
+  board: CardId[];
+  /** Hero's exact hole cards. */
+  heroCards: [CardId, CardId];
+  /** Pot at the moment of decision, EXCLUDING any bet hero is facing. */
+  pot: number;
+  /** Effective remaining stack behind, per player (chips). */
+  effectiveStack: number;
+  /** Amount hero must call right now (0 when hero is not facing a bet). */
+  toCall?: number;
+  /** Whether hero is in position. With no bet to face, IP means villain has
+   *  checked, so hero checking ends the street. Default false (hero OOP). */
+  heroInPosition?: boolean;
+  /** Optional explicit hero range. Hero's exact hand is always added. */
+  heroRange?: RangeHand[];
+  /** Optional explicit villain range; a wide default is used otherwise. */
+  villainRange?: RangeHand[];
+  /** Opening bet sizes (pot fractions). Default per street, see
+   *  defaultAbstraction(). */
+  betFractions?: number[];
+  /** Hard iteration budget. Default 300. */
+  maxIterations?: number;
+  /** Hard wall-clock budget in ms. Default 1500. */
+  timeBudgetMs?: number;
+  /** Seed for deterministic range sub-sampling. Default 1. */
+  seed?: number;
+  /** Cap on villain combos (sub-sampled deterministically). Default 60. */
+  maxVillainCombos?: number;
+}
+
+export interface SolvePostflopResult {
+  /** Converged average strategy for hero's root decision. */
+  strategy: StrategyDistribution;
+  /** CFR iterations actually performed before the budget was hit. */
+  iterations: number;
+  /** Wall-clock time spent in the solve (ms). */
+  timeMs: number;
+  /** Hero's EV with its actual hand under the average strategies (chips, net
+   *  from the start of the subgame). */
+  ev: number;
+}
 
 /**
  * Solve the current postflop spot and return hero's mixed strategy as a
- * {@link StrategyDistribution}. Runs depth-limited CFR on the main thread under
- * a hard iteration AND time budget (whichever is hit first). On any internal
- * error it throws; callers should catch and fall back to a heuristic.
+ * {@link StrategyDistribution}. Kept for back-compatibility; new callers with
+ * real weighted ranges should use solveSubgame() in ./subgame.ts. Throws on bad
+ * input; callers catch and fall back.
  */
 export function solvePostflop(input: SolvePostflopInput): SolvePostflopResult {
   const start = Date.now();
-
   if (input.board.length < 3 || input.board.length > 5) {
     throw new Error(`Postflop solver needs a 3-5 card board (got ${input.board.length}).`);
   }
@@ -786,132 +971,78 @@ export function solvePostflop(input: SolvePostflopInput): SolvePostflopResult {
     if (seen.has(c)) throw new Error('Hero card collides with the board.');
     seen.add(c);
   }
-
   const pot = Math.max(1, input.pot);
   const effectiveStack = Math.max(1, input.effectiveStack);
-  const betFractions = input.betFractions ?? DEFAULT_BET_FRACTIONS;
   const maxIterations = input.maxIterations ?? 300;
-  const timeBudgetMs = input.timeBudgetMs ?? 200;
+  const timeBudgetMs = input.timeBudgetMs ?? 1500;
   const rng = new SeededRng(input.seed ?? 1);
-  const maxVillain = input.maxVillainCombos ?? 60;
 
-  // Build ranges.
-  const heroRange = buildHeroRange(input);
-  const heroIdx = findHeroIndex(heroRange, input.heroCards);
-  let villainRange = input.villainRange
-    ? input.villainRange.map((h) => ({ cards: h.cards, weight: h.weight }))
-    : defaultRangeCombos(input.board, [...input.heroCards]);
-  villainRange = filterAndCap(villainRange, input.board, maxVillain, rng);
-  if (villainRange.length === 0) {
-    throw new Error('Villain range is empty after board filtering.');
+  const dead = new Set<number>(input.board);
+  const okBoard = (h: RangeHand) => !dead.has(h.cards[0]) && !dead.has(h.cards[1]) && h.cards[0] !== h.cards[1];
+  let heroRange = (input.heroRange ?? defaultRangeCombos(input.board, [])).filter(okBoard);
+  if (!heroRange.some((h) => sameHand(h.cards, input.heroCards))) {
+    heroRange = [...heroRange, { cards: input.heroCards, weight: 1 }];
   }
+  let villainRange = (input.villainRange ?? defaultRangeCombos(input.board, [...input.heroCards])).filter(okBoard);
+  villainRange = capRandom(villainRange, input.maxVillainCombos ?? 60, rng);
+  if (villainRange.length === 0) throw new Error('Villain range is empty after board filtering.');
 
-  // Build the betting tree. When hero is facing a bet, seed the tree with the
-  // villain bet already committed so hero's first action is fold/call/raise.
-  const ctx: BuildCtx = { startingPot: pot, effectiveStack, betFractions };
-  let root: TreeNode;
+  const abstraction = defaultAbstraction(input.board.length);
+  if (input.betFractions) abstraction.betFractions = input.betFractions;
   const toCall = input.toCall ?? 0;
-  if (toCall > 0) {
-    root = buildFacingBetRoot(ctx, toCall);
-  } else {
-    root = buildTree(ctx);
+  const solver = new RangeVsRangeCfr({
+    board: input.board,
+    hero: heroRange,
+    villain: villainRange,
+    tree: {
+      startingPot: pot,
+      effectiveStack,
+      toCall,
+      heroIsIP: !!input.heroInPosition,
+      priorAggressions: toCall > 0 ? 1 : 0,
+      abstraction,
+    },
+    seed: input.seed ?? 1,
+    maxFlopRunouts: 300,
+  });
+
+  while (solver.iterations < maxIterations) {
+    solver.iterate();
+    if (Date.now() - start >= timeBudgetMs) break;
   }
-
-  const solver = new PostflopCfr(root, input.board, heroRange, villainRange, heroIdx, rng);
-
-  // CFR loop under hard dual budget.
-  let iters = 0;
-  let ev = 0;
-  const checkEvery = 16; // amortize Date.now() cost
-  for (; iters < maxIterations; iters++) {
-    ev = solver.iterate(iters + 1);
-    if ((iters % checkEvery) === checkEvery - 1) {
-      if (Date.now() - start >= timeBudgetMs) { iters++; break; }
-    }
-  }
-
-  const { actions, probs } = solver.rootStrategy();
-  const strategy = toStrategyDistribution(actions, probs);
-
+  const heroIdx = heroRange.findIndex((h) => sameHand(h.cards, input.heroCards));
+  const avg = solver.averageStrategy(solver.root);
+  const probs = solver.root.actions.map((_, a) => avg[a * heroRange.length + heroIdx]);
+  const ev = solver.comboValues(0)[heroIdx];
   return {
-    strategy,
-    iterations: iters,
+    strategy: toStrategyDistribution(solver.root.actions, probs),
+    iterations: solver.iterations,
     timeMs: Date.now() - start,
-    ev,
+    ev: Number.isFinite(ev) ? ev : 0,
   };
-}
-
-/**
- * Build a root where hero is facing an outstanding bet of `toCall` chips.
- * We model villain as having already bet `toCall`, so hero acts first with
- * fold/call/raise available.
- */
-function buildFacingBetRoot(ctx: BuildCtx, toCall: number): TreeNode {
-  // Villain committed `toCall`; hero committed 0 so far in the subgame.
-  const committed: [number, number] = [0, Math.min(toCall, ctx.effectiveStack)];
-  return buildNode(ctx, 0, committed, committed[1], 1, `vbet`);
-}
-
-function buildHeroRange(input: SolvePostflopInput): RangeEntry[] {
-  if (input.heroRange && input.heroRange.length > 0) {
-    const list = input.heroRange.map((h) => ({ cards: h.cards, weight: h.weight }));
-    // Guarantee hero's exact hand is present.
-    if (!list.some((h) => sameHand(h.cards, input.heroCards))) {
-      list.push({ cards: input.heroCards, weight: 1 });
-    }
-    return list;
-  }
-  const range = defaultRangeCombos(input.board, []);
-  if (!range.some((h) => sameHand(h.cards, input.heroCards))) {
-    range.push({ cards: input.heroCards, weight: 1 });
-  }
-  // Drop combos colliding with hero's exact hand cards (other than hero's own).
-  return range.filter(
-    (h) =>
-      sameHand(h.cards, input.heroCards) ||
-      (h.cards[0] !== input.heroCards[0] &&
-        h.cards[0] !== input.heroCards[1] &&
-        h.cards[1] !== input.heroCards[0] &&
-        h.cards[1] !== input.heroCards[1]),
-  );
-}
-
-function findHeroIndex(range: RangeEntry[], hero: [CardId, CardId]): number {
-  for (let i = 0; i < range.length; i++) if (sameHand(range[i].cards, hero)) return i;
-  // Should not happen (buildHeroRange guarantees presence), but be safe.
-  range.push({ cards: hero, weight: 1 });
-  return range.length - 1;
 }
 
 function sameHand(a: [CardId, CardId], b: [CardId, CardId]): boolean {
   return (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
 }
 
-/** Drop board-conflicting villain combos and deterministically cap the count. */
-function filterAndCap(
-  range: RangeEntry[],
-  board: CardId[],
-  cap: number,
-  rng: SeededRng,
-): RangeEntry[] {
-  const dead = new Set<number>(board);
-  const valid = range.filter((h) => !dead.has(h.cards[0]) && !dead.has(h.cards[1]) && h.cards[0] !== h.cards[1]);
-  if (valid.length <= cap) return valid;
-  // Deterministic sub-sample preserving weight: shuffle by seeded RNG, take cap.
-  const idx = valid.map((_, i) => i);
+/** Deterministic seeded sub-sample to at most `cap` combos. */
+function capRandom(range: RangeHand[], cap: number, rng: SeededRng): RangeHand[] {
+  if (range.length <= cap) return range;
+  const idx = range.map((_, i) => i);
   for (let i = idx.length - 1; i > 0; i--) {
     const j = rng.nextInt(i + 1);
     [idx[i], idx[j]] = [idx[j], idx[i]];
   }
-  return idx.slice(0, cap).map((i) => valid[i]);
+  return idx.slice(0, cap).map((i) => range[i]);
 }
 
 /**
- * Convert the solved (action-label, probability) lists into the project's
- * {@link StrategyDistribution} shape. Bet/raise actions are merged into the
- * `bets` array by absolute amount; fold/check/call map to scalar fields.
+ * Convert per-action probabilities into the project's
+ * {@link StrategyDistribution}. Bet/raise/all-in actions go into `bets` keyed by
+ * the chips hero adds with that action; fold/check/call map to scalars.
  */
-function toStrategyDistribution(actions: string[], probs: number[]): StrategyDistribution {
+export function toStrategyDistribution(actions: TreeAction[], probs: number[]): StrategyDistribution {
   let fold = 0;
   let check = 0;
   let call = 0;
@@ -919,12 +1050,11 @@ function toStrategyDistribution(actions: string[], probs: number[]): StrategyDis
   for (let i = 0; i < actions.length; i++) {
     const a = actions[i];
     const p = probs[i];
-    if (a === A_FOLD) fold += p;
-    else if (a === A_CHECK) check += p;
-    else if (a === A_CALL) call += p;
-    else bets.push({ amount: parseBetAmount(a), probability: p });
+    if (a.kind === 'fold') fold += p;
+    else if (a.kind === 'check') check += p;
+    else if (a.kind === 'call') call += p;
+    else bets.push({ amount: a.chips, probability: p });
   }
-  // Normalize defensively (floating error / dropped mass).
   let total = fold + check + call;
   for (const b of bets) total += b.probability;
   if (total > 0 && Math.abs(total - 1) > 1e-9) {

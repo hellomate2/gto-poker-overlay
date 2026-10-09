@@ -79,32 +79,23 @@ describe('depth-limited postflop CFR solver', () => {
     expect(betMass(res.strategy)).toBeGreaterThan(0.5);
   });
 
-  it('does not over-bluff pure air on a dry board (checks back at high frequency)', () => {
-    // Dry board, hero holds total air (no pair, no draw). The OLD version of this
-    // test claimed the solver "mixes" bluffs and checks, but its loose bounds
-    // (betMass<0.95, checkOrFold>0.05) were satisfied by a 100% check — vacuous.
-    // In this depth-limited solver, all-in is gated at SPR>2.5 and the leaf models
-    // no future-street fold equity, so air finds no profitable bluff size and
-    // PURE-CHECKS (~0.4% bet across seeds). The honest, non-vacuous guarantee is
-    // therefore "does not over-bluff": air must not be firing a high-frequency
-    // bluff. (See suspected source note: a true balanced bluff range would require
-    // un-gating all-in / modelling future streets.)
+  it('treats pure air as a bluff candidate with near-zero EV, far below a value hand', () => {
+    // History: an earlier version of this test asserted that 32o PURE-CHECKS on
+    // As Kd 7c. That was an artifact of the old solver, whose villain played one
+    // strategy for every hand it held (its info sets ignored its cards), so
+    // nothing ever folded to a bluff. With per-hand info sets for both players
+    // the solve now uses the very worst hands as polar bluffs, which is the
+    // textbook equilibrium structure (worst hands bluff, medium hands check).
+    // What must hold: air can always check (EV >= ~0), its bluffs are only
+    // marginally profitable (indifference keeps bluff EV near the check EV), and
+    // it is worth far less than a value hand on the same board.
     const board = [card('As'), card('Kd'), card('7c')];
-    const air = combo('3h', '2d');
-    const res = solvePostflop({
-      board,
-      heroCards: air,
-      pot: 100,
-      effectiveStack: 400,
-      seed: 11,
-      maxIterations: 300,
-      timeBudgetMs: 400,
-    });
-    const bm = betMass(res.strategy);
-    const checkOrFold = res.strategy.check + res.strategy.fold + res.strategy.call;
-    // A regression that made air bluff at high frequency (or always) trips this.
-    expect(bm).toBeLessThan(0.2);
-    expect(checkOrFold).toBeGreaterThan(0.8);
+    const common = { board, pot: 100, effectiveStack: 400, seed: 11, maxIterations: 300, timeBudgetMs: 4000 };
+    const air = solvePostflop({ ...common, heroCards: combo('3h', '2d') });
+    const set = solvePostflop({ ...common, heroCards: combo('7s', '7h') });
+    expect(air.ev).toBeGreaterThan(-1);
+    expect(air.ev).toBeLessThan(15); // < 15% of the pot
+    expect(set.ev).toBeGreaterThan(air.ev + 50);
   });
 
   it('stronger hands bet/raise more than weaker hands on the same board (monotonicity)', () => {
