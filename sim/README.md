@@ -142,6 +142,27 @@ exactly.
 - `run.ts`, `ring-run.ts`, `match.ts`: the drivers above.
 - `fake-idb.ts`: in-memory IndexedDB shim so the bot's opponent tracking works in Node.
 
+- `defense-shim.ts`: patches an engine instance to route facing-a-bet spots
+  through `src/core/defense.ts` (used by the probes below).
+
 > Caveat: scripted opponents are deliberately exploitable heuristics. A big positive
 > bb/100 against them says little about real opposition. Use them to find where the
 > bot's frequencies are wrong, and use `match.ts` to decide whether a change helped.
+
+## Diagnostic probes (`*.probe.ts`)
+
+Slow, one-off measurements that are not part of `npx vitest run`. Run them with
+the probe config:
+
+```bash
+npx vitest run --config sim/vitest.probe.config.ts sim/fold-to-raise   # per-hand fold-to-raise grid
+npx vitest run --config sim/vitest.probe.config.ts sim/range-fold      # fold-to-raise over the whole betting range vs MDF
+npx vitest run --config sim/vitest.probe.config.ts sim/barrel          # turn/river barrel frequency vs barrelGate
+npx vitest run --config sim/vitest.probe.config.ts sim/defense-hu      # HU A/B with and without src/core/defense.ts
+npx vitest run --config sim/vitest.probe.config.ts sim/defense-latency # cost of the defense pipeline per street
+```
+
+`PROBE_DEFENSE=1` routes facing-a-bet decisions in the first two probes through
+`src/core/defense.ts` via `sim/defense-shim.ts` (which patches an engine
+instance; `engine.ts` itself is untouched). `PROBE_COMBOS`, `PROBE_HANDS` and
+`PROBE_OPPS` size the runs.
