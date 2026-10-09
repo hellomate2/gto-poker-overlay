@@ -36,6 +36,7 @@ vi.mock('../src/storage/db', async () => {
 });
 
 import { DecisionEngine } from '../src/core/engine';
+import { setEngineFlags, resetEngineFlags } from '../src/core/engine-flags';
 import { parseRow } from '../ml/prep';
 import { encodeSpot, Spot } from '../src/core/ml/features';
 import { evaluateHand } from '../src/core/equity/hand-eval';
@@ -44,11 +45,15 @@ import { Action, GameState, Player, Street } from '../src/types/poker';
 import { card } from './helpers';
 
 beforeEach(() => {
+  // These tests pin the distilled-net path. With SUBGAME_SOLVER on (the default since
+  // 2026-10-09) heads-up turn/river decisions go to the subgame solver instead, so
+  // turn it off here to keep exercising the net's feature encoding.
+  setEngineFlags({ SUBGAME_SOLVER: false });
   captured.spots.length = 0;
   vi.spyOn(Math, 'random').mockReturnValue(0.99);
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); resetEngineFlags(); });
 
 const BB = 20;
 
