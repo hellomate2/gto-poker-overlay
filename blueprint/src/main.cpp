@@ -399,8 +399,13 @@ int cmd_bench(const Args& a) {
   h->tree.print_stats(stdout);
   double secs = a.getf("seconds", 10);
   std::vector<int> threads_list;
-  for (const auto& s : std::vector<std::string>{"1", "2", "4"})
-    if (std::stoi(s) <= a.geti("max-threads", 4)) threads_list.push_back(std::stoi(s));
+  if (a.has("thread-list")) {
+    // e.g. --thread-list 6 or --thread-list 4,6,8
+    for (float f : parse_fracs(a.get("thread-list"))) threads_list.push_back(int(f));
+  } else {
+    for (const auto& s : std::vector<std::string>{"1", "2", "4"})
+      if (std::stoi(s) <= a.geti("max-threads", 4)) threads_list.push_back(std::stoi(s));
+  }
   for (int th : threads_list) {
     McfrConfig m = holdem_mcfr(a);
     m.threads = th;
