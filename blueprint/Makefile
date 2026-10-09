@@ -23,11 +23,20 @@ bin/bp_serve_tests: $(LIB_SRC) tests/test_serve.cpp $(HEADERS)
 	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) -Isrc $(LIB_SRC) tests/test_serve.cpp -o $@
 
-test: bin/bp_tests bin/bp_serve_tests
+# Local Best Response tests (src/lbr.h)
+bin/lbr_tests: $(LIB_SRC) tests/test_lbr.cpp $(HEADERS)
+	@mkdir -p bin
+	$(CXX) $(CXXFLAGS) -Isrc $(LIB_SRC) tests/test_lbr.cpp -o $@
+
+test: bin/bp_tests bin/bp_serve_tests bin/lbr_tests
 	./bin/bp_tests
 	./bin/bp_serve_tests
+	./bin/lbr_tests
+
+test-lbr: bin/lbr_tests
+	./bin/lbr_tests
 
 clean:
 	rm -rf bin
 
-.PHONY: all test clean
+.PHONY: all test test-lbr clean

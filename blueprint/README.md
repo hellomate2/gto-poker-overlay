@@ -48,9 +48,11 @@ code can be moved to a rented many-core box unchanged.
 | `src/mccfr.h` | the trainer (one template for every game) and the exact best response |
 | `src/export.{h,cpp}` | policy export format |
 | `src/serve.{h,cpp}` | `bp serve`: the blueprint as a JSON-lines policy service for the TS BlueprintAgent |
+| `src/lbr.h` | Local Best Response: full-game exploitability lower bound (`bp lbr`) |
 | `src/main.cpp` | the `bp` CLI |
 | `tests/test_main.cpp` | C++ tests (`make test`) |
 | `tests/test_serve.cpp` | `bp serve` tests (`make test`) |
+| `tests/test_lbr.cpp` | LBR tests against exact best responses (`make test-lbr`, also run by `make test`) |
 | `../src/core/blueprint/loader.ts` | TS reader for exported policies |
 | `../tests/blueprint-loader.test.ts` | vitest suite for the loader, using real exports as fixtures |
 
@@ -95,6 +97,8 @@ than the one that built it.
 ./bin/bp h2h --a runs/hu-small-25min/ckpt.bin --b random    --hands 500000
 ./bin/bp br  --target runs/hu-small-25min/ckpt.bin --minutes 3 --threads 4
 ./bin/bp show --ckpt runs/hu-small-25min/ckpt.bin            # preflop open grid
+./bin/bp lbr --target runs/hu-small-25min/ckpt.bin --actions fcpa --rounds 1-4 \
+    --hands 100000 --minutes 8 --threads 4                    # local best response
 
 # 6. export for the TS engine
 ./bin/bp export --ckpt runs/hu-small-25min/ckpt.bin --out runs/hu-small-25min/blueprint.gpobp
@@ -487,6 +491,100 @@ falls slightly as the strategy moves toward equilibrium, which does not
 try to maximize winnings against any particular opponent. The exploiter and
 self-play rows are the better measures of progress.
 
+## Local Best Response (`bp lbr`, `src/lbr.h`)
+
+LBR (Lisy and Bowling 2017, https://arxiv.org/abs/1612.07547) plays real
+hands against a frozen target. It sees its own cards and the board, never
+the target's buckets, and keeps the exact Bayesian posterior over the
+target's 1,326 combos: uniform over combos that miss its cards, zeroed when
+a board card collides, multiplied by the target's action probability after
+every target action. At its own decisions it scores a fixed menu with a
+one-step lookahead (fold; check/call valued as a check-down against the
+range; bet valued as the range-weighted immediate fold probability plus a
+call by the rest of the range) and plays the best. Postflop equity is exact
+(all 1,081 flop runouts, 46 turn rivers, per target combo with card
+removal); preflop equity averages over 1,000 sampled boards
+(`--pre-samples`).
+
+Settings: `--actions fc|fcpa|tree` and `--rounds 1-4|2-4|3-4|4-4` (before
+the first active round LBR checks or calls). LBR's bets are restricted to
+sizes that exist in the target's tree, so the target's response is read off
+its policy with no action translation: `fcpa` is fold, check/call, the
+1.0-pot bet or raise when the node has one, and all-in. Every deal is
+played twice with LBR in each seat; the sample unit is the seat-averaged
+result. The headline is realized chips. A second estimator scores each
+showdown by its expectation over LBR's range, which has the same mean
+(the range is the exact posterior over the target's hand given everything
+public) and is printed as a cross-check. Before playing, the range model's
+bucket for each real hand is checked against `HoldemSampler::fill` on 200
+deals (1,600/1,600 agree on the overnight abstraction).
+
+Because LBR is a legal full-game strategy, its expected winnings lower-bound
+the target's full-game exploitability. Unlike `bp br`, it is not limited to
+the target's card buckets; it is limited by its greedy one-step lookahead
+and its small bet menu.
+
+### Validation (`make test-lbr`, 9 tests, 0 failures)
+
+* Kuhn and Leduc, against always-fold, check/call, maniac, uniform random,
+  and MCCFR average strategies after 2k and 200k iterations: LBR's exact
+  expected value (every target action branch enumerated) never exceeds
+  `ExactEval`'s best response value, for both seats, fc and fcpa, and every
+  active-round setting. Against always-fold, fcpa LBR equals the best
+  response (+1 ante in both games). Example, Leduc after 200k MCCFR
+  iterations: BR -0.060765 / +0.110193 (seat 0 / seat 1), fcpa LBR
+  -0.072424 / +0.105359.
+* Sampled LBR play on Leduc (400,000 hands per seat) matches the exact value
+  within 4 standard errors with both estimators; the range-scored estimator
+  has the lower standard deviation (2.503 vs 3.098 for seat 0).
+* Hold'em equity equals a brute-force 7-card enumeration on river, turn and
+  flop boards; preflop Monte Carlo for AhAs vs KdKc (8,000 boards) gives
+  0.80944 against the exact 0.81255 over all boards.
+* Hold'em LBR vs always-fold: exactly 750 mbb/hand (+1,000 as small blind,
+  +500 as big blind) with zero variance, the always-fold row in the
+  literature. fc LBR vs check/call: exactly 0 (both seats of every deal
+  check down the same pot).
+* Range updates: facing a pot raise from a target that raises only aces,
+  LBR folds kings in the big blind; facing a target that raises every hand,
+  it continues.
+
+Command-line sanity runs (`bp lbr --target <bot> --preset small --hands
+1000 --threads 4 --seed 1`, 1,000 duplicate deals each): fc vs check/call
++0.0 (CI +/- 0.0); fc vs uniform random +7,046.8 +/- 1,857.7; fc vs maniac
++6,469.5 +/- 2,096.4 mbb/hand.
+
+### Result: the overnight checkpoint (2026-10-09)
+
+Target: a copy of `~/.gpo/overnight/ckpt.bin` taken at 04:18 PDT,
+iteration 701,930,101; small tree, 200/200/200 buckets, 100 BB stacks
+(10,000 chips). Command, with `<A> <R> <M>` per row:
+
+```bash
+./bin/bp lbr --target runs/lbr/overnight-ckpt.bin --preset small --flop 200 --turn 200 \
+  --river 200 --bins 50 --abs-seed 7 --actions <A> --rounds <R> --hands 200000 \
+  --minutes <M> --threads 4 --seed 1
+```
+
+| LBR setting | duplicate deals | LBR wins, mbb/hand (95% CI) | range-scored cross-check | LBR as SB / BB | wall time |
+| --- | ---: | ---: | ---: | --- | ---: |
+| fcpa, rounds 3-4 | 200,000 | +1,355.9 +/- 54.0 | +1,341.1 +/- 45.6 | +1,375.3 / +1,336.5 | 66 s |
+| fcpa, rounds 1-4 | 73,940 | +854.9 +/- 107.9 | +862.8 +/- 89.7 | +697.5 / +1,012.4 | 480 s (cap) |
+| fc, rounds 1-4 | 28,930 | +113.0 +/- 71.2 | +106.3 +/- 43.6 | -77.1 / +303.1 | 270 s (cap) |
+
+These are full-game lower bounds on the checkpoint's exploitability: the
+blueprint as it plays real cards loses at least about 1.3 BB per hand to a
+greedy player that only uses its own pot and all-in sizes and waits until
+the turn to start computing. For scale, the in-abstraction exploiter
+(`bp br`) found +20.5 +/- 9.0 against the 25-minute run (above); LBR is not
+limited to the target's buckets. Waiting until rounds 3-4 beat being
+active on all rounds here, which matches the LBR paper's observation that a
+greedy LBR gains more against always-call when restricted to later rounds.
+The 1-4 runs stopped at their time cap; a run that stops on time
+drops at most one in-flight deal per thread. The numbers are at 100 BB, so
+they do not line up with the 200 BB ACPC tables in the LBR paper. The load
+average on the machine was about 15 to 30 during these runs (other agents
+and the overnight training job), which affects wall time only.
+
 ## Scaling up: an extrapolation from these measurements
 
 Assumption, stated plainly: a larger abstraction reaches roughly the
@@ -532,7 +630,9 @@ per slot from 12 bytes to 4.
   buckets itself but does not yet load the flop/turn k-means tables, and it
   has no action translation for real bet sizes that fall between the
   abstract sizes.
-* The hold'em exploitability numbers are bounds measured inside the
-  abstraction; there is no full-game best response.
+* There is no full-game best response for hold'em. `bp br` is a bound
+  inside the abstraction; `bp lbr` is a full-game lower bound, but only
+  with bet sizes that exist in the target's tree (no off-tree sizes and no
+  action translation yet, so the LBR paper's "56 bets" setting is missing).
 * River tables support at most 255 river buckets; above that, river buckets
   are computed per deal.
