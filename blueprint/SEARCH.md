@@ -23,8 +23,10 @@ TREE="--preset small --flop 200 --turn 200 --river 200 --bins 50 --abs-seed 7 --
 bin/bp search $TREE --ckpt CKPT --board "Qs 7h 2d" --history "r1 c" --hand "Qh Jh" --budget-ms 2000 --threads 4
 #   --k 4 --bias 5 --rollouts 24 --max-hands N --algo dcfr|cfr+ --max-iters N
 
-# blueprint + river search vs blueprint
-bin/bp search-h2h $TREE --ckpt CKPT --hands 8000 --iters 100 --threads 4 --seed 11
+# blueprint + search on one street vs blueprint (exact-EV estimator, see below)
+bin/bp search-h2h $TREE --ckpt CKPT --hands 8000 --iters 100 --threads 4 --seed 11            # river
+bin/bp search-h2h $TREE --ckpt CKPT --street 1 --k-list 1,4 --max-hands 80 --rollouts 16 \
+    --iters 300 --hands 700 --threads 4 --seed 21                                         # flop, k=1 vs k=4
 
 # TS cross-check
 npx esbuild blueprint/scripts/export-ts-spots.ts --bundle --platform=node --outfile=/tmp/ets.js
@@ -170,27 +172,46 @@ turn spots (`bp subgame`, 04:47 PDT); the TS solver took 770 ms and 435 ms
 when the spots were exported (04:25 PDT, heavier load), so that ratio is
 indicative only.
 
-Head-to-head: blueprint plus river search against the pure blueprint,
-duplicate deals. The searcher solves the river from its start with 100 DCFR
-iterations (1,081 combos per side). Each hand's value is the exact river EV
-of the searcher's strategy minus the exact river EV of blueprint against
-blueprint from the same river spot, and 0 for hands that end earlier. Since
-blueprint against itself is worth exactly 0 over both seats of a deal, this
-is an unbiased estimate of the searcher's win rate with the river's action
-sampling removed.
+Head-to-head: blueprint plus search on one street against the pure
+blueprint, duplicate deals (`bp search-h2h`). Both agents play the blueprint
+before the searched street, so on a given deal and action-sample stream they
+reach the same spot at its start. There the searcher solves the round from
+its start and keeps that plan for the round; later streets are blueprint.
+Each hand's value is the exact EV of the rest of the hand with the deal's
+cards fixed, searcher's plan minus blueprint against blueprint from the same
+spot, and 0 for hands that end earlier. Since blueprint against itself is
+worth exactly 0 over both seats of a deal, this is an unbiased estimate of
+the searcher's win rate with the action-sampling noise from that street on
+removed. On the flop both k values run on the same deals, so their
+difference is paired.
 
-| run | duplicate deals | river searches | result, mbb/hand | 95% CI |
-| --- | ---: | ---: | ---: | ---: |
-| `--seed 11` | 8,000 | 5,737 | +119.0 | +/- 68.2 |
-| `--seed 12` | 8,000 | 5,720 | +141.2 | +/- 68.9 |
-| both seeds pooled (derived: mean of the two, CI sqrt(68.2^2 + 68.9^2) / 2) | 16,000 | 11,457 | +130.1 | +/- 48.5 |
-| control, `--iters 1 --hands 1000 --seed 5` (one iteration, so the river is played uniformly) | 1,000 | 692 | -740.3 | +/- 387.3 |
+River search, 1,081 combos per side:
 
-Command: `bin/bp search-h2h $TREE --ckpt CKPT --hands 8000 --iters 100
---threads 4 --seed S`. Mean time per river search was 0.205 s and 0.168 s
-of thread time. The gain is measured against the blueprint only. It says
-nothing yet about exploitability, which the Leduc table shows unsafe search
-can raise.
+| run | DCFR iterations | duplicate deals | river searches | result, mbb/hand | 95% CI |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `--seed 11` | 100 | 8,000 | 5,737 | +119.0 | +/- 68.2 |
+| `--seed 12` | 100 | 8,000 | 5,720 | +141.2 | +/- 68.9 |
+| both seeds pooled (derived: mean of the two, CI sqrt(68.2^2 + 68.9^2) / 2) | 100 | 16,000 | 11,457 | +130.1 | +/- 48.5 |
+| `--seed 11` (same deals as the first row) | 300 | 8,000 | 5,737 | +122.0 | +/- 72.4 |
+| control, `--iters 1 --hands 1000 --seed 5` (one iteration, so the river is played uniformly) | 1 | 1,000 | 692 | -740.3 | +/- 387.3 |
+
+Flop search (depth-limited, 80 combos per side, 16 rollouts per leaf, 300
+DCFR iterations, `--seed 21`, 700 duplicate deals, 891 flop searches, 1.53 s
+of thread time per search for both k values):
+
+| leaves | result, mbb/hand | 95% CI |
+| --- | ---: | ---: |
+| k = 1 (blueprint continuation only) | -27.1 | +/- 346.5 |
+| k = 4 (blueprint, fold, call and raise biased by 5) | -103.6 | +/- 349.8 |
+| paired difference, k = 4 minus k = 1 | -76.5 | +/- 237.0 |
+
+River search beats the blueprint at 95% confidence in both seeds; 300
+iterations did not change the result measurably on the same deals. The flop
+runs are too short to separate anything: every interval covers zero, and the
+flop needs several thousand deals (hours of CPU at this speed) before the
+Modicum ladder in PLAN.md M5 can be tested. All of this is against the
+blueprint only. It says nothing about exploitability, which the Leduc table
+shows unsafe search can raise.
 
 ## Not done
 
