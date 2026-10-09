@@ -47,11 +47,13 @@ bin/lbr_tests: $(LIB_SRC) tests/test_lbr.cpp $(HEADERS) $(C_OBJ)
 	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) -Isrc $(LIB_SRC) tests/test_lbr.cpp $(C_OBJ) -o $@
 
-test: bin/bp_tests bin/bp_serve_tests bin/lbr_tests bin/bp_tests_v2
+test: bin/bp_tests bin/bp_serve_tests bin/lbr_tests bin/bp_tests_v2 bin/aivat_tests bin/rt_tests
 	./bin/bp_tests
 	./bin/bp_serve_tests
 	./bin/lbr_tests
 	./bin/bp_tests_v2
+	./bin/aivat_tests
+	./bin/rt_tests
 
 test-lbr: bin/lbr_tests
 	./bin/lbr_tests
