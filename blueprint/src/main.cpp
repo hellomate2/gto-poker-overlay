@@ -13,6 +13,7 @@
 //                                 lower bound inside the abstraction)
 //   bp export --ckpt F --out G    write the compact policy file for TS
 //   bp show   --ckpt F            print the preflop opening strategy
+//   bp serve  --ckpt F            JSON-lines policy service for the TS BlueprintAgent
 //
 // Every hold'em command takes the same tree + abstraction options so it can
 // rebuild the exact tree a checkpoint was trained on; a fingerprint of both
@@ -21,6 +22,7 @@
 #include <dirent.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <ctime>
 
@@ -37,6 +39,7 @@
 #include "export.h"
 #include "games.h"
 #include "mccfr.h"
+#include "serve.h"
 #include "tree.h"
 
 using namespace bp;
@@ -789,11 +792,61 @@ int cmd_show(const Args& a) {
   return 0;
 }
 
+// ---- serve (BlueprintAgent bridge) ------------------------------------------------
+// bp serve [tree + abstraction flags] --ckpt F [--parity-dump N --out FILE]
+// Line-delimited JSON on stdin/stdout (protocol in src/serve.h). Setup logs go
+// to stderr so stdout carries only replies. --tree-only answers info/node
+// without loading the abstraction or a checkpoint. The abstraction cache must
+// already exist (serve never builds one).
+int cmd_serve(const Args& a) {
+  int proto_fd = ::dup(1);
+  FILE* proto = ::fdopen(proto_fd, "w");
+  if (!proto) die("serve: cannot open the reply stream");
+  std::fflush(stdout);
+  ::dup2(2, 1);  // anything printed during setup lands on stderr
+  bool tree_only = a.has("tree-only");
+  if (!tree_only) {
+    Abstraction probe;
+    probe.cfg = abs_from_args(a);
+    std::string path = probe.path_in(a.get("cache", "cache"));
+    if (!file_exists(path)) die("serve: abstraction cache " + path + " not found (pass --cache DIR)");
+  }
+  auto h = setup_holdem(a, !tree_only);
+  ServeCtx ctx;
+  ctx.tree = &h->tree;
+  ctx.abs_id = h->acfg.id();
+  std::vector<float> pol;
+  std::unique_ptr<Trainer<HoldemSampler>> tr;  // not allocated in --tree-only mode
+  if (!tree_only) {
+    McfrConfig m;
+    tr = std::make_unique<Trainer<HoldemSampler>>(h->tree, HoldemSampler{&h->abs}, m);
+    std::string ck = a.get("ckpt");
+    if (ck.empty() || !tr->load(ck, h->hash)) die("serve: cannot load checkpoint '" + ck + "' for this tree/abstraction");
+    pol = policy_table(*tr, h->tree);
+    ctx.abs = &h->abs;
+    ctx.pol = &pol;
+    ctx.iterations = tr->iter;
+  }
+  if (a.has("parity-dump")) {
+    if (tree_only) die("serve: --parity-dump needs a checkpoint");
+    std::string out = a.get("out", "parity.jsonl");
+    FILE* f = std::fopen(out.c_str(), "w");
+    if (!f) die("serve: cannot write " + out);
+    AvgFn avg = [&](uint64_t b, int n, double* o) { tr->average(b, n, o); };
+    int n = serve_parity_dump(h->tree, h->abs, avg, int(a.geti("parity-dump", 1000)), uint64_t(a.geti("seed", 5)), f);
+    std::fclose(f);
+    std::fprintf(stderr, "serve: wrote %d parity infosets to %s\n", n, out.c_str());
+    return 0;
+  }
+  std::fprintf(stderr, "serve: ready (%zu nodes, iteration %lld)\n", h->tree.nodes.size(), (long long)ctx.iterations);
+  return serve_loop(ctx, stdin, proto);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show> [--options]\n"
+    std::fprintf(stderr, "usage: bp <gate|abs|tree|bench|train|h2h|br|export|show|serve> [--options]\n"
                          "see blueprint/README.md\n");
     return 2;
   }
@@ -808,5 +861,6 @@ int main(int argc, char** argv) {
   if (cmd == "br") return cmd_br(a);
   if (cmd == "export") return cmd_export(a);
   if (cmd == "show") return cmd_show(a);
+  if (cmd == "serve") return cmd_serve(a);  // BlueprintAgent bridge (src/serve.h)
   die("unknown command " + cmd);
 }

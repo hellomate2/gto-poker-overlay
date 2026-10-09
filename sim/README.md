@@ -70,6 +70,17 @@ scores exactly +75 bb/100.
 Bots in a match run without opponent tracking, because the exploit adjuster keeps
 state across hands and would break per-deal independence.
 
+Seats other than DecisionEngine: `--a-agent SPEC` / `--b-agent SPEC` with
+`SPEC` = `engine` (default) or `blueprint:<ckpt>`, the C++ blueprint played
+through `bp serve` by the BlueprintAgent (`sim/seat-agents.ts`,
+`sim/blueprint-serve.ts`; set `GPO_BP_FLAGS` to the checkpoint's tree and
+abstraction flags, including `--cache DIR`). `--start-bb N` changes the
+stack depth (the blueprint is trained at 100 BB). Shards run one at a time
+with `--shard k/K` combine with `sim/match-combine.ts`. Exact-reference
+checks for the bridge: `sim/blueprint-parity.ts`; a readable trace of its
+decisions: `sim/blueprint-trace.ts`. Details and the first measurements are
+in blueprint/README.md, "Serving the blueprint to the TS harness".
+
 ## Scripted opponents (`agents.ts`)
 
 Threshold archetypes act on equity vs a random hand against fixed thresholds:
