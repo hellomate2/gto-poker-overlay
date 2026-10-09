@@ -61,3 +61,21 @@ numbers, so these guards run before any conclusion is drawn.
 - `run.ts` — the driver, stats aggregation, and report.
 - `fake-idb.ts` — in-memory IndexedDB shim so the bot's opponent tracking (and
   thus its exploit adjuster) works in Node.
+
+## Diagnostic probes (`*.probe.ts`)
+
+Slow, one-off measurements that are not part of `npx vitest run`. Run them with
+the probe config:
+
+```bash
+npx vitest run --config sim/vitest.probe.config.ts sim/fold-to-raise   # per-hand fold-to-raise grid
+npx vitest run --config sim/vitest.probe.config.ts sim/range-fold      # fold-to-raise over the whole betting range vs MDF
+npx vitest run --config sim/vitest.probe.config.ts sim/barrel          # turn/river barrel frequency vs barrelGate
+npx vitest run --config sim/vitest.probe.config.ts sim/defense-hu      # HU A/B with and without src/core/defense.ts
+npx vitest run --config sim/vitest.probe.config.ts sim/defense-latency # cost of the defense pipeline per street
+```
+
+`PROBE_DEFENSE=1` routes facing-a-bet decisions in the first two probes through
+`src/core/defense.ts` via `sim/defense-shim.ts` (which patches an engine
+instance; `engine.ts` itself is untouched). `PROBE_COMBOS`, `PROBE_HANDS` and
+`PROBE_OPPS` size the runs.
