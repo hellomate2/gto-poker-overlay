@@ -751,7 +751,8 @@ struct SearchOut {
 // solve under the budget, return the hero hand's strategy at `node`.
 SearchOut run_search(const BpView& bv, const SearchSpot& sp, int k, double bias, size_t max_hands, int rollouts,
                      double budget_s, int max_iters, int threads, uint64_t seed, bool want_expl,
-                     SolverConfig sc = SolverConfig{}) {
+                     SolverConfig sc = SolverConfig{},
+                     std::map<uint32_t, std::vector<double>>* plan = nullptr) {
   SearchOut o;
   const BettingTree& t = *bv.tree;
   double t0 = now_sec(), c0 = cpu_seconds();
@@ -801,6 +802,19 @@ SearchOut run_search(const BpView& bv, const SearchSpot& sp, int k, double bias,
     const SNode& nd = g.nodes[cur];
     if (nd.player == sp.hero && hero_idx >= 0) S.freeze(cur, hero_idx, a);
     cur = nd.first + a;
+  }
+  if (plan) {
+    // Plan mode (search-h2h): solve from the round start and return the
+    // hero hand's average strategy at every on-tree hero node of the round.
+    while (S.iterations() < max_iters) S.iterate();
+    o.iters = S.iterations();
+    for (int x = 0; x < int(g.nodes.size()); x++)
+      if (g.nodes[x].type == S_DEC && g.nodes[x].player == sp.hero && g.nodes[x].bp >= 0) {
+        std::vector<double> st(g.nodes[x].nact);
+        S.average(x, hero_idx, st.data());
+        (*plan)[uint32_t(g.nodes[x].bp)] = st;
+      }
+    return o;
   }
   if (g.nodes[cur].type != S_DEC || g.nodes[cur].player != sp.hero) die("search: the line does not end at the hero's decision");
   if (!sp.offtree && g.nodes[cur].bp != int(sp.node)) die("search: subgame node does not match the blueprint node");
@@ -921,28 +935,45 @@ int cmd_search(const KV& a, const BettingTree& tree, const Abstraction& abs, con
   return 0;
 }
 
-// River-only search agent vs pure blueprint.
+// Search agent vs pure blueprint, searching one street.
 //
-// Estimator. Both agents play the blueprint before the river, so for a
-// fixed deal and a fixed stream of pre-river action samples the two agents
-// reach the same river spot. At that spot the searcher solves the river from
+// Estimator. Both agents play the blueprint before the searched street, so
+// for a fixed deal and a fixed stream of action samples they reach the same
+// spot at the start of that street. There the searcher solves the round from
 // its start (unsafe, beliefs from the blueprint reach of both players) and
-// the hand's value is computed EXACTLY by walking the river subtree:
-//   delta = EV(searcher's river strategy for its hand vs the opponent's
-//              blueprint) - EV(blueprint vs blueprint)
-// and delta = 0 for hands that end before the river. Since blueprint vs
-// blueprint is worth exactly 0 over the two seats of a duplicate deal, the
-// mean of delta (averaged over both seats per deal) is an unbiased estimate
-// of the searcher's win rate against the blueprint, with the river's
-// action-sampling noise removed (a control variate with known mean).
+// keeps that plan for the rest of the round; later streets are blueprint.
+// The hand's value is computed EXACTLY by walking the rest of the tree with
+// the deal's cards fixed:
+//   delta = EV(searcher's plan, then blueprint) - EV(blueprint vs blueprint)
+// and delta = 0 for hands that end earlier. Blueprint vs blueprint is worth
+// exactly 0 over the two seats of a duplicate deal, so the mean of delta
+// (averaged over both seats per deal) is an unbiased estimate of the
+// searcher's win rate against the blueprint, without the action-sampling
+// noise of the searched street and after it (a control variate with known
+// mean). Several k values run on the same deals, so their difference is a
+// paired comparison.
 int cmd_search_h2h(const KV& a, const BettingTree& tree, const Abstraction& abs, const std::vector<float>& pol) {
   BpView bv = holdem_view(tree, abs, pol);
   const int64_t deals = a.i("hands", 1000);
   const int threads = int(a.i("threads", 4));
   const int iters = int(a.i("iters", 200));
+  const int street = int(a.i("street", 3));
+  if (street < 1 || street > 3) die("search-h2h: --street must be 1 (flop), 2 (turn) or 3 (river)");
+  const size_t max_hands = size_t(a.i("max-hands", street == 1 ? 120 : street == 2 ? 300 : 1326));
+  const int rollouts = int(a.i("rollouts", 24));
   const uint64_t seed = uint64_t(a.i("seed", 7));
+  std::vector<int> klist;
+  {
+    std::stringstream ss(a.get("k-list", street == 1 ? "4" : "1"));
+    std::string t;
+    while (std::getline(ss, t, ','))
+      if (!t.empty()) klist.push_back(std::stoi(t));
+  }
+  const size_t K = klist.size();
   HoldemSampler smp{&abs};
-  std::vector<double> sum(threads, 0), sq(threads, 0), stime(threads, 0);
+  // per thread: sums and squares per k, and of (k_last - k_first)
+  std::vector<std::vector<double>> sum(threads, std::vector<double>(K + 1, 0)), sq(threads, std::vector<double>(K + 1, 0));
+  std::vector<double> stime(threads, 0);
   std::vector<int64_t> nsearch(threads, 0);
   std::vector<std::thread> pool;
   double t_start = now_sec();
@@ -954,11 +985,11 @@ int cmd_search_h2h(const KV& a, const BettingTree& tree, const Abstraction& abs,
       for (int64_t i = 0; i < n; i++) {
         smp.sample(rng, d);
         std::vector<int> board(d.board, d.board + 5);
-        double r = 0;
+        std::vector<double> rk(K, 0.0);
         for (int seat = 0; seat < 2; seat++) {  // seat = the searcher's position
           uint32_t ni = 0;
           double sig[MAX_ACTIONS];
-          while (tree.nodes[ni].type == DECISION && tree.nodes[ni].street < 3) {
+          while (tree.nodes[ni].type == DECISION && tree.nodes[ni].street < street) {
             const Node& nd = tree.nodes[ni];
             bv.policy(nd.slot + uint64_t(d.bucket[nd.player][nd.street]) * nd.nact, nd.nact, sig);
             double u = rng.uniform(), acc = 0;
@@ -972,70 +1003,79 @@ int cmd_search_h2h(const KV& a, const BettingTree& tree, const Abstraction& abs,
             }
             ni = nd.child + pick;
           }
-          if (tree.nodes[ni].type != DECISION) continue;  // ended before the river: delta 0
+          if (tree.nodes[ni].type != DECISION) continue;  // ended before the searched street: delta 0
           const uint32_t rs = ni;
           double ts = now_sec();
-          Hand hero;
-          hero.c[0] = d.hole[seat][0];
-          hero.c[1] = d.hole[seat][1];
-          hero.nc = 2;
-          hero.mask = (1ull << hero.c[0]) | (1ull << hero.c[1]);
-          uint64_t bm = 0;
-          for (int c : board) bm |= 1ull << c;
-          Game g;
-          for (int p = 0; p < 2; p++) {
-            g.hands[p] = all_combos(bm);
-            g.w[p] = blueprint_reach(bv, g.hands[p], p, rs, board);
-            cap_range(g.hands[p], g.w[p], 1326, p == seat ? 0 : -1, hero.mask);
-          }
-          build_from_blueprint(g, bv, rs, board, false);
-          g.finalize();
-          int hidx = -1;
-          for (int x = 0; x < g.n(seat); x++)
-            if (g.hands[seat][x].mask == hero.mask) hidx = x;
-          Solver S(g, SolverConfig{});
-          for (int it = 0; it < iters; it++) S.iterate();
-          std::map<uint32_t, std::vector<double>> plan;
-          for (int x = 0; x < int(g.nodes.size()); x++)
-            if (g.nodes[x].type == S_DEC && g.nodes[x].player == seat) {
-              std::vector<double> st(g.nodes[x].nact);
-              S.average(x, hidx, st.data());
-              plan[uint32_t(g.nodes[x].bp)] = st;
-            }
+          SearchSpot sp;
+          sp.board.assign(board.begin(), board.begin() + bv.board_len[street]);
+          sp.hero = seat;
+          sp.hero_hand.c[0] = d.hole[seat][0];
+          sp.hero_hand.c[1] = d.hole[seat][1];
+          sp.hero_hand.nc = 2;
+          sp.hero_hand.mask = (1ull << sp.hero_hand.c[0]) | (1ull << sp.hero_hand.c[1]);
+          sp.rs = rs;
+          sp.node = rs;
+          std::vector<std::map<uint32_t, std::vector<double>>> plans(K);
+          for (size_t v = 0; v < K; v++)
+            run_search(bv, sp, klist[v], 5.0, max_hands, rollouts, 1e9, iters, 1, seed * 31 + uint64_t(i), false,
+                       SolverConfig{}, &plans[v]);
           stime[th] += now_sec() - ts;
           nsearch[th]++;
-          std::function<double(uint32_t, bool)> ev = [&](uint32_t v, bool search) -> double {
+          // Exact EV over every remaining action with the deal's cards fixed;
+          // plan == nullptr is the blueprint baseline.
+          std::function<double(uint32_t, const std::map<uint32_t, std::vector<double>>*)> ev =
+              [&](uint32_t v, const std::map<uint32_t, std::vector<double>>* plan) -> double {
             const Node& nd = tree.nodes[v];
             if (nd.type != DECISION) return terminal_utility(nd, seat, d.winner);
             double pr[MAX_ACTIONS];
-            if (search && nd.player == seat) {
-              const std::vector<double>& st = plan.at(v);
-              for (int x = 0; x < nd.nact; x++) pr[x] = st[x];
-            } else {
-              bv.policy(nd.slot + uint64_t(d.bucket[nd.player][nd.street]) * nd.nact, nd.nact, pr);
+            bool own = false;
+            if (plan && nd.player == seat) {
+              auto it = plan->find(v);
+              if (it != plan->end()) {
+                for (int x = 0; x < nd.nact; x++) pr[x] = it->second[x];
+                own = true;
+              }
             }
-            double s = 0;
+            if (!own) bv.policy(nd.slot + uint64_t(d.bucket[nd.player][nd.street]) * nd.nact, nd.nact, pr);
+            double s2 = 0;
             for (int x = 0; x < nd.nact; x++)
-              if (pr[x] > 0) s += pr[x] * ev(nd.child + x, search);
-            return s;
+              if (pr[x] > 0) s2 += pr[x] * ev(nd.child + x, plan);
+            return s2;
           };
-          r += ev(rs, true) - ev(rs, false);
+          double base = ev(rs, nullptr);
+          for (size_t v = 0; v < K; v++) rk[v] += ev(rs, &plans[v]) - base;
         }
-        r *= 0.5;
-        sum[th] += r;
-        sq[th] += r * r;
+        for (size_t v = 0; v < K; v++) {
+          double r = 0.5 * rk[v];
+          sum[th][v] += r;
+          sq[th][v] += r * r;
+        }
+        double dlt = 0.5 * (rk[K - 1] - rk[0]);
+        sum[th][K] += dlt;
+        sq[th][K] += dlt * dlt;
       }
     });
   for (auto& p : pool) p.join();
-  double S = 0, Q = 0, T = 0;
+  double T = 0;
   int64_t NS = 0;
-  for (int t = 0; t < threads; t++) S += sum[t], Q += sq[t], T += stime[t], NS += nsearch[t];
-  double mean = S / deals, var = Q / deals - mean * mean, ci = 1.96 * std::sqrt(var / deals);
-  std::printf("search-h2h: blueprint + river search (%d DCFR iterations, unsafe, from the river start) vs blueprint: "
-              "%+.1f mbb/hand (95%% CI +/- %.1f, %lld duplicate deals = %lld hands, exact river EV)\n",
-              iters, mean * 10, ci * 10, (long long)deals, (long long)deals * 2);
-  std::printf("river searches %lld, mean %.3fs per search (thread time), wall %.1fs\n", (long long)NS,
-              NS ? T / NS : 0.0, now_sec() - t_start);
+  for (int t = 0; t < threads; t++) T += stime[t], NS += nsearch[t];
+  const char* sname = street == 1 ? "flop" : street == 2 ? "turn" : "river";
+  for (size_t v = 0; v <= K; v++) {
+    if (v == K && K < 2) break;
+    double S = 0, Q = 0;
+    for (int t = 0; t < threads; t++) S += sum[t][v], Q += sq[t][v];
+    double mean = S / deals, var = Q / deals - mean * mean, ci = 1.96 * std::sqrt(var / deals);
+    if (v < K)
+      std::printf("search-h2h: blueprint + %s search (k=%d, %d DCFR iterations, unsafe, from the round start) vs "
+                  "blueprint: %+.1f mbb/hand (95%% CI +/- %.1f, %lld duplicate deals = %lld hands, exact EV)\n",
+                  sname, street == 1 ? klist[v] : 0, iters, mean * 10, ci * 10, (long long)deals,
+                  (long long)deals * 2);
+    else
+      std::printf("search-h2h: paired difference k=%d minus k=%d: %+.1f mbb/hand (95%% CI +/- %.1f)\n", klist[K - 1],
+                  klist[0], mean * 10, ci * 10);
+  }
+  std::printf("%s searches %lld (each solves %zu k value(s)), mean %.3fs per search (thread time), wall %.1fs\n", sname,
+              (long long)NS, K, NS ? T / NS : 0.0, now_sec() - t_start);
   return 0;
 }
 
