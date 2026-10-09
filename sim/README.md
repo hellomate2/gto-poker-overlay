@@ -59,6 +59,10 @@ one process because every random source is seeded per deal (deck, `Math.random`
 before each game, and each scripted opponent's private RNG). `--out FILE` saves the
 summary.
 
+`sim/compare.sh BASELINE_DIR CANDIDATE_DIR [OUT_DIR] [WORKERS]` runs the standard
+battery (heads-up A vs B, field runs vs the probe archetypes, 6-max field) with deal
+counts sized from the measured noise in `sim/BASELINE.md`.
+
 Sanity properties, pinned by `tests/sim-match.test.ts`: an engine against itself
 scores exactly 0 with zero variance in both modes, and always-jam vs always-fold
 scores exactly +75 bb/100.
