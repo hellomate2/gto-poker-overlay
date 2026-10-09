@@ -544,7 +544,11 @@ class Lbr {
         const std::vector<int>& ob = obk(c, street);
         const float* p = &pol[n.slot + uint64_t(ob[oh]) * n.nact];
         double r = rng.uniform(), acc = 0;
+        // default (float sums slightly below 1): the last action with p > 0,
+        // so the sampled action always has positive probability for the
+        // target's real hand and the range never empties
         int pick = n.nact - 1;
+        while (pick > 0 && p[pick] <= 0) pick--;
         for (int a = 0; a < n.nact; a++) {
           acc += p[a];
           if (r < acc) {
