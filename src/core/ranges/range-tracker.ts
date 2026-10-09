@@ -582,7 +582,8 @@ function stepLikelihood(s: PreflopStep, pos: Position, headsUp: boolean): Float6
   return generic(q => topFrac(q, 0.015)); // 5-bet+ jams
 }
 
-function isHeadsUpTable(state: GameState): boolean {
+/** True when exactly two players were dealt in (a heads-up TABLE, not a 6-max pot down to two). */
+export function isHeadsUpTable(state: GameState): boolean {
   return dealtIn(state).length === 2;
 }
 

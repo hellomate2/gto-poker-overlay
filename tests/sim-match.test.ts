@@ -66,6 +66,28 @@ describe('duplicate match runner', () => {
     expect(merged).toEqual(whole.deals);
   }, 60_000);
 
+  it('--stacks: seat 0 starts every deal at its own depth (a 10bb jammer never loses more than 10bb)', async () => {
+    const Jam = JamEngine as unknown as EngineCtor, Fold = FoldEngine as unknown as EngineCtor;
+    const opts: MatchOptions = { mode: 'field', deals: 30, seed: 3, seats: 3, field: ['station', 'lag'], stacksBB: [10, 100, 100] };
+    const r = await quiet(() => runMatchShard(Jam, Fold, opts));
+    const losses = r.deals.map(d => d.a);
+    expect(Math.min(...losses)).toBeGreaterThanOrEqual(-200);  // 10bb at bb = 20
+    expect(Math.min(...losses)).toBeLessThan(-100);            // and it does get called and lose
+    await expect(runMatchShard(Jam, Fold, { ...opts, stacksBB: [10, 100] })).rejects.toThrow(/--stacks needs 3/);
+  });
+
+  it('a scripted opponent at 15bb or less shoves instead of raising preflop', () => {
+    const opp = makeOpponent('lag', 1, 50, 'L');
+    const view = (stackBB: number, hole: [string, string]): SeatView => ({
+      state: { actionHistory: { preflop: [], flop: [], turn: [], river: [] }, currentBet: 20 } as unknown as GameState,
+      toCall: 20, canCheck: false, canRaise: true, pot: 30, street: 'preflop',
+      hole: hole.map(c => ({ rank: c[0], suit: c[1] })) as SeatView['hole'], board: [],
+      heroStack: stackBB * 20, bb: 20, seat: 3, numPlayers: 6, liveSeats: 6, minTo: 40, maxTo: stackBB * 20,
+    });
+    expect(opp.act(view(12, ['Ah', 'Ad']))).toEqual({ action: 'allin' });
+    expect((opp.act(view(100, ['Ah', 'Ad'])) as { action: string }).action).toBe('raise');
+  });
+
   it('loads DecisionEngine from a source directory and rejects a missing one', async () => {
     const Ctor = await loadEngine(resolve(__dirname, '..'));
     expect(typeof Ctor).toBe('function');

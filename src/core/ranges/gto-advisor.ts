@@ -1,11 +1,13 @@
 import { GameState, Position, Action as GameAction, Street } from '../../types/poker';
-import { cardToId, handGroupName } from '../cfr/card-utils';
+import { cardToId, handGroupName, handGroupIndex } from '../cfr/card-utils';
 import { charts as greenlineCharts, Cell, Chart } from './greenline-gto';
 import { charts as pekarstasCharts } from './pekarstas-gto';
 import { charts as headsupCharts } from './headsup-gto';
 import { charts as headsupSolvedCharts } from './headsup-solved';
 import { shoveRange, callRange } from './pushfold-nash';
 import { preflopChartAction, PreflopScenario as PFScenario } from './preflop-charts';
+import { isHeadsUpTable, liveVillainIndexes } from './range-tracker';
+import { JAM_EQUITY, TOP_EQUITY, TOP_FRACTIONS } from './jam-equity';
 
 // Effective-stack threshold (in big blinds) at or below which the short-stack
 // push/fold Nash recommendation is surfaced. Pure jam/fold is only correct very
@@ -48,34 +50,276 @@ function lookupChart(key: string, headsUp = false): Chart | undefined {
   return greenlineCharts[key] || pekarstasCharts[key];
 }
 
-/** Count players still in the hand (not folded out / sitting out). */
-function countActivePlayers(state: GameState): number {
-  const foldedNames = new Set(
-    (state.actionHistory.preflop || [])
-      .filter(a => a.type === 'fold')
-      .map(a => a.playerName)
-  );
-  return state.players.filter(
-    p => !p.isSittingOut && !foldedNames.has(p.name)
-  ).length;
+/** Chips a player has IN THIS HAND: remaining stack + chips committed this street. */
+function totalChips(p: { stack: number; currentBet: number }): number {
+  return p.stack + (p.currentBet || 0);
 }
 
 /**
- * Hero effective stack in big blinds = total chips each player has IN THIS HAND
- * (remaining stack + chips already committed this hand), capped by the largest
- * opponent. Counting committed chips is essential: when villain is all-in their
- * remaining stack is 0, and ignoring their committed bet would compute a 0bb
- * effective stack and skip the facing-a-jam logic entirely.
+ * Hero effective stack in big blinds against the deepest LIVE opponent (not
+ * folded, not sitting out), counting committed chips. Counting committed chips
+ * is essential: when villain is all-in their remaining stack is 0, and ignoring
+ * their committed bet would compute a 0bb effective stack and skip the
+ * facing-a-jam logic entirely. Folded players are excluded: a deep stack that
+ * already folded cannot win hero's chips (at a heads-up table nobody has folded
+ * when hero acts preflop, so heads-up this is unchanged).
  */
-function heroEffectiveStackBB(state: GameState): number {
+function heroEffectiveStackBB(state: GameState, live: number[]): number {
   const hero = state.players[state.heroIndex];
   const bb = state.bigBlind || 1;
-  const heroTotal = hero.stack + (hero.currentBet || 0);
-  const oppTotals = state.players
-    .filter((p, i) => i !== state.heroIndex && !p.isSittingOut)
-    .map(p => p.stack + (p.currentBet || 0));
+  const heroTotal = totalChips(hero);
+  const oppTotals = live.map(i => totalChips(state.players[i]));
   const maxOpp = oppTotals.length ? Math.max(...oppTotals) : heroTotal;
   return Math.min(heroTotal, maxOpp) / bb;
+}
+
+/**
+ * Effective stack in big blinds for a call-or-fold decision against a jam: the
+ * chips hero can lose to the player(s) who made the current bet (live villains
+ * whose committed bet is the table's current bet), capped by hero's stack. A
+ * 100bb hero facing a 2bb jam is a 2bb decision. Measuring against the deepest
+ * opponent at the table instead (a folded player or a blind still to act) made
+ * that spot use the 50bb+ premium-only range. Heads-up the only villain is the
+ * bettor, so this equals heroEffectiveStackBB there.
+ */
+function jamEffectiveStackBB(state: GameState, live: number[]): number {
+  const cb = state.currentBet || 0;
+  const bettors = live.filter(i => (state.players[i].currentBet || 0) >= cb && cb > 0);
+  if (bettors.length === 0) return heroEffectiveStackBB(state, live);
+  const hero = state.players[state.heroIndex];
+  const bb = state.bigBlind || 1;
+  const maxBettor = Math.max(...bettors.map(i => totalChips(state.players[i])));
+  return Math.min(totalChips(hero), maxBettor) / bb;
+}
+
+/** Combos in hand class `idx` (handGroupIndex order: 13 pairs, 78 suited, 78 offsuit). */
+function classCombos(idx: number): number {
+  return idx < 13 ? 6 : idx < 91 ? 4 : 12;
+}
+
+/** Map 7+ handed position names onto the 6-max chart keys (as range-tracker chartPos does). */
+function chartPos6(pos: Position | undefined | null): Position | null {
+  if (!pos) return null;
+  if (pos === 'UTG1') return 'UTG';
+  if (pos === 'MP1') return 'MP';
+  return pos;
+}
+
+/** Equity of hand class `idx` vs the top `frac` of combos (linear interpolation on TOP_FRACTIONS). */
+function equityVsTop(idx: number, frac: number): number {
+  const row = TOP_EQUITY[idx];
+  const f = Math.min(1, Math.max(TOP_FRACTIONS[0], frac));
+  let g = 0;
+  while (g < TOP_FRACTIONS.length - 2 && TOP_FRACTIONS[g + 1] < f) g++;
+  const lo = TOP_FRACTIONS[g], hi = TOP_FRACTIONS[g + 1];
+  const t = hi > lo ? (f - lo) / (hi - lo) : 0;
+  return (row[g] + t * (row[g + 1] - row[g])) / 1000;
+}
+
+const SIX_MAX_ORDER: Position[] = ['UTG', 'MP', 'CO', 'BTN', 'SB', 'BB'];
+
+/** Nearest positions first, as range-tracker openerFallbacks does for vs-open charts. */
+function nearestPositions(p: Position): Position[] {
+  const i = SIX_MAX_ORDER.indexOf(p);
+  if (i < 0) return [p];
+  const out: Position[] = [p];
+  for (let d = 1; d < SIX_MAX_ORDER.length; d++) {
+    if (i - d >= 0) out.push(SIX_MAX_ORDER[i - d]);
+    if (i + d < SIX_MAX_ORDER.length) out.push(SIX_MAX_ORDER[i + d]);
+  }
+  return out;
+}
+
+/**
+ * The jammer's estimated range, as a JAM_EQUITY key, from the preflop line.
+ * A shove is logged as a raise by the scraper, so this reads the jammer's last
+ * aggressive action and how many raises came before it:
+ *   0 raises before  -> '<jammer>-RFI'                 (an open-jam)
+ *   1 raise before   -> '<jammer>-vs-open-<opener>'    (a 3-bet jam; nearest
+ *                       opener with a chart if the exact one is missing)
+ *   2 raises before, jammer opened -> '<jammer>-vs-3bet-<3-bettor>' (a 4-bet jam)
+ * When the jammer has no parsed aggressive action (the PokerNow log only shows
+ * recent lines) it falls back to 'UTG-RFI', the tightest open range in the
+ * pack, so a missing history makes hero call tighter, never looser. Returns
+ * null when no table fits (a 5-bet jam, or a 4-bet jam by a cold 4-bettor).
+ */
+function jammerRangeKey(state: GameState, jammerIdx: number): string | null {
+  const jammer = state.players[jammerIdx];
+  const posOf = (name: string): Position | null =>
+    chartPos6(state.players.find(p => p.name === name)?.position);
+  const acts = state.actionHistory.preflop || [];
+  let raises = 0;
+  let openerName: string | null = null;
+  let threeBettorName: string | null = null;
+  let jamRaisesBefore = -1;
+  for (const a of acts) {
+    if (a.type !== 'raise' && a.type !== 'allin' && a.type !== 'bet') continue;
+    if (a.playerName === jammer.name) jamRaisesBefore = raises;
+    if (raises === 0) openerName = a.playerName;
+    else if (raises === 1) threeBettorName = a.playerName;
+    raises++;
+  }
+  const jp = chartPos6(jammer.position);
+  if (jamRaisesBefore < 0 || !jp) return 'UTG-RFI';
+  if (jamRaisesBefore === 0) {
+    return JAM_EQUITY[`${jp}-RFI`] ? `${jp}-RFI` : 'UTG-RFI';
+  }
+  if (jamRaisesBefore === 1 && openerName) {
+    const op = posOf(openerName);
+    if (op) {
+      for (const o of nearestPositions(op)) {
+        if (o === jp) continue;
+        const k = `${jp}-vs-open-${o}`;
+        if (JAM_EQUITY[k]) return k;
+      }
+    }
+    return null;
+  }
+  if (jamRaisesBefore === 2 && openerName === jammer.name && threeBettorName) {
+    const tp = posOf(threeBettorName);
+    const k = tp ? `${jp}-vs-3bet-${tp}` : '';
+    return JAM_EQUITY[k] ? k : null;
+  }
+  return null;
+}
+
+/**
+ * Call-or-fold against a jam. Returns whether to continue and a short label
+ * for the range that decided it.
+ *
+ *   - Heads-up TABLE, or a ring table where the SB open-jams into hero's BB
+ *     (everyone else folded): the heads-up SB-vs-BB push/fold Nash call table
+ *     (pushfold-nash.ts, the HoldemResources/SnapShove HU Nash grids) is the
+ *     equilibrium for exactly this spot, so it is used up to 25bb.
+ *   - Any other jam <= 25bb at a ring table: chip-EV pot odds against the
+ *     jammer's chart range (jam-equity.ts: the 6-max chart range for the
+ *     jammer's position and line, equity from the cached 169x169 all-in
+ *     matrix). With k live players still to act behind hero, any of them can
+ *     wake up and overcall or re-jam. A lower bound on calling EV that holds
+ *     whatever they then do: if anyone behind continues, hero loses at most the
+ *     call (folding to a re-jam, or losing a 3-way pot); otherwise hero has its
+ *     heads-up equity e vs the jammer. So
+ *         EV(call) >= P0 * (e * W - C) - (1 - P0) * C = P0 * e * W - C,
+ *     and hero calls iff e >= C / (P0 * W), where C is the chips to call, W the
+ *     pot hero can win once it calls, and P0 = prod_j (1 - c_j) the chance
+ *     nobody behind continues. c_j is the share of combos with which player j
+ *     would call the jam heads-up at j's own price (hero's call not counted).
+ *     That is an estimate, not a bound: hero's call adds money for j, but j
+ *     then has to beat two hands. Given P0, the inequality above is a true
+ *     lower bound, so the rule only calls when calling is +EV even if every
+ *     action behind costs hero its whole call.
+ *   - Someone already called the jam: there is no 3-way equity table in the
+ *     repo, so only the premium core continues (DEEP_JAM_CALL_50PLUS, the
+ *     tightest stack-off set; what the baseline used for these spots).
+ *   - 25-50bb: DEEP_JAM_CALL (the existing 25-50bb heads-up stack-off set) when
+ *     nobody is behind and nobody has called; otherwise the 50bb+ premium core.
+ *   - Over 50bb: DEEP_JAM_CALL_50PLUS, as before.
+ */
+function jamCallDecision(
+  state: GameState, live: number[], c1: number, c2: number, handName: string,
+  jamEffBB: number, headsUp: boolean,
+): { inCall: boolean; basis: string } {
+  const cb = state.currentBet || 0;
+  const hero = state.players[state.heroIndex];
+
+  if (headsUp) {
+    // Heads-up table: unchanged (HU Nash call table short, stack-off sets deep).
+    const inCall = jamEffBB <= 25
+      ? callRange(jamEffBB).has(handName)
+      : jamEffBB <= 50 ? DEEP_JAM_CALL.has(handName) : DEEP_JAM_CALL_50PLUS.has(handName);
+    return { inCall, basis: jamEffBB <= 25 ? 'HU Nash' : 'stack-off set' };
+  }
+
+  // The jammer: the live villain with the biggest bet (ties: the last one to
+  // act aggressively in the log). Players already all-in or matching the bet
+  // are in the pot; the rest with chips left still act after hero.
+  const bettors = live.filter(i => (state.players[i].currentBet || 0) >= cb && cb > 0);
+  const acts = state.actionHistory.preflop || [];
+  let jammerIdx = bettors.length ? bettors[0] : -1;
+  for (const a of acts) {
+    if (a.type !== 'raise' && a.type !== 'allin' && a.type !== 'bet') continue;
+    const i = bettors.find(b => state.players[b].name === a.playerName);
+    if (i !== undefined) jammerIdx = i;
+  }
+  const callers = live.filter(i => i !== jammerIdx && (
+    (state.players[i].currentBet || 0) >= cb || ((state.players[i].stack || 0) <= 0 && (state.players[i].currentBet || 0) > 0)));
+  const behind = live.filter(i => i !== jammerIdx && !callers.includes(i) && (state.players[i].stack || 0) > 0);
+
+  if (jamEffBB > 25) {
+    const alone = callers.length === 0 && behind.length === 0;
+    return alone
+      ? { inCall: DEEP_JAM_CALL.has(handName), basis: 'stack-off set' }
+      : { inCall: DEEP_JAM_CALL_50PLUS.has(handName), basis: 'premium core, players behind' };
+  }
+  if (jammerIdx < 0 || callers.length > 0) {
+    return { inCall: DEEP_JAM_CALL_50PLUS.has(handName), basis: 'premium core, multiway' };
+  }
+
+  const jammer = state.players[jammerIdx];
+  const raisedBefore = acts.some(a =>
+    (a.type === 'raise' || a.type === 'allin' || a.type === 'bet') && a.playerName !== jammer.name);
+  if (chartPos6(jammer.position) === 'SB' && hero.position === 'BB' && behind.length === 0 && !raisedBefore) {
+    return { inCall: callRange(jamEffBB).has(handName), basis: 'HU Nash SB vs BB' };
+  }
+
+  const key = jammerRangeKey(state, jammerIdx);
+  const table = key ? JAM_EQUITY[key] : undefined;
+  if (!table) return { inCall: DEEP_JAM_CALL_50PLUS.has(handName), basis: 'premium core, no range' };
+
+  // Pot odds. C = chips hero adds; W = what hero can win once it calls: its own
+  // capped total plus every other seat's bet up to that cap (folded blinds are
+  // dead money). state.pot is not used: the scraper's pot may or may not
+  // include this street's bets, and leaving it out only makes the price worse.
+  const heroBet = hero.currentBet || 0;
+  const cap = Math.min(totalChips(hero), cb);
+  const toCall = Math.max(0, cap - heroBet);
+  let win = cap;
+  state.players.forEach((p, i) => { if (i !== state.heroIndex) win += Math.min(p.currentBet || 0, cap); });
+  if (toCall <= 0 || win <= 0) return { inCall: true, basis: key! };
+
+  // Players behind. Player j is modelled as continuing (overcalling) with the
+  // hands that would call the jam heads-up at j's OWN price (hero's call not
+  // yet in the pot), a share c_j of all combos, taken as the top c_j of hands.
+  // If j continues, hero can win up to `extra` more chips from j.
+  const heroIdx = handGroupIndex(c1, c2);
+  const eqJam = table[heroIdx] / 1000;
+  const others: { c: number; eqVs: number; extra: number }[] = [];
+  for (const j of behind) {
+    const pj = state.players[j];
+    const capJ = Math.min(totalChips(pj), cb);
+    const callJ = capJ - (pj.currentBet || 0);
+    let winJ = capJ;
+    state.players.forEach((p, i) => { if (i !== j) winJ += Math.min(p.currentBet || 0, capJ); });
+    if (callJ <= 0 || winJ <= 0) continue;
+    const needJ = callJ / winJ;
+    let cont = 0;
+    for (let i = 0; i < 169; i++) if (table[i] / 1000 >= needJ) cont += classCombos(i);
+    const c = cont / 1326;
+    if (c <= 0) continue;
+    const extra = Math.max(0, Math.min(totalChips(pj), cap) - (pj.currentBet || 0));
+    others.push({ c, eqVs: equityVsTop(heroIdx, c), extra });
+  }
+
+  // EV(call) over every subset S of players behind who continue:
+  //   sum_S P(S) * eqJam * prod_{j in S} eqVs_j * (W + sum_{j in S} extra_j) - C.
+  // Hero's share of a multiway pot is approximated by the product of its
+  // heads-up equities (winning against each opponent is positively correlated
+  // through hero's final hand, so the product tends to understate it), and
+  // side pots are folded into the cap. With nobody behind this is plain pot
+  // odds: eqJam * W >= C.
+  let ev = 0;
+  const k = others.length;
+  for (let mask = 0; mask < (1 << k); mask++) {
+    let prob = 1, eq = eqJam, pot = win;
+    for (let j = 0; j < k; j++) {
+      const o = others[j];
+      if (mask & (1 << j)) { prob *= o.c; eq *= o.eqVs; pot += o.extra; }
+      else prob *= 1 - o.c;
+    }
+    ev += prob * eq * pot;
+  }
+  const inCall = ev - toCall >= 0;
+  return { inCall, basis: `${key} eq, ${behind.length} behind` };
 }
 
 export interface GTOAdvice {
@@ -222,8 +466,13 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
   const c2 = cardToId(state.heroCards[1]);
   const handName = handGroupName(c1, c2);
 
-  const headsUp = countActivePlayers(state) === 2;
-  const effStackBB = heroEffectiveStackBB(state);
+  // Heads-up means a heads-up TABLE (two players dealt in). A 6-max pot that
+  // folds down to two players keeps the 6-max charts: the HU engine's SB open
+  // and BB defense ranges are far wider than the 6-max charts for spots such as
+  // BB vs a UTG open or SB first-in after four folds.
+  const headsUp = isHeadsUpTable(state);
+  const live = liveVillainIndexes(state);
+  const effStackBB = heroEffectiveStackBB(state, live);
 
   // --- Short-stack push/fold Nash override ---------------------------------
   // Two distinct short-stack cases:
@@ -239,35 +488,49 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
     const firstIn = !pfActions.some(a => a.type === 'allin' || a.type === 'raise');
 
     // Treat the spot as a JAM to call/fold if villain is all-in OR the bet to
-    // match is a huge fraction of the effective stack (robust to the scraper not
-    // tagging type 'allin'). Calling here commits the stack, so it must use a
-    // jam-call range — NOT the vs-3bet chart's "peel a small 3-bet" call.
+    // match is a huge fraction of the effective stack. The live scraper never
+    // logs type 'allin' (PokerNow prints a shove as "raises to X", see the
+    // fidelity notes in sim/ring.ts), so a bettor left with a 0 stack is the
+    // reliable all-in signal; without it a 10bb shove (below the 12bb floor of
+    // the size test) was read as a normal open and played from the vs-open
+    // chart. Calling here commits the stack, so it must use a jam-call range,
+    // NOT the vs-3bet chart's "peel a small 3-bet" call.
     const bb = state.bigBlind || 1;
     const curBetBB = (state.currentBet || 0) / bb;
-    const nearJam = facingAllIn || (curBetBB >= 0.6 * effStackBB && curBetBB > 12);
+    const jamEffBB = jamEffectiveStackBB(state, live);
+    const bettorAllIn = (state.currentBet || 0) > bb && live.some(i => {
+      const p = state.players[i];
+      return (p.currentBet || 0) >= state.currentBet && (p.stack || 0) <= 0;
+    });
+    const nearJam = facingAllIn || bettorAllIn || (curBetBB >= 0.6 * jamEffBB && curBetBB > 12);
 
-    if (nearJam) {
-      // <=25bb: exact Nash call range (calling wide is correct short).
-      // 25-50bb: wider 4-bet-jam stack-off range (T9s folds, but TT/AQ/KQs call).
-      // >50bb: premium core only — a 100bb preflop jam is a value-heavy spot and
-      // TT/99/AQ/KQs are crushed (the deep call-off punt).
-      const inCall = effStackBB <= 25
-        ? callRange(effStackBB).has(handName)
-        : effStackBB <= 50
-          ? DEEP_JAM_CALL.has(handName)
-          : DEEP_JAM_CALL_50PLUS.has(handName);
+    if (nearJam && jamEffBB > 0) {
+      const { inCall, basis } = jamCallDecision(state, live, c1, c2, handName, jamEffBB, headsUp);
+      // A call that does not put hero all-in is a CALL, not a jam: the engine
+      // turns an advised 'All-In' into a 3x isolation raise whenever its own
+      // effective stack (deepest live villain, players still to act included) is
+      // over 25bb, which re-opened the pot to a 30bb raise against a 10bb shove.
+      const cbNow = state.currentBet || 0;
+      const jamTotals = live
+        .filter(i => (state.players[i].currentBet || 0) >= cbNow)
+        .map(i => totalChips(state.players[i]));
+      const heroCovers = totalChips(hero) > Math.max(cbNow, ...jamTotals);
       return {
-        scenario: `Facing all-in — call/fold (${effStackBB.toFixed(0)}bb eff)`,
+        scenario: `Facing all-in — call/fold (${jamEffBB.toFixed(0)}bb eff) [${basis}]`,
         hand: handName,
         actions: inCall
-          ? [{ action: 'All-In', frequency: 100 }]
+          ? [{ action: heroCovers ? 'Call' : 'All-In', frequency: 100 }]
           : [{ action: 'Fold', frequency: 100 }],
         inRange: inCall,
         rangeWeight: inCall ? 100 : 0,
       };
     }
 
-    if (firstIn && effStackBB <= PUSHFOLD_MAX_BB && (hero.position === 'SB' || hero.position === 'BTN')) {
+    // The shove table is the heads-up SB-vs-BB equilibrium, so it only applies
+    // when exactly one opponent is left to act: the SB folded to at a ring
+    // table, or the SB/button at a heads-up table. A 6-max BTN open-jam with
+    // both blinds behind faces two callers and needs a much tighter range.
+    if (firstIn && live.length === 1 && effStackBB <= PUSHFOLD_MAX_BB && (hero.position === 'SB' || hero.position === 'BTN')) {
       const inShove = shoveRange(effStackBB).has(handName);
       return {
         scenario: `Push/Fold Nash — Open Jam (${effStackBB.toFixed(0)}bb eff)`,
