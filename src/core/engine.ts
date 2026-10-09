@@ -16,11 +16,33 @@ import { PlayerProfiler } from './exploit/profiler';
 import { ExploitAdjuster } from './exploit/adjuster';
 import { predictPostflop } from './ml/policy';
 import { Spot } from './ml/features';
-// NOTE: solvePostflop (the depth-limited CFR study solver) is intentionally NOT
-// imported on the live hot path anymore. It computed equity vs effectively a
-// random/abstract opponent and value-bet dominated hands. Live postflop now uses
-// decidePostflopRanged (range-aware heuristic). The solver module and its tests
-// are left untouched for offline study.
+import { ENGINE_FLAGS as F } from './engine-flags';
+import {
+  liveVillainIndexes, estimateVillainRanges, heroRangeFor, preflopRangeFor,
+  sampleRangeCombos, comboIndex,
+} from './ranges/range-tracker';
+import { WeightedRange, VillainRange } from './ranges/weighted-range';
+import { equityVsRanges, uniformRange, anyTwoCardsRange } from './equity/multiway-equity';
+import {
+  defendVsAggression, balancedAggressorRange, leadPolicyRange, PostflopStreet,
+} from './defense';
+import { solveSubgame, subgameEligibility, pickSubgameAction } from './solver/subgame';
+// Live postflop paths: the real-time range-vs-range subgame solver
+// (SUBGAME_SOLVER flag, heads-up turn/river), then the distilled net (heads-up)
+// or the range-aware heuristic (multiway). See engine-flags.ts for the toggles.
+
+/**
+ * Per-decision notes from the path that produced the decision, read by the
+ * soundness gate and the exploit step. Reset at the start of every decide().
+ */
+interface DecisionMeta {
+  /** 'defense' (defense.ts) or 'subgame' (solver/subgame.ts). */
+  source?: 'defense' | 'subgame';
+  /** The action that path chose (later layers may change decision.action). */
+  action?: ActionType;
+  /** Hero equity vs the villain range that path used (with bluffs). */
+  rangeEq?: number;
+}
 
 // ============================================================
 // GTO Decision Engine
@@ -64,6 +86,9 @@ export class DecisionEngine {
   private profiler: PlayerProfiler;
   private adjuster: ExploitAdjuster;
   private settings: BotSettings;
+  private meta: DecisionMeta = {};
+  /** Tracker ranges for the state being decided (computed once per decision). */
+  private vrCache: { state: GameState; key: string; vr: VillainRange[] } | null = null;
 
   constructor(settings: BotSettings = DEFAULT_SETTINGS) {
     this.settings = settings;
@@ -98,6 +123,8 @@ export class DecisionEngine {
       cardToId(state.heroCards[1]),
     ];
     const boardIds = state.communityCards.map(c => cardToId(c));
+    this.meta = {};
+    this.vrCache = null;
     const handName = handGroupName(heroCardIds[0], heroCardIds[1]);
 
     console.log(`[GTO Bot] Deciding for ${handName} on ${state.street} (pot: ${state.pot})`);
@@ -126,7 +153,9 @@ export class DecisionEngine {
     // wider than the price floor would otherwise allow — the soundness gate
     // defers to it so it doesn't clip profitable bluff-catches.
     let trustExploitRead = false;
-    if (villain) {
+    // A subgame solve already plays against the tracked villain range, which
+    // encodes the read; the profile adjuster would double-count it.
+    if (villain && this.meta.source !== 'subgame') {
       const villainProfile = this.profiler.profile(villain);
       // Only deviate from the (proven-strong) GTO baseline once we have a SOLID
       // read. Simulation showed that exploiting on a thin sample is net -EV: the
@@ -439,11 +468,16 @@ export class DecisionEngine {
    * the signature for logging/compatibility with the caller and sanityCheck.
    */
   private decidePostflop(state: GameState, heroCards: [number, number], _equityVsRandom: number): BotDecision {
+    // Real-time subgame solve for heads-up turn/river spots (falls back below).
+    if (F.SUBGAME_SOLVER) {
+      const solved = this.decidePostflopSubgame(state, heroCards);
+      if (solved) return solved;
+    }
     // Heads-up only: the distilled net was trained on heads-up PokerBench spots.
     // For multiway pots (or any net error) fall back to the range-aware heuristic.
-    const activeVillains = state.players.filter(
-      (p, i) => i !== state.heroIndex && !p.isSittingOut,
-    ).length;
+    // FIX_LIVE_VILLAINS: count only villains still in the hand (base counted every
+    // seated player, so a heads-up flop at a 6-max table never reached the net).
+    const activeVillains = this.liveVillains(state).length;
     if (activeVillains !== 1) {
       return this.decidePostflopRanged(state, heroCards);
     }
@@ -554,6 +588,21 @@ export class DecisionEngine {
     }
     const flushGuarded = finalAction !== action;
 
+    // DEFENSE: facing a bet, the whole fold/call/raise decision comes from the
+    // defense module. Both the net's argmax and this anti-punt floor over-folded
+    // (the floor priced calls against a range with no bluffs), see defense.ts.
+    if (facingBet && F.DEFENSE) {
+      const d = this.defenseFacingBet(state, heroCards);
+      if (d.action === 'raise' && dangerousFlushBoard && heroCat < HAND_CATEGORY.FLUSH) {
+        d.action = 'call';
+        d.amount = undefined;
+        d.mixedStrategy = { fold: 0, check: 0, call: 1, bets: [] };
+        d.reasoning += ' (raise->call: behind range on flush board)';
+        this.meta.action = 'call';
+      }
+      return d;
+    }
+
     // ----------------------------------------------------------------
     // HARD POT-ODDS FLOOR facing a bet — the "don't punt" guard.
     //
@@ -568,17 +617,24 @@ export class DecisionEngine {
     // decision (call / fold / jam) correct ~always, instead of punting.
     if (facingBet && finalAction !== 'fold') {
       const boardIds = board.map(c => cardToId(c));
-      const range = villainContinuingRange(heroCards, boardIds, { aggression: true, multiway: false });
-      // Cap the combo count for speed: equityVsRange ENUMERATES every runout per
-      // combo postflop, so an evenly-strided subsample (spread across the range's
-      // flush/pair/straight/draw groups, not head-truncated) keeps the estimate
-      // representative while bounding the flop cost.
-      let evalRange = range;
-      if (range.length > 120) {
-        const stride = Math.ceil(range.length / 120);
-        evalRange = range.filter((_, i) => i % stride === 0);
+      let eqR: number;
+      const tracked = F.RANGE_TRACKER ? this.trackedRanges(state, heroCards) : [];
+      if (tracked.length === 1) {
+        // RANGE_TRACKER: villain's preflop line narrowed by their actions.
+        eqR = equityVsRange(heroCards, boardIds, sampleRangeCombos(tracked[0].range, 120), 1500).equity;
+      } else {
+        const range = villainContinuingRange(heroCards, boardIds, { aggression: true, multiway: false });
+        // Cap the combo count for speed: equityVsRange ENUMERATES every runout per
+        // combo postflop, so an evenly-strided subsample (spread across the range's
+        // flush/pair/straight/draw groups, not head-truncated) keeps the estimate
+        // representative while bounding the flop cost.
+        let evalRange = range;
+        if (range.length > 120) {
+          const stride = Math.ceil(range.length / 120);
+          evalRange = range.filter((_, i) => i % stride === 0);
+        }
+        eqR = evalRange.length ? equityVsRange(heroCards, boardIds, evalRange, 1500).equity : 0.5;
       }
-      const eqR = evalRange.length ? equityVsRange(heroCards, boardIds, evalRange, 1500).equity : 0.5;
       const potOdds = toCall / (pot + toCall);
       if (eqR < potOdds + 0.02) {
         return {
@@ -723,16 +779,35 @@ export class DecisionEngine {
     const board = this.analyzeBoard(state.communityCards);
     const boardIds = state.communityCards.map(c => cardToId(c));
 
+    // DEFENSE: facing a bet, fold/call/raise comes from defense.ts. This also
+    // retires rangedFacingBet's bluff-raise branch, which raised 100% of the time
+    // while its mixedStrategy claimed 10%.
+    if (facingBet && F.DEFENSE) return this.defenseFacingBet(state, heroCards);
+
     // --- Context for the continuing-range model ---
-    const activeVillains = state.players.filter(
-      (p, i) => i !== state.heroIndex && !p.isSittingOut,
-    ).length;
+    const activeVillains = this.liveVillains(state).length;
     const multiway = activeVillains > 1;
     const aggression = facingBet; // someone has bet/raised into us this street
 
     // --- Equity vs the concrete continuing range (THE FIX) ---
-    const range = villainContinuingRange(heroCards, boardIds, { aggression, multiway });
-    const eqR = equityVsRange(heroCards, boardIds, range, 3000).equity;
+    // eqR is hero's pot share (compared with pot odds). eqStrength is what the
+    // heads-up-tuned value thresholds see: equal to eqR heads-up, and the
+    // per-opponent equivalent eqR^(1/N) when MULTIWAY_EQUITY measures true
+    // N-way equity.
+    let eqR: number;
+    let eqStrength: number;
+    let rangeSize: number;
+    if (!F.RANGE_TRACKER && !(multiway && F.MULTIWAY_EQUITY)) {
+      const range = villainContinuingRange(heroCards, boardIds, { aggression, multiway });
+      eqR = equityVsRange(heroCards, boardIds, range, 3000).equity;
+      eqStrength = eqR;
+      rangeSize = range.length;
+    } else {
+      const e = this.equityVsLiveVillains(state, heroCards, boardIds, aggression, 3000);
+      eqR = e.equity;
+      eqStrength = e.strength;
+      rangeSize = e.combos;
+    }
 
     // --- Hero's made-hand category and board-danger flags ---
     const heroCat = boardIds.length >= 3
@@ -747,7 +822,7 @@ export class DecisionEngine {
 
     console.log(
       `[GTO Bot] Ranged: eqR=${(eqR * 100).toFixed(0)}% cat=${heroCat} ` +
-      `combos=${range.length} flushBoard=${dangerousFlushBoard} paired=${pairedBoard} ` +
+      `combos=${rangeSize} flushBoard=${dangerousFlushBoard} paired=${pairedBoard} ` +
       `facing=${facingBet ? toCall : 'no'}`,
     );
 
@@ -755,9 +830,9 @@ export class DecisionEngine {
     const dominatedByBoard = dangerousFlushBoard || (pairedBoard && twoPairType);
 
     if (facingBet) {
-      return this.rangedFacingBet(state, eqR, toCall, board, dominatedByBoard, heroCat);
+      return this.rangedFacingBet(state, eqR, toCall, board, dominatedByBoard, heroCat, eqStrength);
     }
-    return this.rangedFirstToAct(state, eqR, board, pot, bb, dangerousFlushBoard, heroCat);
+    return this.rangedFirstToAct(state, eqR, board, pot, bb, dangerousFlushBoard, heroCat, eqStrength);
   }
 
   /** FACING A BET: pot-odds call, value raise only when very strong & not dominated. */
@@ -768,6 +843,7 @@ export class DecisionEngine {
     board: BoardAnalysis,
     dominatedByBoard: boolean,
     heroCat: number,
+    eqStrength: number = eqR,
   ): BotDecision {
     const pot = state.pot;
     const bb = state.bigBlind || 1;
@@ -777,9 +853,9 @@ export class DecisionEngine {
     const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
 
     // VALUE RAISE: only with high equity vs range AND not dominated by the board.
-    if (eqR >= 0.70 && !dominatedByBoard) {
+    if (eqStrength >= 0.70 && !dominatedByBoard) {
       const raiseTo = this.roundToStake(state.currentBet * 2.5, bb);
-      const raiseFreq = eqR >= 0.82 ? 0.8 : 0.6;
+      const raiseFreq = eqStrength >= 0.82 ? 0.8 : 0.6;
       return {
         action: 'raise', amount: raiseTo, confidence: eqR,
         reasoning: `value raise to ${raiseTo} (${pct(eqR)} vs range)`,
@@ -829,6 +905,7 @@ export class DecisionEngine {
     bb: number,
     dangerousFlushBoard: boolean,
     heroCat: number,
+    eqStrength: number = eqR,
   ): BotDecision {
     const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
     const check = (reason: string): BotDecision =>
@@ -849,7 +926,7 @@ export class DecisionEngine {
 
     // VALUE BET: eqR >= ~0.62 vs range. The hard floor of 0.55 is enforced too,
     // so we never "value bet" a sub-coinflip-vs-range hand.
-    if (eqR >= 0.62 && eqR >= 0.55) {
+    if (eqStrength >= 0.62 && eqStrength >= 0.55) {
       return {
         action: 'bet', amount: betSize, confidence: eqR,
         reasoning: `value bet ${sizeLabel} (${pct(eqR)} vs range)`,
@@ -860,7 +937,7 @@ export class DecisionEngine {
     // BLUFF: with hands that have equity to improve (draws), at frequency
     // alpha = bet / (bet + pot). Never bluff a medium MADE hand into danger.
     const alpha = betSize / (betSize + pot); // optimal bluff fraction
-    const hasDrawEquity = eqR >= 0.30 && eqR < 0.55 && heroCat <= HAND_CATEGORY.PAIR;
+    const hasDrawEquity = eqStrength >= 0.30 && eqStrength < 0.55 && heroCat <= HAND_CATEGORY.PAIR;
     if (hasDrawEquity && state.street !== 'river' && !dangerousFlushBoard) {
       if (Math.random() < alpha) {
         return {
@@ -1108,8 +1185,8 @@ export class DecisionEngine {
     // Effective stack (counting committed chips) — decides whether an "all-in"
     // from the chart is a real jam (short) or must be sized down (deep).
     const heroTotal = hero.stack + (hero.currentBet || 0);
-    const villTotals = state.players
-      .filter((p, i) => i !== state.heroIndex && !p.isSittingOut)
+    const villTotals = this.liveVillains(state)
+      .map(i => state.players[i])
       .map(p => p.stack + (p.currentBet || 0));
     const effStackBB = Math.min(heroTotal, villTotals.length ? Math.max(...villTotals) : heroTotal) / bb;
 
@@ -1271,20 +1348,34 @@ export class DecisionEngine {
     // range (the same model decidePostflopRanged uses) before overriding, so the
     // safety net only fires when the hand is genuinely ahead — not just ahead of
     // a random holding. Preflop (no board) keeps the original vs-random behavior.
+    const activeVillains = this.liveVillains(state).length;
+    // MULTIWAY_EQUITY: with N live villains the thresholds below (tuned heads-up)
+    // compare against N-way equity: vs N random hands for the 0.80 / 0.65 hand
+    // strength gates, and 0.72^N for the range confirmation.
+    const multiwayEq = F.MULTIWAY_EQUITY && activeVillains > 1;
+    if (multiwayEq && heroCards) {
+      equity = equityVsRanges(heroCards, boardIds, Array(activeVillains).fill(anyTwoCardsRange()), {
+        iterations: 2000, seed: 1,
+      }).equity;
+    }
     let eqRCache: number | null = null;
     const eqRange = (): number => {
       if (eqRCache !== null) return eqRCache;
       if (!postflop || !heroCards) return (eqRCache = equity);
-      const activeVillains = state.players.filter((p, i) => i !== state.heroIndex && !p.isSittingOut).length;
+      if (F.RANGE_TRACKER || multiwayEq) {
+        eqRCache = this.equityVsLiveVillains(state, heroCards, boardIds, facingBet, 2000).equity;
+        return eqRCache;
+      }
       const range = villainContinuingRange(heroCards, boardIds, { aggression: facingBet, multiway: activeVillains > 1 });
       eqRCache = range.length > 0 ? equityVsRange(heroCards, boardIds, range, 2000).equity : equity;
       return eqRCache;
     };
+    const strongBar = multiwayEq ? Math.pow(0.72, activeVillains) : 0.72;
 
     // Never check a hand that is genuinely strong — but confirm vs the continuing
     // range postflop so we don't force-bet a range-blind 80%-vs-random hand.
-    if (decision.action === 'check' && !facingBet && equity >= 0.80 && !flushBoardBlunder) {
-      const strongVsRange = postflop ? eqRange() >= 0.72 : true;
+    if (decision.action === 'check' && !facingBet && equity >= (multiwayEq ? Math.pow(0.80, activeVillains) : 0.80) && !flushBoardBlunder) {
+      const strongVsRange = postflop ? eqRange() >= strongBar : true;
       if (strongVsRange) {
         const betSize = Math.max(state.bigBlind, Math.round(state.pot * 0.67));
         decision.action = 'bet';
@@ -1298,7 +1389,7 @@ export class DecisionEngine {
     // calling is actually +EV vs the continuing range (beats the pot odds). This
     // stops the bot from turning a correct fold into a -EV "too strong to fold"
     // call with a hand that only looks strong vs a random holding.
-    if (decision.action === 'fold' && equity >= 0.65) {
+    if (decision.action === 'fold' && equity >= (multiwayEq ? Math.pow(0.65, activeVillains) : 0.65)) {
       const potOdds = facingBet ? toCall / (state.pot + toCall) : 0;
       // Preflop: only un-fold CHEAP spots. A big preflop call is a stack-off, and
       // equity-vs-RANDOM (99 is ~72% vs random) cannot justify calling a jam vs a
@@ -1357,20 +1448,36 @@ export class DecisionEngine {
     }
 
     // Committed-aware effective stack in bb (matches heroEffectiveStackBB).
+    // FIX_LIVE_VILLAINS: folded seats' stacks no longer count.
     const heroTotal = stack + heroBet;
-    const oppTotals = state.players
-      .filter((p, idx) => idx !== state.heroIndex && !p.isSittingOut)
+    const oppTotals = this.liveVillains(state)
+      .map(idx => state.players[idx])
       .map(p => (p.stack || 0) + (p.currentBet || 0));
     const effStackBB = Math.min(heroTotal, oppTotals.length ? Math.max(...oppTotals) : heroTotal) / bb;
 
     const isPremium = DEEP_JAM_CALL.has(handGroupName(heroCards[0], heroCards[1]));
 
+    // A call (or bet) chosen by defense.ts or the subgame solver was priced
+    // against a villain range WITH bluffs. RULE 1's usual yardstick (the
+    // bluff-free continuing range) would re-create the over-folding, so the gate
+    // uses that path's own equity and the defended RULE 1 (big commits only).
+    const m = this.meta;
+    const fromRangePath = !!m.source && m.action === decision.action && m.rangeEq !== undefined &&
+      !decision.reasoning.includes('[too strong to fold]') && !decision.reasoning.includes('[sanity]');
+    const rangeDefended = fromRangePath && decision.action === 'call';
+
     // Hero equity vs a realistic range (not vs random).
     let eqVsRange: number;
-    if (postflop) {
-      const activeVillains = state.players.filter((p, idx) => idx !== state.heroIndex && !p.isSittingOut).length;
-      const range = villainContinuingRange(heroCards, boardIds, { aggression: facingBet, multiway: activeVillains > 1 });
-      eqVsRange = range.length > 0 ? equityVsRange(heroCards, boardIds, range, 2000).equity : equity;
+    if (fromRangePath) {
+      eqVsRange = m.rangeEq as number;
+    } else if (postflop) {
+      const activeVillains = this.liveVillains(state).length;
+      if (F.RANGE_TRACKER || (F.MULTIWAY_EQUITY && activeVillains > 1)) {
+        eqVsRange = this.equityVsLiveVillains(state, heroCards, boardIds, facingBet, 2000).equity;
+      } else {
+        const range = villainContinuingRange(heroCards, boardIds, { aggression: facingBet, multiway: activeVillains > 1 });
+        eqVsRange = range.length > 0 ? equityVsRange(heroCards, boardIds, range, 2000).equity : equity;
+      }
     } else if (facingBet && commit >= 0.25) {
       // Big preflop bet: measure vs an assumed value/stack-off range.
       const combos = this.preflopValueCombos(heroCards);
@@ -1381,6 +1488,7 @@ export class DecisionEngine {
 
     const result = evaluateSoundness({
       action: decision.action, street, facingBet, potOdds, commit, effStackBB, isPremium, eqVsRange, trustExploitRead,
+      rangeDefended,
     });
     if (result.override && (result.action === 'fold' || result.action === 'check')) {
       console.log(`[GTO Bot] SOUNDNESS veto: ${result.reason}`);
@@ -1412,6 +1520,284 @@ export class DecisionEngine {
   }
 
   // ============================================================
+  // Live villains, tracked ranges, multiway equity
+  // ============================================================
+
+  /**
+   * Indexes of the villains the engine treats as opponents. FIX_LIVE_VILLAINS:
+   * only players still in the hand (range-tracker liveVillainIndexes: folded on
+   * any street and sitting-out seats excluded). Off: every seated non-hero
+   * player, which is what swarm/base did.
+   */
+  private liveVillains(state: GameState): number[] {
+    if (F.FIX_LIVE_VILLAINS) return liveVillainIndexes(state);
+    const out: number[] = [];
+    state.players.forEach((p, i) => { if (i !== state.heroIndex && !p.isSittingOut) out.push(i); });
+    return out;
+  }
+
+  /** Index of the dealer seat (dealer flag first, then state.dealerIndex). */
+  private dealerSeat(state: GameState): number {
+    const d = state.players.findIndex(p => p.isDealer);
+    return d >= 0 ? d : state.dealerIndex;
+  }
+
+  /**
+   * True when hero acts after every listed villain postflop. Postflop order runs
+   * clockwise from the seat after the dealer, so the dealer acts last; the
+   * players array is in seat order (scraper and sim/ring.ts alike).
+   */
+  private heroActsAfter(state: GameState, villains: number[]): boolean {
+    const n = state.players.length;
+    const d = this.dealerSeat(state);
+    const order = (i: number) => (i - d - 1 + 2 * n) % n;
+    const h = order(state.heroIndex);
+    return villains.every(v => h > order(v));
+  }
+
+  /**
+   * Range-tracker ranges for the live villains (normalized against hero cards
+   * and board), computed once per decision. Only villains with a non-empty
+   * range are returned.
+   */
+  private trackedRanges(state: GameState, heroCards: [number, number]): VillainRange[] {
+    const key = `${heroCards[0]},${heroCards[1]}`;
+    if (this.vrCache && this.vrCache.state === state && this.vrCache.key === key) return this.vrCache.vr;
+    let vr: VillainRange[] = [];
+    try {
+      vr = estimateVillainRanges(state, heroCards).filter(v => v.range.combos.length > 0);
+    } catch (e) {
+      console.warn('[GTO Bot] range tracker failed, using the static ranges', e);
+    }
+    this.vrCache = { state, key, vr };
+    return vr;
+  }
+
+  /**
+   * Hero equity against the live villains under the current flags.
+   *   RANGE_TRACKER    ranges from the tracker, else villainContinuingRange.
+   *   MULTIWAY_EQUITY  2+ villains: one N-way pot-share computation over every
+   *                    range at once. Without it, multiway falls back to the
+   *                    weakest of the per-villain heads-up equities (tracker) or
+   *                    the old single "multiway" continuing range (static).
+   * `strength` is the per-opponent equivalent equity^(1/N) for the N-way case
+   * (the scale the heads-up-tuned thresholds expect); equal to `equity` otherwise.
+   */
+  private equityVsLiveVillains(
+    state: GameState, heroCards: [number, number], boardIds: number[], aggression: boolean, iterations: number,
+  ): { equity: number; strength: number; combos: number; villains: number } {
+    const live = this.liveVillains(state);
+    const n = Math.max(1, live.length);
+    const multiway = n > 1;
+    let ranges: WeightedRange[] = [];
+    if (F.RANGE_TRACKER) {
+      ranges = this.trackedRanges(state, heroCards).map(v => v.range);
+    }
+    if (ranges.length === 0) {
+      if (multiway && F.MULTIWAY_EQUITY) {
+        const one = uniformRange(villainContinuingRange(heroCards, boardIds, { aggression, multiway: false }));
+        ranges = Array(n).fill(one);
+      } else {
+        const range = villainContinuingRange(heroCards, boardIds, { aggression, multiway });
+        const eq = range.length > 0 ? equityVsRange(heroCards, boardIds, range, iterations).equity : 0.5;
+        return { equity: eq, strength: eq, combos: range.length, villains: n };
+      }
+    }
+    const combos = ranges.reduce((s, r) => s + r.combos.length, 0);
+    if (ranges.length > 1 && F.MULTIWAY_EQUITY) {
+      try {
+        const eq = equityVsRanges(heroCards, boardIds, ranges, { iterations: 4000, seed: 1 }).equity;
+        return { equity: eq, strength: Math.pow(eq, 1 / ranges.length), combos, villains: ranges.length };
+      } catch (e) {
+        console.warn('[GTO Bot] multiway equity failed', e);
+      }
+    }
+    // Heads-up (or multiway without MULTIWAY_EQUITY): heads-up equity vs each
+    // tracked range, keep the weakest.
+    let eq = 1;
+    for (const r of ranges) {
+      const sample = sampleRangeCombos(r, 150);
+      eq = Math.min(eq, sample.length ? equityVsRange(heroCards, boardIds, sample, iterations).equity : 0.5);
+    }
+    return { equity: eq, strength: eq, combos, villains: ranges.length };
+  }
+
+  // ============================================================
+  // DEFENSE: facing a bet or raise postflop (defense.ts)
+  // ============================================================
+
+  /**
+   * Fold / call / raise facing aggression via defendVsAggression: continue when
+   * equity vs villain's range (which contains bluffs) clears the pot odds, or
+   * when hero's hand sits inside the minimum-defense share of its own range.
+   * Reference implementation: sim/defense-shim.ts. Records the defense equity
+   * in this.meta for the soundness gate.
+   */
+  private defenseFacingBet(state: GameState, heroCards: [number, number]): BotDecision {
+    const street = state.street as PostflopStreet;
+    const board = state.communityCards.map(c => cardToId(c));
+    const hero = state.players[state.heroIndex];
+    const heroBet = hero?.currentBet || 0;
+    const toCall = Math.max(0, state.currentBet - heroBet);
+    const pot = Math.max(1, state.pot);
+    // Villain's whole street commitment over the pot it went into:
+    // a raise to R over hero's b with P before the bet gives R / (P + b).
+    const villainStreet = state.currentBet;
+    const sizeFrac = villainStreet / Math.max(1, pot - villainStreet);
+    const facingRaise = heroBet > 0;
+    const live = this.liveVillains(state);
+    const multiway = live.length > 1;
+
+    // Villain range: the bettor's tracked range (RANGE_TRACKER), else the static
+    // value range plus a balanced bluff block for this size.
+    let villainRange: WeightedRange | null = null;
+    if (F.RANGE_TRACKER) {
+      const tracked = this.trackedRanges(state, heroCards);
+      const acts = state.actionHistory[state.street] || [];
+      let bettor: string | null = null;
+      for (const a of acts) {
+        if ((a.type === 'bet' || a.type === 'raise' || a.type === 'allin') && a.playerName !== hero?.name) bettor = a.playerName;
+      }
+      const norm = (x: string) => x.toLowerCase().replace(/\s*@\s*\S+$/, '').trim();
+      const hit = bettor
+        ? tracked.find(v => norm(state.players[v.playerIndex]?.name || '') === norm(bettor as string))
+        : undefined;
+      const pick = hit ?? (tracked.length === 1 ? tracked[0] : undefined);
+      if (pick && pick.range.combos.length >= 5) villainRange = pick.range;
+    }
+    if (!villainRange) {
+      const value = villainContinuingRange([board[0], board[1]], board, { aggression: true, multiway: false });
+      villainRange = balancedAggressorRange(value, board, street, sizeFrac);
+    }
+
+    // Hero range for the MDF rule: the lead policy's bet (hero bet and got
+    // raised) or check (hero checked, villain bet) range. With RANGE_TRACKER the
+    // combos are weighted by hero's preflop line. Multiway: MDF is a heads-up
+    // rule, so hero range is dropped and the decision is pure pot odds.
+    let heroRange: WeightedRange | null = null;
+    if (!multiway) {
+      const pfRaise = (state.actionHistory.preflop || []).filter(a => a.type === 'raise' || a.type === 'allin');
+      const isIP = this.isInPosition(state);
+      const isAggressor = pfRaise.length ? pfRaise[pfRaise.length - 1].playerName === hero?.name : isIP;
+      const tex = this.analyzeBoard(state.communityCards);
+      let preflopWeight: ((c: [number, number]) => number) | undefined;
+      if (F.RANGE_TRACKER) {
+        try {
+          const pf = preflopRangeFor(state, state.heroIndex);
+          const w = new Float64Array(1326);
+          for (let i = 0; i < pf.combos.length; i++) {
+            const k = comboIndex(pf.combos[i][0], pf.combos[i][1]);
+            if (k >= 0) w[k] += pf.weights[i];
+          }
+          preflopWeight = c => w[comboIndex(c[0], c[1])] || 0;
+        } catch {
+          preflopWeight = undefined;
+        }
+      }
+      heroRange = leadPolicyRange(board, street, {
+        isAggressor, isIP, veryWetOrMono: tex.texture === 'very_wet' || tex.isMonotone,
+        line: facingRaise ? 'bet' : 'check',
+      }, preflopWeight);
+      if (heroRange.combos.length === 0) heroRange = null;
+    }
+
+    const d = defendVsAggression({
+      heroCards, board, heroRange, villainRange, pot, toCall, street,
+      villainActionSizeFrac: sizeFrac, facingRaise, heroStack: hero?.stack,
+    });
+    this.meta = { source: 'defense', action: d.action, rangeEq: d.equity };
+    if (d.action === 'fold') {
+      return { action: 'fold', confidence: 1 - d.equity, reasoning: d.reasoning, mixedStrategy: { fold: 1, check: 0, call: 0, bets: [] } };
+    }
+    if (d.action === 'raise') {
+      const bb = state.bigBlind || 1;
+      const raiseTo = this.roundToStake(state.currentBet * 2.5, bb);
+      return { action: 'raise', amount: raiseTo, confidence: d.equity, reasoning: d.reasoning, mixedStrategy: { fold: 0, check: 0, call: 0, bets: [{ amount: raiseTo, probability: 1 }] } };
+    }
+    return { action: 'call', confidence: d.equity, reasoning: d.reasoning, mixedStrategy: { fold: 0, check: 0, call: 1, bets: [] } };
+  }
+
+  // ============================================================
+  // SUBGAME_SOLVER: heads-up turn/river real-time solve (solver/subgame.ts)
+  // ============================================================
+
+  /**
+   * Solve the current heads-up turn/river spot range-vs-range and sample hero's
+   * action from the solved mix. Returns null (caller falls back to the net /
+   * ranged path) when the spot is not eligible, the solve throws, or it did not
+   * get under 2% pot exploitability within the budget.
+   */
+  private decidePostflopSubgame(state: GameState, heroCards: [number, number]): BotDecision | null {
+    if (state.street !== 'turn' && state.street !== 'river') return null;
+    const live = liveVillainIndexes(state); // the solver needs the true live count
+    if (live.length !== 1) return null;
+    const vIdx = live[0];
+    const hero = state.players[state.heroIndex];
+    const villain = state.players[vIdx];
+    if (!hero || !villain) return null;
+    const board = state.communityCards.map(c => cardToId(c));
+    try {
+      // Villain range normalized against the board only: the solver plays it
+      // against hero's whole range, so hero's own cards must stay in (they are
+      // zero-weighted per pair inside the solver). Passing two board cards as
+      // the "hero" argument keeps them.
+      const vr = estimateVillainRanges(state, [board[0], board[1]]).find(v => v.playerIndex === vIdx);
+      if (!vr) return null;
+      const villainRange = vr.range;
+      const heroRange = heroRangeFor(state);
+
+      const heroBet = hero.currentBet || 0;
+      const toCall = Math.max(0, state.currentBet - heroBet);
+      let pot = state.pot;
+      if (pot <= toCall) pot = state.pot + state.players.reduce((s, p) => s + (p.currentBet || 0), 0);
+      const effectiveStack = Math.min(hero.stack, villain.stack + toCall);
+      const elig = subgameEligibility({
+        street: state.street, opponentsInHand: 1,
+        heroCombos: heroRange.combos.length, villainCombos: villainRange.combos.length,
+        pot, toCall, effectiveStack,
+      });
+      if (!elig.ok) return null;
+
+      let priorAggressions = 0;
+      for (const a of state.actionHistory[state.street] || []) {
+        if (a.type === 'bet' || a.type === 'raise' || a.type === 'allin') priorAggressions++;
+      }
+      if (toCall > 0) priorAggressions = Math.max(1, priorAggressions);
+      else priorAggressions = 0;
+
+      const heroIsIP = state.players.length > 2
+        ? this.heroActsAfter(state, [vIdx])
+        : this.isInPosition(state);
+      const r = solveSubgame({
+        heroCards, board, heroRange, villainRange, pot, toCall, effectiveStack, heroIsIP,
+        street: state.street, heroStreetCommitted: heroBet, priorAggressions, budgetMs: 1500, seed: 1,
+      });
+      if (!(r.exploitability <= 2)) return null;
+
+      const pick = pickSubgameAction(r, Math.random());
+      // Hero equity vs the villain range the solve used (exact on turn/river),
+      // for the soundness gate.
+      let rangeEq: number | undefined;
+      try {
+        rangeEq = equityVsRanges(heroCards, board, [villainRange], { seed: 1 }).equity;
+      } catch {
+        rangeEq = undefined;
+      }
+      this.meta = { source: 'subgame', action: pick.action, rangeEq };
+      return {
+        action: pick.action,
+        amount: pick.amount,
+        mixedStrategy: r.distribution,
+        confidence: pick.probability,
+        reasoning: `subgame ${pick.label} (${r.iterations} it, ${r.exploitability.toFixed(2)}% expl, ${r.ms}ms) [subgame]`,
+      };
+    } catch (e) {
+      console.warn('[GTO Bot] subgame solve failed, using the default path', e);
+      return null;
+    }
+  }
+
+  // ============================================================
   // Helpers
   // ============================================================
 
@@ -1424,6 +1810,12 @@ export class DecisionEngine {
    */
   private isInPosition(state: GameState): boolean {
     const hero = state.players[state.heroIndex];
+    // FIX_LIVE_VILLAINS: at a full table the dealer may have folded; hero is in
+    // position when it acts after every villain still in the hand.
+    if (F.FIX_LIVE_VILLAINS && state.players.length > 2) {
+      const live = this.liveVillains(state);
+      if (live.length > 0) return this.heroActsAfter(state, live);
+    }
     if (state.players.some(p => p.isDealer)) return !!hero.isDealer;
     // Fallback when no dealer flag is scraped: the dealer seat acts last.
     return state.heroIndex === state.dealerIndex;
@@ -1467,7 +1859,8 @@ export class DecisionEngine {
         return actions[i].playerName;
       }
     }
-    return state.players.find((p, i) => i !== state.heroIndex && !p.isSittingOut)?.name || null;
+    const live = this.liveVillains(state);
+    return live.length ? state.players[live[0]].name : null;
   }
 
   private isFacing3Bet(state: GameState): boolean {
