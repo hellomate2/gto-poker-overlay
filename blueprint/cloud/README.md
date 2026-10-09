@@ -16,6 +16,7 @@ PLAN.md means `~/Downloads/gpo-research/PLAN.md` (section numbers below refer to
 | `fetch.sh` | your laptop | rsync of logs, checkpoint, snapshots, bench results and abstraction tables back home |
 | `r1.env` | (sourced) | the R1 tree, abstraction and schedule settings in one place |
 | `m3-readme-bench.csv` | (data) | the blueprint README's measured M3 Pro numbers, for testing `cost.py` |
+| `m3-scale-bench-small.csv` | (data) | `bp scale bench` 1/2/4/8 threads, compact and dense, small tree, loaded Mac (PLAN.md M3) |
 
 Two small changes in `src/main.cpp` support this: `bp bench --threads-list 1,16,48,96,192`
 picks thread counts explicitly (before, the list was fixed at 1, 2, 4), and `bp train`
@@ -129,6 +130,12 @@ R1 (200/200/200)           231,540,861      2.78 GB   0.95 GB  0.341       0.93 
 R2 (5000/5000/1000)      1,955,854,461     23.47 GB   7.84 GB  0.334       7.82 GB
 R3 (30000/30000/2000)    7,906,534,461     94.88 GB  31.65 GB  0.334      31.63 GB
 ```
+
+Thread scaling on this Mac (`bp scale bench`, small tree, 20 s per point,
+each started at load average <= 14; data in `m3-scale-bench-small.csv`): e at
+8 threads was 0.441 for the compact trainer and 0.482 for the dense one, both
+below the 0.5 gate, with the overnight run holding 6 of the 11 cores. That
+measures a full laptop, not the trainer; run `bench.sh` on the idle box.
 
 R1 fits either way on a 384 GiB box. The compact layout matters from R2 up,
 and for checkpoint upload and download time (a checkpoint is about one table).

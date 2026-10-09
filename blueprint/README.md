@@ -427,7 +427,8 @@ optimistic: its 4.9 GB of tables fit in cache even less well, and river
 buckets above 255 fall back to computing EHS per deal (about 5 us per deal
 on random boards, see `bp bench`), so its real cost is higher. Thread-hours
 divide across cores only to the extent the lock-free scheme keeps scaling,
-which was measured only up to 4 threads (3.5x). For context, the Pluribus
+which was measured only up to 4 threads (3.5x) on an idle machine (8 threads on
+a loaded one: "Thread scaling" below). For context, the Pluribus
 paper (Brown and Sandholm, Science 2019) reports 8 days on a 64-core server
 and under 512 GB of memory for its six-player blueprint; nothing here was
 benchmarked against that.
@@ -542,6 +543,32 @@ mbb/hand (95% CI +/- 13.8, 2M hands); a 300,000-deal run with seed 11 gave
 +20.8 +/- 25.2. No difference is detectable at this size. Two threads make
 the runs nondeterministic, so their regrets differ slightly, not only their
 averaging.
+
+### Thread scaling
+
+`bp scale bench --preset small --threads-list 1,2,4,8 --seconds 20
+--max-load 14 --max-wait-sec 5400 --dense --csv runs/bench/scale-bench.csv`
+(small tree, 100 BB, 50 buckets, no pruning or discounting, 2,000 warm-up
+iterations per point as in `bp bench`). Before each point it waits until the
+1-minute load average is at most 14; the points ran at 05:32 to 05:36 PDT on
+2026-10-09, with load 13.58 to 13.85 at the start of each point. The CSV is
+`cloud/m3-scale-bench-small.csv`; e from `python3 cloud/cost.py summary
+--bench cloud/m3-scale-bench-small.csv --trainer compact` (or `dense`):
+
+| threads | compact visits/s | compact e | dense visits/s | dense e |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 31.78 M | 1.000 | 24.64 M | 1.000 |
+| 2 | 62.18 M | 0.978 | 55.28 M | 1.122 |
+| 4 | 74.31 M | 0.585 | 71.87 M | 0.729 |
+| 8 | 112.18 M | 0.441 | 94.95 M | 0.482 |
+
+Read these with care. The Mac has 11 cores and the overnight run held 6 of
+them (`bp train --threads 6`) with other agents' jobs on top, so 4 and 8
+bench threads competed for cores; e above 1 at 2 dense threads shows how
+noisy the baseline is. Both trainers fall under PLAN.md's e >= 0.5 gate at 8
+threads here, which says the box was full, not that the trainer contends.
+The cloud `bench.sh` on an idle 192-core box remains the measurement that
+decides. The compact trainer was not slower at any thread count in this run.
 
 ### Memory
 
