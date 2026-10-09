@@ -93,6 +93,14 @@ struct Board {
   bool sweep = false;            // strength-sort showdown (complete board)
   std::vector<int32_t> str[2];   // strength per hand, -1 if blocked
   std::vector<int> asc[2];       // unblocked hands sorted by strength
+  // The same order, packed for the sweep: strength, cards (absent cards map
+  // to slot 62 when the hand is the opponent's, 63 when it is mine), index.
+  struct SortedHand {
+    int32_t str;
+    uint8_t oc0, oc1, mc0, mc1;
+    int32_t idx, same;
+  };
+  std::vector<SortedHand> packed[2];
   bool equity = false;           // equity-matrix showdown (incomplete board)
   std::vector<double> share;     // [i * H1 + j]: p0's showdown share, 0 if incompatible
 };

@@ -129,6 +129,22 @@ void Game::finalize() {
         const auto& st = b.str[p];
         std::stable_sort(b.asc[p].begin(), b.asc[p].end(), [&](int x, int y) { return st[x] < st[y]; });
       }
+      for (int p = 0; p < 2; p++) {
+        b.packed[p].clear();
+        for (int i : b.asc[p]) {
+          const Hand& h = hands[p][i];
+          Board::SortedHand e;
+          e.str = b.str[p][i];
+          e.oc0 = uint8_t(h.nc > 0 ? h.c[0] : 62);
+          e.oc1 = uint8_t(h.nc > 1 ? h.c[1] : 62);
+          e.mc0 = uint8_t(h.nc > 0 ? h.c[0] : 63);
+          e.mc1 = uint8_t(h.nc > 1 ? h.c[1] : 63);
+          e.idx = i;
+          int sj = same[p][i];
+          e.same = (sj >= 0 && b.str[1 - p][sj] >= 0) ? sj : -1;
+          b.packed[p].push_back(e);
+        }
+      }
     } else {
       // Equity matrix over every completion of the board.
       b.equity = true;
@@ -328,63 +344,53 @@ void Solver::terminal(int ni, int p, const std::vector<double>& r, std::vector<d
     }
     return;
   }
-  // Strength-sorted sweep.
-  const auto& mine = b.asc[p];
-  const auto& opp = b.asc[q];
-  const auto& smine = b.str[p];
-  const auto& sopp = b.str[q];
-  const auto& mh = g_.hands[p];
-  const auto& oh = g_.hands[q];
-  const auto& sm = g_.same[p];
+  // Strength-sorted sweep. For my hand i with strength s: lt = compatible
+  // opponent reach with strength < s, le = with strength <= s (inclusion-
+  // exclusion over cards; an identical combo has equal strength, so it sits
+  // in le only, subtracted twice there and added back once). Then
+  // win + tie / 2 = (lt + le) / 2, and the compatible mass uses the totals
+  // over every unblocked opponent hand.
+  const auto& mine = b.packed[p];
+  const auto& opp = b.packed[q];
   out.assign(n, 0.0);
-  std::vector<double> win(n, 0.0), lose(n, 0.0);
-  double cs[64];
-  // total compatible mass over unblocked opponent hands
-  double T = 0, CS[64];
-  std::fill(CS, CS + 64, 0.0);
-  for (int j : opp) {
-    T += r[j];
-    for (int k = 0; k < oh[j].nc; k++) CS[oh[j].c[k]] += r[j];
-  }
-  // ascending: opponent hands strictly weaker
-  {
-    std::fill(cs, cs + 64, 0.0);
-    double tot = 0;
-    size_t k = 0;
-    for (int i : mine) {
-      while (k < opp.size() && sopp[opp[k]] < smine[i]) {
-        int j = opp[k++];
-        tot += r[j];
-        for (int c = 0; c < oh[j].nc; c++) cs[oh[j].c[c]] += r[j];
-      }
-      double v = tot;
-      for (int c = 0; c < mh[i].nc; c++) v -= cs[mh[i].c[c]];
-      win[i] = v;
+  thread_local std::vector<double> half;
+  half.resize(mine.size());
+  double cl[64] = {0}, ce[64] = {0};  // card sums below kl / below ke
+  double tl = 0, te = 0;
+  size_t kl = 0, ke = 0;
+  const size_t no = opp.size();
+  for (size_t x = 0; x < mine.size(); x++) {
+    const Board::SortedHand& m = mine[x];
+    while (kl < no && opp[kl].str < m.str) {
+      const Board::SortedHand& o = opp[kl++];
+      double v = r[o.idx];
+      tl += v;
+      cl[o.oc0] += v;
+      cl[o.oc1] += v;
     }
-  }
-  // descending: opponent hands strictly stronger
-  {
-    std::fill(cs, cs + 64, 0.0);
-    double tot = 0;
-    size_t k = opp.size();
-    for (size_t x = mine.size(); x-- > 0;) {
-      int i = mine[x];
-      while (k > 0 && sopp[opp[k - 1]] > smine[i]) {
-        int j = opp[--k];
-        tot += r[j];
-        for (int c = 0; c < oh[j].nc; c++) cs[oh[j].c[c]] += r[j];
-      }
-      double v = tot;
-      for (int c = 0; c < mh[i].nc; c++) v -= cs[mh[i].c[c]];
-      lose[i] = v;
+    while (ke < no && opp[ke].str <= m.str) {
+      const Board::SortedHand& o = opp[ke++];
+      double v = r[o.idx];
+      te += v;
+      ce[o.oc0] += v;
+      ce[o.oc1] += v;
     }
+    double lt = tl - cl[m.mc0] - cl[m.mc1];
+    double le = te - ce[m.mc0] - ce[m.mc1] + (m.same >= 0 ? r[m.same] : 0.0);
+    half[x] = 0.5 * (lt + le);
   }
-  for (int i : mine) {
-    double m = T;
-    for (int c = 0; c < mh[i].nc; c++) m -= CS[mh[i].c[c]];
-    if (sm[i] >= 0 && sopp[sm[i]] >= 0) m += r[sm[i]];
-    double tie = m - win[i] - lose[i];
-    out[i] = nd.pot * (win[i] + 0.5 * tie) - cp * m;
+  while (ke < no) {
+    const Board::SortedHand& o = opp[ke++];
+    double v = r[o.idx];
+    te += v;
+    ce[o.oc0] += v;
+    ce[o.oc1] += v;
+  }
+  const double pot = nd.pot;
+  for (size_t x = 0; x < mine.size(); x++) {
+    const Board::SortedHand& m = mine[x];
+    double mass = te - ce[m.mc0] - ce[m.mc1] + (m.same >= 0 ? r[m.same] : 0.0);
+    out[m.idx] = pot * half[x] - cp * mass;
   }
 }
 
