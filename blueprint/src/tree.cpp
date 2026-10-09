@@ -7,6 +7,8 @@
 // i.e. "frac pot" means a fraction of the pot AFTER calling, the usual
 // definition of a pot-sized raise. A size that would reach the stack is
 // dropped in favor of the explicit all-in action; duplicate sizes are merged.
+// Once a street's raise cap is reached, no-limit nodes still offer all-in
+// (fold / call / all-in), so a shove is legal at every node with chips behind.
 //
 // Street flow:
 //   * a check closes the street if it is not the first action on the street;
@@ -48,6 +50,10 @@ std::string TreeConfig::describe() const {
       o << ",raise=";
       for (size_t i = 0; i < r.raise_fracs.size(); i++) o << (i ? "/" : "") << r.raise_fracs[i];
       o << ",allin=" << (r.allin ? 1 : 0);
+      // Tree version tag: all-in stays legal at capped nodes (2026-10-09).
+      // Changing the tree text changes the checkpoint fingerprint, so a
+      // checkpoint from the older tree layout is refused instead of loaded.
+      if (r.allin) o << ",capped_allin=1";
     }
   }
   return o.str();
@@ -80,8 +86,17 @@ void legal_actions(const TreeConfig& cfg, const BState& s, std::vector<Act>& out
   } else {
     out.push_back({ACT_CHECK, mine, 0});
   }
-  bool can_raise = s.raises < r.max_raises && theirs < cfg.stack && mine + to_call < cfg.stack;
-  if (!can_raise) return;
+  // A raise of any size needs chips behind for both players.
+  bool chips_behind = theirs < cfg.stack && mine + to_call < cfg.stack;
+  if (!chips_behind) return;
+  if (s.raises >= r.max_raises) {
+    // Raise cap reached. In no-limit the all-in stays legal at every node
+    // (PLAN.md M0): without it a capped tree cannot represent a shove, and
+    // the blueprint learns to exploit an opponent who is forbidden to shove
+    // back. Limit games keep the hard cap.
+    if (!r.limit && r.allin) out.push_back({ACT_ALLIN, cfg.stack, 0});
+    return;
+  }
   uint8_t kind = to_call > 0 ? ACT_RAISE : ACT_BET;
   if (r.limit) {
     out.push_back({kind, std::min(cfg.stack, maxc + r.limit_bet), 0});

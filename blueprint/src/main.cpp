@@ -18,7 +18,11 @@
 // rebuild the exact tree a checkpoint was trained on; a fingerprint of both
 // is stored in every checkpoint and checked on load.
 // ============================================================
+#include <dirent.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
+
+#include <ctime>
 
 #include <algorithm>
 #include <iomanip>
@@ -75,6 +79,23 @@ double max_rss_mb() {
 #else
   return ru.ru_maxrss / 1e3;  // kilobytes on Linux
 #endif
+}
+
+bool file_exists(const std::string& p) {
+  struct stat st;
+  return ::stat(p.c_str(), &st) == 0;
+}
+
+std::vector<std::string> list_dir(const std::string& dir, const std::string& suffix) {
+  std::vector<std::string> out;
+  DIR* d = ::opendir(dir.c_str());
+  if (!d) return out;
+  while (struct dirent* e = ::readdir(d)) {
+    std::string n = e->d_name;
+    if (n.size() > suffix.size() && n.compare(n.size() - suffix.size(), suffix.size(), suffix) == 0) out.push_back(n);
+  }
+  ::closedir(d);
+  return out;
 }
 
 // ---- hold'em setup -------------------------------------------------------------
@@ -409,10 +430,37 @@ int cmd_train(const Args& a) {
   Trainer<HoldemSampler> tr(h->tree, smp, m);
   std::string ckpt = out + "/ckpt.bin";
   if (a.has("resume")) {
-    if (tr.load(ckpt, h->hash)) std::printf("resumed from %s at iteration %lld\n", ckpt.c_str(), (long long)tr.iter);
-    else std::printf("no compatible checkpoint at %s; starting fresh\n", ckpt.c_str());
+    // Try ckpt.bin, then snapshots newest first (names sort by iteration).
+    // If any candidate file exists but none loads, refuse to start: starting
+    // fresh would overwrite hours of training with an empty table.
+    std::vector<std::string> cands;
+    if (file_exists(ckpt)) cands.push_back(ckpt);
+    std::vector<std::string> snaps = list_dir(out + "/snapshots", ".bin");
+    std::sort(snaps.rbegin(), snaps.rend());
+    for (auto& s : snaps) cands.push_back(out + "/snapshots/" + s);
+    bool loaded = false;
+    for (auto& c : cands) {
+      if (tr.load(c, h->hash)) {
+        std::printf("resumed from %s at iteration %lld\n", c.c_str(), (long long)tr.iter);
+        loaded = true;
+        break;
+      }
+      std::printf("could not load %s (wrong tree/abstraction or damaged); trying the next one\n", c.c_str());
+    }
+    if (!loaded && !cands.empty()) die("--resume: checkpoint files exist under " + out + " but none loads");
+    if (!loaded) std::printf("no checkpoint under %s; starting fresh\n", out.c_str());
   }
   double minutes = a.getf("minutes", 25);
+  // --until-epoch T: stop at Unix time T at the latest (a fixed deadline that
+  // survives restarts, unlike --minutes, which counts from process start).
+  if (a.has("until-epoch")) {
+    double left = (double(a.geti("until-epoch", 0)) - double(std::time(nullptr))) / 60.0;
+    if (left <= 0) {
+      std::printf("deadline already passed; nothing to do\n");
+      return 0;
+    }
+    minutes = std::min(minutes, left);
+  }
   int64_t max_iters = a.geti("iters", INT64_MAX);
   double log_every = a.getf("log-every-sec", 30);
   double ckpt_every = a.getf("ckpt-every-min", 5) * 60;

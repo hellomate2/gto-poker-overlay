@@ -9,6 +9,34 @@ No dependencies beyond a C++17 compiler and pthreads. It builds with the
 Apple clang on this Mac and with any recent g++/clang++ on Linux, so the same
 code can be moved to a rented many-core box unchanged.
 
+## Changes on 2026-10-09 (PLAN.md M0, before the overnight run)
+
+* All-in stays legal at every no-limit node where both players have chips
+  behind, including nodes where the street's raise cap is reached; a capped
+  node now offers fold, call, all-in. Limit games (Kuhn, Leduc) keep the hard
+  cap. The tree description gains a `capped_allin=1` tag, so checkpoints from
+  the older tree are refused on load. New sizes from `bp tree`: small has
+  31,938 nodes (was 29,346), 623,940 infosets at 50 buckets and 2,465,340 at
+  200; medium at 200 buckets has 32,033,708 infosets (1,019.8 MB of tables).
+  The run numbers further down were measured on the older tree.
+* Negative-regret pruning skips an action only if the current strategy gives
+  it probability exactly 0. Before, a node whose regrets were all below the
+  threshold (uniform play) could skip every action, return 0 and update
+  nothing; now such a node is explored in full, and the max-regret action is
+  never skipped. Test: `pruning keeps node value` (fails on the old rule).
+* Checkpoints are fsynced before the rename. `train --resume` falls back from
+  `ckpt.bin` to the newest loadable snapshot and refuses to start fresh when
+  checkpoint files exist but none loads. `train --until-epoch T` stops at Unix
+  time T, a deadline that survives restarts. Test: `checkpoint resume is
+  exact` (an interrupted single-thread run, saved and resumed across the
+  Linear-CFR schedule and the pruning start, ends bit-identical to an
+  uninterrupted one).
+* Gates after the change: Kuhn 0.000427 at 4M iterations (1 thread), Leduc
+  0.008750 at 4M (4 threads); `make test` 2,374 checks, 0 failures; a
+  `-fsanitize=address,undefined` build trained the small tree for 46 s on 2
+  threads with pruning and discounting on, then resumed for 19 s, with no
+  sanitizer report.
+
 ## Layout
 
 | File | What it does |
