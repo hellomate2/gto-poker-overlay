@@ -103,7 +103,7 @@ export function renderRingStats(st: RingStats, label: string): string[] {
 
 /** Bot in seat 0 vs a scripted field, button rotating every hand. */
 export async function runRing(opts: {
-  hands: number; seed: number; seats: number; field: string[]; exploit: boolean;
+  hands: number; seed: number; seats: number; field: string[]; exploit: boolean; progress?: boolean;
 }): Promise<RingStats> {
   const { hands, seed, seats, field, exploit } = opts;
   resetFakeIdb();
@@ -119,6 +119,7 @@ export async function runRing(opts: {
     const log = await playRingHand(agents, h % seats, cfg, h + 1);
     accumulateRing(st, log, 0, BB);
     if (exploit) await bot.observe?.(log.finalState);
+    if (opts.progress && (h + 1) % 500 === 0) process.stderr.write(`[ring] ${h + 1}/${hands} hands\n`);
   }
   return st;
 }
@@ -182,7 +183,7 @@ async function main(): Promise<void> {
   realLog(`=== RING: bot (seat 0) vs ${field.join(',')} — ${seats} seats, ${hands} hands, ${START_BB}bb, blinds ${SB}/${BB}, seed ${seed}${exploit ? ', exploit ON' : ''} ===`);
   const t0 = Date.now();
   silence();
-  const st = await runRing({ hands, seed, seats, field, exploit });
+  const st = await runRing({ hands, seed, seats, field, exploit, progress: true });
   unsilence();
   const secs = (Date.now() - t0) / 1000;
   for (const l of renderRingStats(st, 'BOT')) realLog(l);
