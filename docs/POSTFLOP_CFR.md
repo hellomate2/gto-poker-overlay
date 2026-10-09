@@ -107,7 +107,22 @@ Ranges: only the board is removed. Villain combos that share a card with hero's
 actual hand stay in the solve, because villain's strategy has to be computed
 against hero's whole range. The solver already gives conflicting pairs zero
 weight, so hero's own hand is never valued against a combo it blocks. Each side
-is capped at 200 combos (120 on the flop) by dropping the lowest weights first.
+is capped at 200 combos (120 on the flop) by `reduceRange`, which thins the
+range without changing its composition. It picks a threshold tau so that the
+expected number of kept combos equals the cap. Combos at or above tau keep
+their weight. A combo below tau is kept with probability weight / tau and then
+weighs tau, so every combo's expected kept weight equals its original weight.
+The small combos are drawn by systematic sampling (fixed offset, no RNG) along
+an order sorted by made-hand strength on the board, so each strength band keeps
+its share of the weight to within one combo of weight tau.
+
+The cap used to keep the 200 highest weights. A tracker range narrowed by
+villain's bets carries its value hands at high weight and its bluffs and draws
+at low weight, so that cut removed the bluffs and the solver over-folded. On a
+turn spot (Kd 7h 2s Qc, villain bets 150 into 240, 1128 tracked villain combos)
+the old cap folded 99.8% of hero's range and A7 with a call EV of -93 chips.
+With `reduceRange` the range folds 9.6% and A7 calls at +108, against 7.8% and
++109 for the same solve with no cap (tests/solver/subgame-reduce.test.ts).
 If hero's exact hand is missing from hero's range it is added with a negligible
 weight. A combo's regrets depend only on the opponent's reach, so its own weight
 does not change its strategy.

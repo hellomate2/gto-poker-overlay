@@ -43,6 +43,11 @@
 // Usage:
 //   npx tsx sim/match.ts --a DIR_A --b DIR_B [--mode hu|field] [--deals N] [--seed S]
 //                        [--seats N] [--field a,b,c] [--workers K] [--out FILE]
+//                        [--flags-a SPEC] [--flags-b SPEC]
+// --flags-a / --flags-b set GPO_ENGINE_FLAGS (src/core/engine-flags.ts syntax)
+// for that tree's engine only, so A and B can run different flag configs in one
+// process. Without them both trees read the inherited GPO_ENGINE_FLAGS (or
+// their own defaults when it is unset).
 //   npm run sim:match -- --a /path/baseline --b /path/candidate --deals 2000
 // Positive bb/100 means A won.
 // ============================================================
@@ -83,6 +88,29 @@ export interface ShardResult {
   deals: DealResult[];
   pressureA: PressureStats;
   pressureB: PressureStats;
+}
+
+/** Load DecisionEngine and give that tree's engine the flag spec `spec`
+ *  (GPO_ENGINE_FLAGS syntax, resolved against the tree's own defaults). The
+ *  variable is set while the tree's modules are first evaluated, and the flags
+ *  are also set explicitly afterwards, because a tree whose engine-flags module
+ *  was already imported (this script's own tree) would not re-read it.
+ *  `spec` undefined keeps the inherited environment. */
+export async function loadEngineWithFlags(dir: string, spec: string | undefined): Promise<EngineCtor> {
+  if (spec === undefined) return loadEngine(dir);
+  const saved = process.env.GPO_ENGINE_FLAGS;
+  process.env.GPO_ENGINE_FLAGS = spec;
+  try {
+    const ctor = await loadEngine(dir);
+    const flagsFile = resolve(dir, 'src/core/engine-flags.ts');
+    if (!existsSync(flagsFile)) throw new Error(`--flags given but ${dir} has no src/core/engine-flags.ts`);
+    const fm = await import(pathToFileURL(flagsFile).href);
+    fm.setEngineFlags(fm.parseFlagSpec(spec));
+    return ctor;
+  } finally {
+    if (saved === undefined) delete process.env.GPO_ENGINE_FLAGS;
+    else process.env.GPO_ENGINE_FLAGS = saved;
+  }
 }
 
 /** Load DecisionEngine from <dir>/src/core/engine.ts (each dir its own module graph). */
@@ -260,11 +288,14 @@ async function main(): Promise<void> {
     seed: parseInt(String(args.seed ?? '1'), 10),
   };
   const workers = Math.max(1, parseInt(String(args.workers ?? '1'), 10));
+  const flagsA = typeof args['flags-a'] === 'string' ? args['flags-a'] : undefined;
+  const flagsB = typeof args['flags-b'] === 'string' ? args['flags-b'] : undefined;
+  const loadBoth = async () => [await loadEngineWithFlags(dirA, flagsA), await loadEngineWithFlags(dirB, flagsB)];
 
   // Child process: play one shard, emit JSON, exit.
   if (typeof args.shard === 'string') {
     const [k, K] = args.shard.split('/').map(x => parseInt(x, 10));
-    const [A, B] = [await loadEngine(dirA), await loadEngine(dirB)];
+    const [A, B] = await loadBoth();
     silence();
     const r = await runMatchShard(A, B, opts, k, K);
     unsilence();
@@ -276,20 +307,24 @@ async function main(): Promise<void> {
   let deals: DealResult[] = [];
   const pressureA = emptyPressure(), pressureB = emptyPressure();
   if (workers === 1) {
-    const [A, B] = [await loadEngine(dirA), await loadEngine(dirB)];
+    const [A, B] = await loadBoth();
     silence();
     const r = await runMatchShard(A, B, opts);
     unsilence();
     deals = r.deals; addPressure(pressureA, r.pressureA); addPressure(pressureB, r.pressureB);
   } else {
     const base = ['--a', dirA, '--b', dirB, '--mode', mode, '--seats', String(seats), '--field', field.join(','),
-      '--deals', String(opts.deals), '--seed', String(opts.seed)];
+      '--deals', String(opts.deals), '--seed', String(opts.seed),
+      ...(flagsA !== undefined ? ['--flags-a', flagsA] : []), ...(flagsB !== undefined ? ['--flags-b', flagsB] : [])];
     const parts = await Promise.all(Array.from({ length: workers }, (_, k) => runChild(__filename, base, k, workers)));
     for (const r of parts) { deals.push(...r.deals); addPressure(pressureA, r.pressureA); addPressure(pressureB, r.pressureB); }
   }
   const secs = (Date.now() - t0) / 1000;
   const s = summarize(mode, deals, pressureA, pressureB);
   const lines = renderSummary(s, opts, dirA, dirB, secs);
+  if (flagsA !== undefined || flagsB !== undefined) {
+    lines.splice(1, 0, `flags: A = ${flagsA ?? '(inherited)'}, B = ${flagsB ?? '(inherited)'}`);
+  }
   for (const l of lines) realLog(l);
   if (typeof args.out === 'string') {
     writeFileSync(args.out, ['```', ...lines, '```', '', JSON.stringify(s)].join('\n') + '\n', 'utf8');

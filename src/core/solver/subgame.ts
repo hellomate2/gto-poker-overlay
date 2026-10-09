@@ -29,6 +29,7 @@
 
 import { ActionType, CardId, StrategyDistribution, Street } from '../../types/poker';
 import { WeightedRange, normalizeRange } from '../ranges/weighted-range';
+import { evaluateHand } from '../equity/hand-eval';
 import {
   BetAbstraction,
   RangeHand,
@@ -62,8 +63,9 @@ export interface SubgameInput {
   targetExploitabilityPct?: number;
   /** Override parts of the per-street default abstraction. */
   abstraction?: Partial<BetAbstraction>;
-  /** Cap per side; lowest-weight combos are dropped first. Default 200 on the
-   *  turn/river and 120 on the flop. */
+  /** Cap per side. Larger ranges are thinned by reduceRange (weight-preserving
+   *  threshold sampling, stratified by hand strength), never by dropping the
+   *  lowest weights. Default 200 on the turn/river and 120 on the flop. */
   maxCombosPerSide?: number;
   /** Chips hero already put in on THIS street (only used to report the
    *  `raiseTo` street total for bet/raise actions). Default 0. */
@@ -158,8 +160,8 @@ export function solveSubgame(input: SubgameInput): SubgameResult {
   // excludes card-conflicting pairs from every value it computes, so hero's
   // actual hand never "plays against" a combo it blocks.
   const cap = input.maxCombosPerSide ?? (street === 'flop' ? 120 : 200);
-  const villain = capByWeight(toRangeHands(normalizeRange(input.villainRange, input.board)), cap, null);
-  let hero = capByWeight(toRangeHands(normalizeRange(input.heroRange, input.board)), cap, input.heroCards);
+  const villain = reduceRange(toRangeHands(normalizeRange(input.villainRange, input.board)), cap, input.board);
+  let hero = reduceRange(toRangeHands(normalizeRange(input.heroRange, input.board)), cap, input.board);
   const heroIdx = pickHeroIndex(hero, input.heroCards);
   if (heroIdx < 0) hero = [...hero, { cards: input.heroCards, weight: negligibleWeight(hero) }];
   const hi = heroIdx < 0 ? hero.length - 1 : heroIdx;
@@ -285,16 +287,90 @@ function toRangeHands(r: WeightedRange): RangeHand[] {
   return r.combos.map((c, i) => ({ cards: [c[0], c[1]] as [CardId, CardId], weight: r.weights[i] }));
 }
 
-/** Keep the `cap` highest-weight combos (stable on ties); always keep `must`. */
-function capByWeight(r: RangeHand[], cap: number, must: [CardId, CardId] | null): RangeHand[] {
+/**
+ * Shrink a range to at most `cap` combos without biasing its composition.
+ *
+ * The old rule kept the `cap` highest-weight combos. A tracker range that has
+ * been narrowed by villain's bets carries its value hands at high weight and
+ * its bluffs and draws at low weight, so a top-weight cut deleted the bluffs
+ * and the solver folded bluff-catchers against a value-only range.
+ *
+ * This is threshold sampling, the resampling rule of Fearnhead and Clifford,
+ * "On-line inference for hidden Markov models via particle filters", JRSS-B
+ * 2003. A threshold tau is chosen so that the expected number of kept combos
+ * is exactly `cap`:
+ *   - a combo with weight >= tau is kept with its own weight;
+ *   - a combo with weight w < tau is kept with probability w / tau and, when
+ *     kept, gets weight tau.
+ * Every combo's expected kept weight therefore equals its original weight.
+ * The small combos are drawn by systematic sampling (one fixed offset, no RNG)
+ * along an order sorted by made-hand strength on this board, which stratifies
+ * the draw: each made-hand strength band (air, bluff-catchers, value) keeps
+ * its share of the weight to within one combo of weight tau. Draws are not a
+ * separate band; they sit with the made hands of the same rank and are thinned
+ * with them. The result is deterministic for a given range and board.
+ *
+ * Kept weights are rescaled so the kept total equals the input total. Hero's
+ * exact hand is not forced in: solveSubgame adds hero's exact hand with a negligible
+ * weight when it is missing (its own weight does not change its strategy).
+ */
+export function reduceRange(r: RangeHand[], cap: number, board: CardId[]): RangeHand[] {
   if (r.length <= cap) return r;
-  const order = r.map((_, i) => i).sort((a, b) => r[b].weight - r[a].weight || a - b);
-  const keep = new Set(order.slice(0, cap));
-  if (must) {
-    const m = r.findIndex((h) => sameHand(h.cards, must));
-    if (m >= 0) keep.add(m);
+  if (cap < 1) throw new Error('reduceRange needs cap >= 1.');
+  const n = r.length;
+  const w = r.map((h) => (h.weight > 0 ? h.weight : 0));
+  let total = 0;
+  for (const x of w) total += x;
+  if (!(total > 0)) throw new Error('Range has no positive weight.');
+
+  // Threshold: walk the weights from largest down. With the k largest kept
+  // whole, tau_k = (mass of the rest) / (cap - k); stop at the first k whose
+  // next weight is below tau_k.
+  const desc = w.map((_, i) => i).sort((a, b) => w[b] - w[a] || a - b);
+  let rest = total;
+  let k = 0;
+  let tau = rest / cap;
+  while (k < cap - 1 && w[desc[k]] >= tau) {
+    rest -= w[desc[k]];
+    k++;
+    tau = rest / (cap - k);
   }
-  return r.filter((_, i) => keep.has(i));
+  // If every slot but one went to a big combo, the last slot covers the rest.
+  if (w[desc[k]] >= tau) tau = Math.max(tau, w[desc[k]]);
+
+  const big = new Set<number>();
+  for (let i = 0; i < k; i++) big.add(desc[i]);
+  const out: { i: number; weight: number }[] = [];
+  for (const i of big) out.push({ i, weight: w[i] });
+
+  // Small combos, ordered by made-hand strength (ties keep input order), then
+  // systematic sampling with offset 0.5 at inclusion probabilities w / tau.
+  const small: number[] = [];
+  for (let i = 0; i < n; i++) if (!big.has(i) && w[i] > 0) small.push(i);
+  const strength = new Map<number, number>();
+  for (const i of small) strength.set(i, handStrength(r[i].cards, board));
+  small.sort((a, b) => strength.get(a)! - strength.get(b)! || a - b);
+  let cum = 0;
+  let next = 0.5;
+  for (const i of small) {
+    cum += w[i] / tau;
+    if (cum > next) {
+      out.push({ i, weight: tau });
+      next += 1;
+    }
+  }
+
+  let kept = 0;
+  for (const o of out) kept += o.weight;
+  const scale = kept > 0 ? total / kept : 1;
+  out.sort((a, b) => a.i - b.i);
+  return out.map((o) => ({ cards: r[o.i].cards, weight: o.weight * scale }));
+}
+
+/** Made-hand rank of a combo on the board (higher is stronger). */
+function handStrength(cards: [CardId, CardId], board: CardId[]): number {
+  if (board.length < 3) return 0;
+  return evaluateHand([cards[0], cards[1], ...board]);
 }
 
 function sameHand(a: [CardId, CardId], b: [CardId, CardId]): boolean {

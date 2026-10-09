@@ -201,3 +201,35 @@ MULTIWAY_EQUITY. The reasons are in the comment on `DEFAULT_ENGINE_FLAGS`.
 - SUBGAME_SOLVER stops on a 1500 ms budget. Under heavy load a solve can stop
   on time instead of on the 0.3% target, so sim results with it can depend on
   machine load.
+
+## Subgame cap fix (master/fix-subgame-cap, P0-CRIT-1)
+
+`solveSubgame` used to keep the 200 highest-weight combos per side (120 on the
+flop), which cut the bluffs out of narrowed tracker ranges. It now thins ranges
+with `reduceRange` (threshold sampling stratified by hand strength; see
+docs/POSTFLOP_CFR.md). Regression test: tests/solver/subgame-reduce.test.ts
+(8 of its 10 tests fail on the old cap).
+
+A = swarm/next 368b379 with its defaults (FIX_LIVE_VILLAINS only), B = this
+branch with `--flags-b FIX_LIVE_VILLAINS,SUBGAME_SOLVER` (new `sim/match.ts`
+option that sets one tree's flags), `--workers 1`, 2000 deals:
+
+| run | seed 1 | seed 202 |
+|---|---|---|
+| hu, A's bb/100 vs B | -7.58 +/- 15.27 | +5.77 +/- 12.83 |
+| barreler probe, A - B bb/100 | -49.21 +/- 43.19 | -101.34 +/- 43.13 |
+
+Fold to turn barrel, hu: A 59.5% (22/37) vs B 8.3% (3/36) on seed 1, A 55.3%
+(21/38) vs B 11.4% (4/35) on seed 202.
+
+Latency, `sim/latency.ts 200 5 --seats 2`, run at load average 62 to 66:
+
+| config | vs raiser p50 / p95 / max (ms) | vs barreler p50 / p95 / max (ms) |
+|---|---|---|
+| FIX (swarm/next defaults) | 15.1 / 342.3 / 742.4 | 17.8 / 314.9 / 791.1 |
+| FIX+SG (this branch) | 16.0 / 543.5 / 1541.6 | 14.7 / 314.8 / 580.9 |
+
+Subgame path alone (FIX+SG): p95 1195.8 ms vs raiser (n 40), 561.9 ms vs
+barreler (n 33). The slow solves are river spots that run to the 1500 ms
+budget while closing in on the 0.3% target (0.29% to 0.36% at 270 to 350
+iterations under that load).
