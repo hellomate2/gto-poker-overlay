@@ -18,10 +18,20 @@ bin/bp_tests: $(LIB_SRC) tests/test_main.cpp $(HEADERS)
 	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) -Isrc $(LIB_SRC) tests/test_main.cpp -o $@
 
-test: bin/bp_tests
+# --- PLAN.md M3 (compact trainer, src/compact.h): tests/test_scale.cpp ---
+bin/bp_scale_tests: $(LIB_SRC) tests/test_scale.cpp $(HEADERS)
+	@mkdir -p bin
+	$(CXX) $(CXXFLAGS) -Isrc $(LIB_SRC) tests/test_scale.cpp -o $@
+
+test-scale: bin/bp_scale_tests
+	./bin/bp_scale_tests
+# --- end M3 ---
+
+test: bin/bp_tests bin/bp_scale_tests
 	./bin/bp_tests
+	./bin/bp_scale_tests
 
 clean:
 	rm -rf bin
 
-.PHONY: all test clean
+.PHONY: all test test-scale clean
