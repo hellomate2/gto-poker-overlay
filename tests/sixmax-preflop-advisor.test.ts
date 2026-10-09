@@ -7,7 +7,7 @@ vi.mock('../src/storage/db', async () => {
   return { ...actual, getPlayerStats: async () => null, savePlayerStats: async () => {} };
 });
 
-import { getGTOAdvice } from '../src/core/ranges/gto-advisor';
+import { getGTOAdvice, solvePushFold } from '../src/core/ranges/gto-advisor';
 import { DecisionEngine } from '../src/core/engine';
 import { GameState, Player, Position, Action } from '../src/types/poker';
 import { card } from './helpers';
@@ -232,6 +232,31 @@ describe('F3: first-in push/fold only applies heads-up against the big blind', (
       expect(a.scenario).toContain('Short-stack open jam vs 2 behind');
       expect(a.actions[0].action).toBe('All-In');
     }
+  });
+
+  it('SB at 10bb behind a limper jams or folds (no HU table, no 2.5bb chart open)', () => {
+    for (const hole of [['Ah', 'Ad'], ['7h', '2c']] as [string, string][]) {
+      const s = sixMax({
+        hero: 'SB', hole, currentBet: BB, stacks: { SB: 10 * BB }, bets: { CO: BB },
+        preflop: [fold('UTG'), fold('MP'), { type: 'call', playerName: 'CO', amount: BB }, fold('BTN')],
+      });
+      const a = getGTOAdvice(s)!;
+      expect(a.scenario).toContain('Short-stack open jam vs 2 behind');
+      expect(a.actions[0].action).toBe(hole[0] === 'Ah' ? 'All-In' : 'Fold');
+    }
+  });
+
+  it('the push/fold fixed point reproduces the heads-up tables roughly and tightens with players behind', () => {
+    // Heads-up SB vs BB at 10bb: pushfold-nash.ts jams 49.6% and calls 33.3% of
+    // combos; the threshold fixed point lands near that (it orders ranges by
+    // PREFLOP_STRENGTH, not by exact best response).
+    const hu = solvePushFold(BB / 2, 10 * BB, [{ bet: BB, total: 10 * BB }], 0);
+    expect(hu.jamShare).toBeGreaterThan(0.45);
+    expect(hu.jamShare).toBeLessThan(0.65);
+    expect(hu.callShare[0]).toBeGreaterThan(0.28);
+    expect(hu.callShare[0]).toBeLessThan(0.45);
+    const btn = solvePushFold(0, 10 * BB, [{ bet: BB / 2, total: 100 * BB }, { bet: BB, total: 100 * BB }], 0);
+    expect(btn.jamShare).toBeLessThan(hu.jamShare);
   });
 
   it('SB at 10bb folded to (only the BB behind) still uses the push/fold table', () => {

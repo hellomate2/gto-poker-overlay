@@ -7,7 +7,8 @@ import { charts as headsupSolvedCharts } from './headsup-solved';
 import { shoveRange, callRange } from './pushfold-nash';
 import { preflopChartAction, PreflopScenario as PFScenario } from './preflop-charts';
 import { isHeadsUpTable, liveVillainIndexes } from './range-tracker';
-import { JAM_EQUITY, TOP_EQUITY, TOP_FRACTIONS } from './jam-equity';
+import { JAM_EQUITY, JAM_RANGE_FRACTION, TOP_EQUITY, TOP_FRACTIONS } from './jam-equity';
+import { PREFLOP_STRENGTH } from './preflop-strength';
 
 // Effective-stack threshold (in big blinds) at or below which the short-stack
 // push/fold Nash recommendation is surfaced. Pure jam/fold is only correct very
@@ -114,6 +115,37 @@ function equityVsTop(idx: number, frac: number): number {
   const lo = TOP_FRACTIONS[g], hi = TOP_FRACTIONS[g + 1];
   const t = hi > lo ? (f - lo) / (hi - lo) : 0;
   return (row[g] + t * (row[g + 1] - row[g])) / 1000;
+}
+
+/** Equity of class `idx` vs the combos ranked in [lo, hi) of the strength order (TOP_EQUITY differences). */
+function equityVsBand(idx: number, lo: number, hi: number): number {
+  if (hi - lo < 1e-6) return equityVsTop(idx, Math.max(lo, TOP_FRACTIONS[0]));
+  if (lo <= 0) return equityVsTop(idx, hi);
+  return (equityVsTop(idx, hi) * hi - equityVsTop(idx, lo) * lo) / (hi - lo);
+}
+
+/** [start, end) of each hand class in the all-combo PREFLOP_STRENGTH order, as shares of 1326. */
+let strengthSpan: [number, number][] | null = null;
+function classSpan(idx: number): [number, number] {
+  if (!strengthSpan) {
+    const byIdx: [number, number][] = new Array(169);
+    const names: string[] = new Array(169);
+    for (let a = 0; a < 52; a++) for (let b = a + 1; b < 52; b++) names[handGroupIndex(a, b)] = handGroupName(a, b);
+    const order = [...names.keys()].sort((x, y) => (PREFLOP_STRENGTH[names[y]] ?? 0) - (PREFLOP_STRENGTH[names[x]] ?? 0));
+    let cum = 0;
+    for (const i of order) { byIdx[i] = [cum / 1326, (cum + classCombos(i)) / 1326]; cum += classCombos(i); }
+    strengthSpan = byIdx;
+  }
+  return strengthSpan[idx];
+}
+
+/** Share of class `idx` that lies below the strongest `capped` share of combos. */
+function inRangeWeight(idx: number, capped: number): number {
+  if (capped <= 0) return 1;
+  const [a, b] = classSpan(idx);
+  if (a >= capped) return 1;
+  if (b <= capped) return 0;
+  return (b - capped) / (b - a);
 }
 
 const SIX_MAX_ORDER: Position[] = ['UTG', 'MP', 'CO', 'BTN', 'SB', 'BB'];
@@ -322,70 +354,143 @@ function jamCallDecision(
 }
 
 /**
- * Open-jam or fold for a short (<= PUSHFOLD_MAX_BB) first-in hero with two or
- * more live players still to act (the BTN with both blinds behind). The
- * heads-up shove table does not apply: each extra player behind is another
- * chance to be called. Chip EV of jamming, relative to folding:
- *   - each player j behind calls with the heads-up BB Nash call range at the
- *     effective stack between hero and j (pushfold-nash.ts callRange). That is
- *     the BB's equilibrium reply to the much wider heads-up SB shove range, so
- *     it overstates how often j calls a tighter ring-table jam and the rule
- *     errs toward folding. j's range is taken as the strongest |callRange|
- *     combos, and hero's equity against it comes from TOP_EQUITY;
- *   - EV sums over every subset of callers: nobody calls -> hero wins the
- *     posted chips; otherwise hero risks the biggest caller's capped stack,
- *     and its share of the pot is the product of its heads-up equities (the
- *     same approximation jamCallDecision uses).
- * Jam iff that EV beats folding (which forfeits hero's own posted chips).
+ * One player still to act behind a short open-jam: chips in front, total chips
+ * in the hand, and `capped`: the share of the strongest combos (PREFLOP_STRENGTH
+ * order) this player cannot hold, e.g. a limper who would have raised those.
+ */
+export interface JamCaller { bet: number; total: number; capped?: number }
+
+export interface PushFoldSolution {
+  /** Share of all combos hero jams. */
+  jamShare: number;
+  /** Per caller: P(call | that caller's range). */
+  callShare: number[];
+  /** Per hand class (handGroupIndex): jam? */
+  jam: boolean[];
+}
+
+/**
+ * Chip-EV push/fold fixed point for a first-in short stack with one or more
+ * players still to act, over threshold strategies (jam the strongest r of
+ * hands, each player behind calls with the strongest c_j), the way the
+ * Sklansky-Chubukov and push/fold Nash charts are computed:
+ *   - caller j calls with the hands in its range whose equity against hero's
+ *     top-r range is at least its price C_j / W_j (calling alone; chips
+ *     already in front of others are dead money for it). A capped caller (a
+ *     limper) holds only hands below its cap, so its calls sit in a strength
+ *     band rather than at the top;
+ *   - hero jams iff the chip EV of jamming beats folding, summed over every
+ *     subset of callers: nobody calls -> hero takes the chips in front;
+ *     otherwise hero risks the biggest caller's capped stack and its share of
+ *     the pot is the product of its heads-up equities vs each caller's
+ *     calling hands (winning against each opponent is positively correlated through
+ *     hero's final hand, so the product tends to understate it);
+ *   - r moves toward the jam share this implies with step 1/(t+2), as in
+ *     fictitious play, until the step is negligible.
+ * Equities come from TOP_EQUITY (169x169 all-in matrix, ranges ordered by
+ * PREFLOP_STRENGTH), so "top r" is an approximation of the exact ranges.
+ * Heads-up SB vs BB at 10bb this jams 57.8% and calls 37.9% of combos, against
+ * 49.6% and 33.3% in the pushfold-nash.ts tables (scratchpad hu.mts probe;
+ * tests/sixmax-preflop-advisor.test.ts pins the range). The BTN at 10bb with
+ * both 100bb blinds behind jams 30.0%.
+ */
+export function solvePushFold(heroBet: number, heroTotal: number, callers: JamCaller[], deadOther: number): PushFoldSolution {
+  const k = callers.length;
+  const caps = callers.map(c => Math.min(c.total, heroTotal));
+  const sumBets = callers.reduce((t, c) => t + c.bet, 0);
+  type Reply = { p: number; lo: number; hi: number };
+  const evJam = (h: number, rs: Reply[]): number => {
+    const cs = rs.map(x => x.p);
+    const eqVs = rs.map(x => equityVsBand(h, x.lo, x.hi));
+    let ev = 0;
+    for (let mask = 0; mask < (1 << k); mask++) {
+      let prob = 1;
+      for (let j = 0; j < k; j++) prob *= (mask & (1 << j)) ? cs[j] : 1 - cs[j];
+      if (prob === 0) continue;
+      if (mask === 0) { ev += prob * (deadOther + sumBets); continue; }
+      let risk = 0;
+      for (let j = 0; j < k; j++) if (mask & (1 << j)) risk = Math.max(risk, caps[j]);
+      let pot = risk + deadOther, eq = 1;
+      for (let j = 0; j < k; j++) {
+        if (mask & (1 << j)) { pot += Math.min(caps[j], risk); eq *= eqVs[j]; }
+        else pot += Math.min(callers[j].bet, risk);
+      }
+      ev += prob * (eq * pot - risk);
+    }
+    return ev; // net chips vs the start of the hand; folding nets -heroBet
+  };
+  // Caller j's reply to a top-r jam: it calls with the hands in its range
+  // whose equity vs top-r meets its price C_j / W_j (calling alone; chips in
+  // front of the others are dead money for it). p = P(call | j's range);
+  // [lo, hi) = where those hands sit in the all-combo strength order.
+  const replies = (r: number): Reply[] => callers.map((c, j) => {
+    const o = Math.min(0.95, Math.max(0, c.capped ?? 0));
+    const callJ = caps[j] - c.bet;
+    if (callJ <= 0) return { p: 1, lo: o, hi: 1 };
+    let winJ = 2 * caps[j] + deadOther;
+    callers.forEach((x, i) => { if (i !== j) winJ += Math.min(x.bet, caps[j]); });
+    const need = callJ / winJ;
+    let n = 0;
+    for (let h = 0; h < 169; h++) {
+      const w = inRangeWeight(h, o);
+      if (w > 0 && equityVsTop(h, r) >= need) n += w * classCombos(h);
+    }
+    const share = n / 1326;
+    return { p: Math.min(1, share / (1 - o)), lo: o, hi: Math.min(1, o + share) };
+  });
+  // Fictitious-play style averaging (step 1/(t+2)): hero's best-response jam
+  // set is not itself a "top r" set, so plain or half-step updates cycle
+  // between two widths; the averaged width settles.
+  let r = 0.5;
+  let cs = replies(r);
+  let jam: boolean[] = [];
+  for (let it = 0; it < 200; it++) {
+    cs = replies(r);
+    jam = [];
+    let n = 0;
+    for (let h = 0; h < 169; h++) {
+      const j = evJam(h, cs) > -heroBet;
+      jam.push(j);
+      if (j) n += classCombos(h);
+    }
+    const r2 = Math.max(TOP_FRACTIONS[0], n / 1326);
+    const step = (r2 - r) / (it + 2);
+    if (it > 20 && Math.abs(step) < 1e-4) break;
+    r += step;
+  }
+  let share = 0;
+  jam.forEach((j, h) => { if (j) share += classCombos(h); });
+  return { jamShare: share / 1326, callShare: cs.map(x => x.p), jam };
+}
+
+/**
+ * Open-jam or fold for a short (<= PUSHFOLD_MAX_BB) first-in hero at a ring
+ * table with two or more live players still to act: the BTN with both blinds
+ * behind, or the SB/BTN behind limpers (limpers are treated as callers with
+ * an uncapped range, which makes hero jam tighter than against real limpers). The heads-up shove table does not
+ * apply (each extra player behind is another chance to be called, and limps
+ * add dead money), and an open-raise off 10bb is a leak, so solve the push/fold
+ * fixed point for this exact table.
  */
 function shortStackOpenJam(state: GameState, live: number[], c1: number, c2: number): boolean {
   const hero = state.players[state.heroIndex];
-  const bb = state.bigBlind || 1;
-  const heroIdx = handGroupIndex(c1, c2);
-  const H = totalChips(hero);
-  const heroBet = hero.currentBet || 0;
   const liveSet = new Set(live);
+  let deadOther = 0;
+  state.players.forEach((p, i) => { if (i !== state.heroIndex && !liveSet.has(i)) deadOther += p.currentBet || 0; });
+  // A limper (in for the big blind without being it) would have raised its
+  // position's 6-max RFI range, so its range is capped by that share
+  // (JAM_RANGE_FRACTION, the same charts range-tracker.ts uses); the blinds
+  // are uncapped.
+  const bb = state.bigBlind || 1;
   const callers = live.map(j => {
-    const pj = state.players[j];
-    const cap = Math.min(totalChips(pj), H);
-    const c = comboShare(callRange(cap / bb));
-    return { cap, bet: pj.currentBet || 0, c, eqVs: equityVsTop(heroIdx, c) };
+    const p = state.players[j];
+    const pos = chartPos6(p.position);
+    const limper = pos !== 'BB' && (p.currentBet || 0) >= bb;
+    const capped = limper ? (JAM_RANGE_FRACTION[`${pos}-RFI`] ?? JAM_RANGE_FRACTION['UTG-RFI']) : 0;
+    return { bet: p.currentBet || 0, total: totalChips(p), capped };
   });
-  // Chips already in front of players who are not live (folded blinds) are dead.
-  let deadFolded = 0;
-  state.players.forEach((p, i) => { if (i !== state.heroIndex && !liveSet.has(i)) deadFolded += p.currentBet || 0; });
-
-  let ev = 0;
-  const k = callers.length;
-  for (let mask = 0; mask < (1 << k); mask++) {
-    let prob = 1;
-    for (let j = 0; j < k; j++) prob *= (mask & (1 << j)) ? callers[j].c : 1 - callers[j].c;
-    if (prob === 0) continue;
-    if (mask === 0) {
-      let won = deadFolded;
-      for (const cl of callers) won += cl.bet;
-      ev += prob * won;
-      continue;
-    }
-    let risk = 0;
-    for (let j = 0; j < k; j++) if (mask & (1 << j)) risk = Math.max(risk, callers[j].cap);
-    let pot = risk + deadFolded, eq = 1;
-    for (let j = 0; j < k; j++) {
-      const cl = callers[j];
-      if (mask & (1 << j)) { pot += Math.min(cl.cap, risk); eq *= cl.eqVs; }
-      else pot += Math.min(cl.bet, risk);
-    }
-    // Net chips relative to the start of the hand: win eq * pot, pay `risk`.
-    ev += prob * (eq * pot - risk);
-  }
-  return ev > -heroBet;
-}
-
-/** Share of all 1326 combos in a set of hand-class names. */
-function comboShare(hands: Set<string>): number {
-  let n = 0;
-  for (const h of hands) n += h.length === 2 ? 6 : h.endsWith('s') ? 4 : 12;
-  return n / 1326;
+  const sol = solvePushFold(hero.currentBet || 0, totalChips(hero), callers, deadOther);
+  return sol.jam[handGroupIndex(c1, c2)];
 }
 
 export interface GTOAdvice {
@@ -609,14 +714,14 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
       };
     }
 
-    // The BTN first-in at a ring table with both blinds (and any limpers) still
-    // to act: not the heads-up table above, but still a jam-or-fold stack
-    // depth. Falling through to the 6-max open chart here opened 2.5bb with a
-    // 45% range off a 10bb stack and then had to fold to the blinds' shoves
-    // (measured: sim/match.ts --stacks 10,100,8,100,15,100 seed 202, 2000
-    // deals, restoring the HU shove table beat the chart fall-through by
-    // +26.31 bb/100, 95% CI +/-22.82). See shortStackOpenJam for the rule.
-    if (firstIn && !headsUp && live.length >= 2 && effStackBB <= PUSHFOLD_MAX_BB && hero.position === 'BTN') {
+    // The BTN (or the SB behind limpers) first-in at a ring table with two or
+    // more players still to act: not the heads-up table above, but still a
+    // jam-or-fold stack depth. Falling through to the 6-max open chart here
+    // opened 2.5bb off a 10bb stack and then folded to shoves (measured:
+    // sim/match.ts --stacks 10,100,8,100,15,100 seed 202, 2000 deals,
+    // restoring the HU shove table beat the chart fall-through by +26.31
+    // bb/100, 95% CI +/-22.82). See shortStackOpenJam for the rule.
+    if (firstIn && !headsUp && live.length >= 2 && effStackBB <= PUSHFOLD_MAX_BB && (hero.position === 'BTN' || hero.position === 'SB')) {
       const inShove = shortStackOpenJam(state, live, c1, c2);
       return {
         scenario: `Short-stack open jam vs ${live.length} behind (${effStackBB.toFixed(0)}bb eff)`,
