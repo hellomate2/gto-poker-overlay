@@ -1,0 +1,14 @@
+CMD: GPO_ENGINE_FLAGS=DEFENSE --mode hu --deals 2000 --seed 101 load={ 9.14 11.27 12.87 }
+=== MATCH (heads-up duplicate, 2000 deals x 2 seatings = 4000 hands), seed 101, 100bb, blinds 10/20 ===
+A = /Users/rg/Downloads/gto-poker-overlay (swarm/base@b39bc8b)
+B = /Users/rg/Downloads/gpo-wt/integrate (swarm/integrate@fc10eaf)
+A vs B: +16.59 bb/100 for A, 95% CI ±18.45  (sd per deal pair 8.42 bb)
+  -> no significant difference at 95%
+  fold-to-raise (postflop)   A 44.6% (29/65)          B 6.9% (2/29)            A-B +37.7pp ±15.2
+  fold-to-flop-bet           A 79.7% (330/414)        B 29.2% (121/414)        A-B +50.5pp ±5.8
+  fold-to-turn-barrel        A 51.4% (18/35)          B 24.6% (30/122)         A-B +26.8pp ±18.2
+  fold-to-river-bet          A 78.0% (85/109)         B 31.9% (45/141)         A-B +46.1pp ±10.9
+  turn barrel                A 53.4% (127/238)        B 46.8% (36/77)          A-B +6.6pp ±12.8
+  river barrel               A 47.4% (72/152)         B 34.5% (10/29)          A-B +12.9pp ±19.0
+(262s wall, 15.3 games/s)
+EXIT 0 after 262s

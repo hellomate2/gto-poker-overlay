@@ -1,0 +1,13 @@
+=== MATCH (heads-up duplicate, 300 deals x 2 seatings = 600 hands), seed 3, 100bb, blinds 10/20 ===
+A = /Users/rg/Downloads/gpo-wt/int-prev (HEAD@479307a)
+B = /Users/rg/Downloads/gpo-wt/integrate (swarm/integrate@479307a+dirty)
+A vs B: +0.00 bb/100 for A, 95% CI ±0.00  (sd per deal pair 0.00 bb)
+  -> no significant difference at 95%
+  fold-to-raise (postflop)   A 17.6% (3/17)           B 17.6% (3/17)           A-B +0.0pp ±25.6
+  fold-to-flop-bet           A 71.1% (54/76)          B 71.1% (54/76)          A-B +0.0pp ±14.4
+  fold-to-turn-barrel        A 50.0% (3/6)            B 50.0% (3/6)            A-B +0.0pp ±56.6
+  fold-to-river-bet          A 75.0% (21/28)          B 75.0% (21/28)          A-B +0.0pp ±22.7
+  turn barrel                A 65.0% (13/20)          B 65.0% (13/20)          A-B +0.0pp ±29.6
+  river barrel               A 83.3% (5/6)            B 83.3% (5/6)            A-B +0.0pp ±42.2
+(34s wall, 17.8 games/s)
+EXIT 0

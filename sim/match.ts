@@ -43,18 +43,22 @@
 // Usage:
 //   npx tsx sim/match.ts --a DIR_A --b DIR_B [--mode hu|field] [--deals N] [--seed S]
 //                        [--seats N] [--field a,b,c] [--workers K] [--out FILE]
-//                        [--flags-a SPEC] [--flags-b SPEC] [--stacks B0,B1,...]
+//                        [--flags-a SPEC] [--flags-b SPEC]
+//                        [--a-agent SPEC] [--b-agent SPEC] [--start-bb N] [--stacks B0,B1,...]
 // --stacks gives every seat its own starting stack in big blinds (seat 0 is the
 // engine under test; the button still rotates with the deal index, so seat 0
-// plays every position at its fixed depth). Without it every seat starts each
-// deal at 100bb. Short stacks reach the push/fold and facing-a-jam paths that a
-// 100bb table never does; scripted opponents at 15bb or less shove instead of
-// raising (see agents.ts SHORT_JAM_BB). Example, a short-stack 6-max field:
+// plays every position at its fixed depth); it overrides --start-bb. Without
+// either, every seat starts each deal at 100bb. Short stacks reach the
+// push/fold and facing-a-jam paths that a 100bb table never does; scripted
+// opponents at 15bb or less shove instead of raising (see agents.ts
+// SHORT_JAM_BB). Example, a short-stack 6-max field:
 //   --mode field --seats 6 --stacks 10,100,8,100,15,100
 // --flags-a / --flags-b set GPO_ENGINE_FLAGS (src/core/engine-flags.ts syntax)
 // for that tree's engine only, so A and B can run different flag configs in one
 // process. Without them both trees read the inherited GPO_ENGINE_FLAGS (or
 // their own defaults when it is unset).
+// --a-agent / --b-agent SPEC: engine (default) or blueprint:<ckpt> (BlueprintAgent
+//   over `bp serve`, flags from GPO_BP_FLAGS; see sim/blueprint-serve.ts)
 //   npm run sim:match -- --a /path/baseline --b /path/candidate --deals 2000
 // Positive bb/100 means A won.
 // ============================================================
@@ -68,6 +72,7 @@ import { playRingHand, RingConfig, SeatAgent, SeatView, makeRng, mixSeed, shuffl
 import { makeBotAgent, makeOpponent, archetypeNames, EngineCtor } from './agents';
 import { PressureStats, emptyPressure, accumulatePressure, addPressure, pressureLines, pressureDiffLines, Running, bb100WithCI } from './stats';
 import { DEFAULT_FIELD } from './ring-run';
+import { makeSeatAgent, ClosableSeat } from './seat-agents';
 
 const BB = 20, SB = 10, START_BB = 100;
 const JSON_TAG = '@@MATCH_JSON@@';
@@ -85,7 +90,14 @@ export interface MatchOptions {
   seed: number;
   seats: number;          // field mode only (hu is always 2)
   field: string[];        // field mode: archetypes for seats 1..N-1 (cycled)
-  /** Optional per-seat starting stacks in big blinds (length = seats). */
+  // ---- seat agents (sim/seat-agents.ts) ----
+  /** Agent spec for side A / B: undefined or 'engine' = the DecisionEngine
+   *  passed in; 'blueprint:<ckpt>' = BlueprintAgent over `bp serve`. */
+  aAgent?: string;
+  bAgent?: string;
+  /** Starting stack in big blinds (default START_BB = 100). */
+  startBB?: number;
+  /** Optional per-seat starting stacks in big blinds (length = seats); overrides startBB. */
   stacksBB?: number[];
 }
 
@@ -97,6 +109,8 @@ export interface ShardResult {
   deals: DealResult[];
   pressureA: PressureStats;
   pressureB: PressureStats;
+  /** Notes from non-engine agents (e.g. blueprint fallback counts). */
+  agentNotes?: string[];
 }
 
 /** Load DecisionEngine and give that tree's engine the flag spec `spec`
@@ -144,14 +158,16 @@ function seatProxy(inner: SeatAgent, name: string): SeatAgent {
 export async function runMatchShard(
   engA: EngineCtor, engB: EngineCtor, opts: MatchOptions, shardIndex = 0, shardCount = 1,
 ): Promise<ShardResult> {
-  const botA = makeBotAgent('A', { engineClass: engA });
-  const botB = makeBotAgent('B', { engineClass: engB });
+  // Seat agents: DecisionEngine by default, or another agent kind by spec.
+  const repoDir = resolve(__dirname, '..');
+  const botA: ClosableSeat = opts.aAgent ? await makeSeatAgent(opts.aAgent, 'A', engA, repoDir) : makeBotAgent('A', { engineClass: engA });
+  const botB: ClosableSeat = opts.bAgent ? await makeSeatAgent(opts.bAgent, 'B', engB, repoDir) : makeBotAgent('B', { engineClass: engB });
   const pressureA = emptyPressure(), pressureB = emptyPressure();
   const deals: DealResult[] = [];
   const n = opts.mode === 'hu' ? 2 : opts.seats;
   if (opts.stacksBB && opts.stacksBB.length !== n) throw new Error(`--stacks needs ${n} values, got ${opts.stacksBB.length}`);
   const cfg: RingConfig = {
-    bb: BB, sb: SB, startStackBB: START_BB, rng: () => { throw new Error('deck is always supplied'); },
+    bb: BB, sb: SB, startStackBB: opts.startBB ?? START_BB, rng: () => { throw new Error('deck is always supplied'); },
     ...(opts.stacksBB ? { seatStacks: opts.stacksBB.map(x => Math.round(x * BB)) } : {}),
   };
   const field: SeatAgent[] = [];
@@ -189,7 +205,12 @@ export async function runMatchShard(
       accumulatePressure(pressureB, gb.actions, 0);
     }
   }
-  return { deals, pressureA, pressureB };
+  const agentNotes: string[] = [];
+  for (const [side, b] of [['A', botA], ['B', botB]] as const) {
+    if (b.describe) agentNotes.push(`${side}: ${b.describe()}`);
+    b.close?.();
+  }
+  return agentNotes.length ? { deals, pressureA, pressureB, agentNotes } : { deals, pressureA, pressureB };
 }
 
 export interface MatchSummary {
@@ -237,10 +258,10 @@ function renderSummary(s: MatchSummary, opts: MatchOptions, dirA: string, dirB: 
   const what = s.mode === 'hu'
     ? `heads-up duplicate, ${s.deals} deals x 2 seatings = ${s.hands} hands`
     : `field duplicate, ${opts.seats} seats vs [${opts.field.join(',')}], ${s.deals} deals, each engine plays every deal`;
-  const depth = opts.stacksBB ? `stacks ${opts.stacksBB.join(',')}bb by seat` : `${START_BB}bb`;
+  const depth = opts.stacksBB ? `stacks ${opts.stacksBB.join(',')}bb by seat` : `${opts.startBB ?? START_BB}bb`;
   L.push(`=== MATCH (${what}), seed ${opts.seed}, ${depth}, blinds ${SB}/${BB} ===`);
-  L.push(`A = ${dirA} (${gitDescribe(dirA)})`);
-  L.push(`B = ${dirB} (${gitDescribe(dirB)})`);
+  L.push(`A = ${opts.aAgent && opts.aAgent !== 'engine' ? opts.aAgent : `${dirA} (${gitDescribe(dirA)})`}`);
+  L.push(`B = ${opts.bAgent && opts.bAgent !== 'engine' ? opts.bAgent : `${dirB} (${gitDescribe(dirB)})`}`);
   if (s.mode === 'hu') {
     L.push(`A vs B: ${sign(s.diff.bb100)} bb/100 for A, 95% CI ±${s.diff.ci95.toFixed(2)}  (sd per deal pair ${s.diff.sdPerDealBb.toFixed(2)} bb)`);
   } else {
@@ -305,6 +326,9 @@ async function main(): Promise<void> {
     mode, seats, field, stacksBB,
     deals: parseInt(String(args.deals ?? '2000'), 10),
     seed: parseInt(String(args.seed ?? '1'), 10),
+    aAgent: typeof args['a-agent'] === 'string' ? args['a-agent'] : undefined,
+    bAgent: typeof args['b-agent'] === 'string' ? args['b-agent'] : undefined,
+    startBB: typeof args['start-bb'] === 'string' ? parseInt(args['start-bb'], 10) : undefined,
   };
   const workers = Math.max(1, parseInt(String(args.workers ?? '1'), 10));
   const flagsA = typeof args['flags-a'] === 'string' ? args['flags-a'] : undefined;
@@ -324,6 +348,7 @@ async function main(): Promise<void> {
 
   const t0 = Date.now();
   let deals: DealResult[] = [];
+  const agentNotes: string[] = [];
   const pressureA = emptyPressure(), pressureB = emptyPressure();
   if (workers === 1) {
     const [A, B] = await loadBoth();
@@ -331,13 +356,20 @@ async function main(): Promise<void> {
     const r = await runMatchShard(A, B, opts);
     unsilence();
     deals = r.deals; addPressure(pressureA, r.pressureA); addPressure(pressureB, r.pressureB);
+    agentNotes.push(...(r.agentNotes ?? []));
   } else {
     const base = ['--a', dirA, '--b', dirB, '--mode', mode, '--seats', String(seats), '--field', field.join(','),
       '--deals', String(opts.deals), '--seed', String(opts.seed),
       ...(stacksBB ? ['--stacks', stacksBB.join(',')] : []),
       ...(flagsA !== undefined ? ['--flags-a', flagsA] : []), ...(flagsB !== undefined ? ['--flags-b', flagsB] : [])];
+    if (opts.aAgent) base.push('--a-agent', opts.aAgent);
+    if (opts.bAgent) base.push('--b-agent', opts.bAgent);
+    if (opts.startBB !== undefined) base.push('--start-bb', String(opts.startBB));
     const parts = await Promise.all(Array.from({ length: workers }, (_, k) => runChild(__filename, base, k, workers)));
-    for (const r of parts) { deals.push(...r.deals); addPressure(pressureA, r.pressureA); addPressure(pressureB, r.pressureB); }
+    for (const r of parts) {
+      deals.push(...r.deals); addPressure(pressureA, r.pressureA); addPressure(pressureB, r.pressureB);
+      agentNotes.push(...(r.agentNotes ?? []));
+    }
   }
   const secs = (Date.now() - t0) / 1000;
   const s = summarize(mode, deals, pressureA, pressureB);
@@ -345,6 +377,7 @@ async function main(): Promise<void> {
   if (flagsA !== undefined || flagsB !== undefined) {
     lines.splice(1, 0, `flags: A = ${flagsA ?? '(inherited)'}, B = ${flagsB ?? '(inherited)'}`);
   }
+  for (const n of agentNotes) lines.push(`  agent ${n}`);
   for (const l of lines) realLog(l);
   if (typeof args.out === 'string') {
     writeFileSync(args.out, ['```', ...lines, '```', '', JSON.stringify(s)].join('\n') + '\n', 'utf8');

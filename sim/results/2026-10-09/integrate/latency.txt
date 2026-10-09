@@ -1,0 +1,160 @@
+CMD: GPO_ENGINE_FLAGS=none npx tsx sim/latency.ts 200 5 --seats 2 --field raiser
+=== decision latency: flags none, 200 hands, 2 seats vs [raiser], seed 5 (8s wall) ===
+all            n=  328  p50     5.8  p95   146.0  p99   263.4  max   615.1 ms
+preflop        n=  141  p50     5.4  p95    18.2  p99    25.0  max    28.0 ms
+flop           n=   95  p50    12.1  p95   263.1  p99   615.1  max   615.1 ms
+turn           n=   56  p50     7.0  p95    23.8  p99    36.2  max    36.2 ms
+river          n=   36  p50     4.2  p95    13.2  p99    92.1  max    92.1 ms
+path:lead-policy n=  103  p50     5.9  p95   156.9  p99   263.4  max   273.0 ms
+path:net       n=   78  p50     6.7  p95   205.5  p99   615.1  max   615.1 ms
+path:preflop   n=  141  p50     5.4  p95    18.2  p99    25.0  max    28.0 ms
+path:ranged/other n=    6  p50    17.1  p95   296.1  p99   296.1  max   296.1 ms
+CMD: GPO_ENGINE_FLAGS=none npx tsx sim/latency.ts 200 5 --seats 6
+=== decision latency: flags none, 200 hands, 6 seats vs [tag,lag,nit,station,tag], seed 5 (16s wall) ===
+all            n=  380  p50     7.3  p95   188.4  p99   332.8  max   382.5 ms
+preflop        n=  210  p50     5.1  p95     9.6  p99    11.2  max    14.0 ms
+flop           n=   95  p50   125.0  p95   320.9  p99   382.5  max   382.5 ms
+turn           n=   51  p50    10.9  p95    20.7  p99    30.0  max    30.0 ms
+river          n=   24  p50     3.8  p95     6.6  p99     9.6  max     9.6 ms
+path:preflop   n=  210  p50     5.1  p95     9.6  p99    11.2  max    14.0 ms
+path:ranged/other n=  170  p50    68.0  p95   263.1  p99   357.0  max   382.5 ms
+ 2:46  up 1 day,  6:55, 1 user, load averages: 8.62 10.03 15.85
+CMD: GPO_ENGINE_FLAGS=RANGE_TRACKER npx tsx sim/latency.ts 200 5 --seats 2 --field raiser
+=== decision latency: flags RANGE_TRACKER, 200 hands, 2 seats vs [raiser], seed 5 (6s wall) ===
+all            n=  352  p50     4.9  p95   111.3  p99   119.2  max   126.1 ms
+preflop        n=  141  p50     4.7  p95     8.5  p99    11.3  max    28.8 ms
+flop           n=   96  p50     6.5  p95   119.2  p99   126.1  max   126.1 ms
+turn           n=   70  p50     6.6  p95    15.3  p99    17.0  max    17.0 ms
+river          n=   45  p50     4.5  p95     8.0  p99    10.2  max    10.2 ms
+path:lead-policy n=  105  p50     4.4  p95    63.0  p99    74.1  max    96.8 ms
+path:net       n=   94  p50     8.0  p95   118.1  p99   126.1  max   126.1 ms
+path:preflop   n=  141  p50     4.7  p95     8.5  p99    11.3  max    28.8 ms
+path:ranged/other n=   12  p50     8.6  p95   123.5  p99   123.5  max   123.5 ms
+CMD: GPO_ENGINE_FLAGS=RANGE_TRACKER npx tsx sim/latency.ts 200 5 --seats 6
+=== decision latency: flags RANGE_TRACKER, 200 hands, 6 seats vs [tag,lag,nit,station,tag], seed 5 (29s wall) ===
+all            n=  405  p50     5.9  p95   357.9  p99   466.4  max   509.3 ms
+preflop        n=  210  p50     4.3  p95     8.6  p99    10.2  max    17.9 ms
+flop           n=   98  p50   242.6  p95   466.4  p99   509.3  max   509.3 ms
+turn           n=   65  p50    13.9  p95    23.0  p99    31.3  max    31.3 ms
+river          n=   32  p50     4.3  p95     9.0  p99    11.0  max    11.0 ms
+path:preflop   n=  210  p50     4.3  p95     8.6  p99    10.2  max    17.9 ms
+path:ranged/other n=  195  p50    56.3  p95   442.1  p99   502.4  max   509.3 ms
+ 2:46  up 1 day,  6:55, 1 user, load averages: 8.07 9.74 15.51
+CMD: GPO_ENGINE_FLAGS=FIX_LIVE_VILLAINS,MULTIWAY_EQUITY npx tsx sim/latency.ts 200 5 --seats 2 --field raiser
+=== decision latency: flags FIX_LIVE_VILLAINS+MULTIWAY_EQUITY, 200 hands, 2 seats vs [raiser], seed 5 (5s wall) ===
+all            n=  328  p50     4.0  p95   104.2  p99   189.8  max   221.2 ms
+preflop        n=  141  p50     4.1  p95     5.1  p99     9.2  max    17.9 ms
+flop           n=   95  p50     4.0  p95   178.2  p99   221.2  max   221.2 ms
+turn           n=   56  p50     5.2  p95    14.2  p99    18.1  max    18.1 ms
+river          n=   36  p50     3.6  p95     4.4  p99     4.9  max     4.9 ms
+path:lead-policy n=  103  p50     3.9  p95   110.9  p99   178.2  max   199.1 ms
+path:net       n=   78  p50     4.2  p95   177.8  p99   204.6  max   204.6 ms
+path:preflop   n=  141  p50     4.1  p95     5.1  p99     9.2  max    17.9 ms
+path:ranged/other n=    6  p50    13.6  p95   221.2  p99   221.2  max   221.2 ms
+CMD: GPO_ENGINE_FLAGS=FIX_LIVE_VILLAINS,MULTIWAY_EQUITY npx tsx sim/latency.ts 200 5 --seats 6
+=== decision latency: flags FIX_LIVE_VILLAINS+MULTIWAY_EQUITY, 200 hands, 6 seats vs [tag,lag,nit,station,tag], seed 5 (5s wall) ===
+all            n=  472  p50     7.9  p95    16.4  p99    18.2  max    97.9 ms
+preflop        n=  244  p50     7.0  p95     8.6  p99    11.7  max    26.7 ms
+flop           n=  158  p50    11.0  p95    17.0  p99    90.5  max    97.9 ms
+turn           n=   51  p50     9.1  p95    15.7  p99    17.4  max    17.4 ms
+river          n=   19  p50     5.2  p95     9.5  p99     9.5  max     9.5 ms
+path:lead-policy n=    9  p50     4.2  p95    97.9  p99    97.9  max    97.9 ms
+path:net       n=   10  p50     4.0  p95    90.5  p99    90.5  max    90.5 ms
+path:preflop   n=  244  p50     7.0  p95     8.6  p99    11.7  max    26.7 ms
+path:ranged/other n=  209  p50    10.3  p95    16.9  p99    17.8  max    18.5 ms
+ 2:47  up 1 day,  6:55, 1 user, load averages: 7.60 9.58 15.38
+CMD: GPO_ENGINE_FLAGS=DEFENSE npx tsx sim/latency.ts 200 5 --seats 2 --field raiser
+=== decision latency: flags DEFENSE, 200 hands, 2 seats vs [raiser], seed 5 (11s wall) ===
+all            n=  392  p50     4.4  p95   122.6  p99   141.8  max   220.9 ms
+preflop        n=  141  p50     4.2  p95     5.2  p99     9.0  max    17.4 ms
+flop           n=   95  p50   110.1  p95   135.2  p99   220.9  max   220.9 ms
+turn           n=   87  p50    11.2  p95    58.6  p99    69.5  max    69.5 ms
+river          n=   69  p50     4.5  p95     5.9  p99     7.7  max     7.7 ms
+path:defense   n=  110  p50    57.1  p95   124.8  p99   135.2  max   141.8 ms
+path:lead-policy n=  134  p50     3.9  p95   110.1  p99   179.3  max   200.6 ms
+path:preflop   n=  141  p50     4.2  p95     5.2  p99     9.0  max    17.4 ms
+path:ranged/other n=    7  p50    13.3  p95   220.9  p99   220.9  max   220.9 ms
+CMD: GPO_ENGINE_FLAGS=DEFENSE npx tsx sim/latency.ts 200 5 --seats 6
+=== decision latency: flags DEFENSE, 200 hands, 6 seats vs [tag,lag,nit,station,tag], seed 5 (11s wall) ===
+all            n=  404  p50     4.5  p95   111.8  p99   179.6  max   232.8 ms
+preflop        n=  210  p50     4.1  p95     5.2  p99     7.3  max    12.8 ms
+flop           n=  103  p50    51.0  p95   174.5  p99   232.2  max   232.8 ms
+turn           n=   60  p50    18.0  p95    20.1  p99    42.0  max    42.0 ms
+river          n=   31  p50     3.8  p95     6.5  p99     7.9  max     7.9 ms
+path:defense   n=  118  p50    48.3  p95    56.6  p99    60.8  max    71.1 ms
+path:preflop   n=  210  p50     4.1  p95     5.2  p99     7.3  max    12.8 ms
+path:ranged/other n=   76  p50    17.1  p95   192.5  p99   232.8  max   232.8 ms
+ 2:47  up 1 day,  6:56, 1 user, load averages: 6.80 9.23 15.09
+CMD: GPO_ENGINE_FLAGS=SUBGAME_SOLVER npx tsx sim/latency.ts 200 5 --seats 2 --field raiser
+=== decision latency: flags SUBGAME_SOLVER, 200 hands, 2 seats vs [raiser], seed 5 (11s wall) ===
+all            n=  321  p50     4.5  p95   186.1  p99   469.0  max   538.1 ms
+preflop        n=  141  p50     4.2  p95     7.2  p99    18.4  max    31.5 ms
+flop           n=   95  p50     4.3  p95   196.1  p99   263.4  max   263.4 ms
+turn           n=   57  p50     8.9  p95   134.2  p99   167.1  max   167.1 ms
+river          n=   28  p50    73.9  p95   500.8  p99   538.1  max   538.1 ms
+path:lead-policy n=   82  p50     4.3  p95   115.0  p99   203.2  max   203.2 ms
+path:net       n=   51  p50     8.6  p95   196.1  p99   263.4  max   263.4 ms
+path:preflop   n=  141  p50     4.2  p95     7.2  p99    18.4  max    31.5 ms
+path:ranged/other n=    3  p50   186.1  p95   227.5  p99   227.5  max   227.5 ms
+path:subgame   n=   44  p50    28.1  p95   469.1  p99   538.1  max   538.1 ms
+CMD: GPO_ENGINE_FLAGS=SUBGAME_SOLVER npx tsx sim/latency.ts 200 5 --seats 6
+=== decision latency: flags SUBGAME_SOLVER, 200 hands, 6 seats vs [tag,lag,nit,station,tag], seed 5 (14s wall) ===
+all            n=  381  p50     4.5  p95   165.6  p99   281.2  max   312.5 ms
+preflop        n=  210  p50     4.2  p95     5.6  p99     7.3  max    12.8 ms
+flop           n=   95  p50   108.2  p95   261.0  p99   312.5  max   312.5 ms
+turn           n=   50  p50     8.8  p95    27.7  p99   183.2  max   183.2 ms
+river          n=   26  p50     3.6  p95    63.9  p99    73.6  max    73.6 ms
+path:preflop   n=  210  p50     4.2  p95     5.6  p99     7.3  max    12.8 ms
+path:ranged/other n=  163  p50    58.9  p95   225.7  p99   289.0  max   312.5 ms
+path:subgame   n=    8  p50    47.4  p95   183.2  p99   183.2  max   183.2 ms
+ 2:47  up 1 day,  6:56, 1 user, load averages: 6.44 8.94 14.81
+CMD: GPO_ENGINE_FLAGS=FIX_LIVE_VILLAINS,RANGE_TRACKER,SUBGAME_SOLVER npx tsx sim/latency.ts 200 5 --seats 2 --field raiser
+=== decision latency: flags FIX_LIVE_VILLAINS+RANGE_TRACKER+SUBGAME_SOLVER, 200 hands, 2 seats vs [raiser], seed 5 (11s wall) ===
+all            n=  341  p50     4.3  p95   113.8  p99   455.4  max   520.5 ms
+preflop        n=  141  p50     4.1  p95     5.5  p99     8.9  max    18.0 ms
+flop           n=   96  p50     4.1  p95   106.5  p99   113.8  max   113.8 ms
+turn           n=   69  p50     6.8  p95   123.7  p99   165.9  max   165.9 ms
+river          n=   35  p50    24.2  p95   473.6  p99   520.5  max   520.5 ms
+path:lead-policy n=   81  p50     4.1  p95    55.7  p99    64.8  max    64.8 ms
+path:net       n=   54  p50     6.6  p95   107.2  p99   110.9  max   110.9 ms
+path:preflop   n=  141  p50     4.1  p95     5.5  p99     8.9  max    18.0 ms
+path:ranged/other n=    6  p50   106.5  p95   204.8  p99   204.8  max   204.8 ms
+path:subgame   n=   59  p50    26.3  p95   468.4  p99   520.5  max   520.5 ms
+CMD: GPO_ENGINE_FLAGS=FIX_LIVE_VILLAINS,RANGE_TRACKER,SUBGAME_SOLVER npx tsx sim/latency.ts 200 5 --seats 6
+=== decision latency: flags FIX_LIVE_VILLAINS+RANGE_TRACKER+SUBGAME_SOLVER, 200 hands, 6 seats vs [tag,lag,nit,station,tag], seed 5 (29s wall) ===
+all            n=  404  p50     6.0  p95   378.1  p99   512.4  max   626.2 ms
+preflop        n=  210  p50     4.4  p95     7.5  p99    10.0  max    13.9 ms
+flop           n=   98  p50   228.4  p95   512.4  p99   626.2  max   626.2 ms
+turn           n=   65  p50    14.0  p95    27.5  p99   170.3  max   170.3 ms
+river          n=   31  p50     4.6  p95    55.7  p99    69.9  max    69.9 ms
+path:lead-policy n=    4  p50     8.1  p95    62.0  p99    62.0  max    62.0 ms
+path:net       n=    3  p50     4.6  p95   106.8  p99   106.8  max   106.8 ms
+path:preflop   n=  210  p50     4.4  p95     7.5  p99    10.0  max    13.9 ms
+path:ranged/other n=  179  p50   105.4  p95   451.9  p99   612.5  max   626.2 ms
+path:subgame   n=    8  p50    26.3  p95   170.3  p99   170.3  max   170.3 ms
+ 2:48  up 1 day,  6:57, 1 user, load averages: 5.75 8.43 14.35
+CMD: GPO_ENGINE_FLAGS=all npx tsx sim/latency.ts 200 5 --seats 2 --field raiser
+=== decision latency: flags FIX_LIVE_VILLAINS+RANGE_TRACKER+MULTIWAY_EQUITY+DEFENSE+SUBGAME_SOLVER, 200 hands, 2 seats vs [raiser], seed 5 (18s wall) ===
+all            n=  382  p50     6.9  p95   183.5  p99   489.0  max   551.5 ms
+preflop        n=  141  p50     4.6  p95     8.9  p99    27.2  max    39.3 ms
+flop           n=   96  p50    71.7  p95   150.9  p99   156.3  max   156.3 ms
+turn           n=   87  p50    21.6  p95    75.9  p99   183.5  max   183.5 ms
+river          n=   58  p50    66.2  p95   539.2  p99   551.5  max   551.5 ms
+path:defense   n=   59  p50   113.7  p95   154.2  p99   156.3  max   156.3 ms
+path:lead-policy n=   91  p50     4.5  p95    67.6  p99    73.4  max    73.4 ms
+path:preflop   n=  141  p50     4.6  p95     8.9  p99    27.2  max    39.3 ms
+path:ranged/other n=    9  p50   122.8  p95   211.2  p99   211.2  max   211.2 ms
+path:subgame   n=   82  p50    27.4  p95   427.8  p99   551.5  max   551.5 ms
+CMD: GPO_ENGINE_FLAGS=all npx tsx sim/latency.ts 200 5 --seats 6
+=== decision latency: flags FIX_LIVE_VILLAINS+RANGE_TRACKER+MULTIWAY_EQUITY+DEFENSE+SUBGAME_SOLVER, 200 hands, 6 seats vs [tag,lag,nit,station,tag], seed 5 (11s wall) ===
+all            n=  587  p50     9.5  p95    56.1  p99    81.6  max   149.3 ms
+preflop        n=  244  p50     7.8  p95    10.7  p99    14.3  max    31.9 ms
+flop           n=  173  p50    49.2  p95    68.6  p99   131.4  max   149.3 ms
+turn           n=  113  p50    15.2  p95    26.6  p99    33.4  max    62.0 ms
+river          n=   57  p50     5.9  p95    26.0  p99    75.6  max    75.6 ms
+path:defense   n=  210  p50    24.4  p95    64.8  p99   127.6  max   149.3 ms
+path:lead-policy n=    7  p50     6.6  p95    61.9  p99    61.9  max    61.9 ms
+path:preflop   n=  244  p50     7.8  p95    10.7  p99    14.3  max    31.9 ms
+path:ranged/other n=  116  p50    10.4  p95    17.7  p99    19.3  max    30.8 ms
+path:subgame   n=   10  p50    25.0  p95    75.6  p99    75.6  max    75.6 ms
+ 2:49  up 1 day,  6:57, 1 user, load averages: 6.53 8.37 14.12

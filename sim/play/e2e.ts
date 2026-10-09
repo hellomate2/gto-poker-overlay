@@ -14,6 +14,7 @@
 // has one JSONL line per hand with the same nets.
 //
 //   npm run play:e2e -- [--hands 24] [--seed 5] [--bot-dir PATH] [--flags SPEC] [--port 8791]
+//                       [--bot blueprint --policy CKPT]
 // Exit code 0 = all checks passed.
 // ============================================================
 
@@ -46,6 +47,8 @@ async function main(): Promise<void> {
   const srvArgs = ['tsx', join(__dirname, 'server.ts'), '--port', String(port), '--seed', String(seed),
     '--delay', '0', '--history-dir', hist, '--bot-dir', botDir];
   if (args.flags) srvArgs.push('--flags', args.flags);
+  if (args.bot) srvArgs.push('--bot', args.bot);            // e.g. --bot blueprint --policy CKPT
+  if (args.policy) srvArgs.push('--policy', resolve(args.policy));
   // Own process group, so stop() takes down npx, tsx and node together.
   const child: ChildProcess = spawn('npx', srvArgs, { stdio: ['ignore', 'pipe', 'inherit'], detached: true });
   let banner = '';

@@ -37,18 +37,163 @@ code can be moved to a rented many-core box unchanged.
   threads with pruning and discounting on, then resumed for 19 s, with no
   sanitizer report.
 
+## Abstraction v2 (PLAN.md M2, 2026-10-09)
+
+New files: `src/hand_iso.{h,cpp}`, `src/abs_v2.{h,cpp}`, `tests/test_abs_v2.cpp`
+(`make test-v2`, also run by `make test`), and Kevin Waugh's hand-isomorphism
+library vendored unchanged under `third_party/hand-isomorphism` with its
+BSD-style license and attribution notice (`LICENSE.txt`). The defaults are
+unchanged: with no new flags every command builds and loads exactly the old
+abstraction, its cache file and checkpoint fingerprints keep their old names,
+and `make test` still reports 2,374 checks and 0 failures in the old suite.
+
+New options, accepted by every hold'em command:
+
+| flag | meaning |
+| --- | --- |
+| `--flop-mode pa` | potential-aware flop buckets (default `da`, the old distribution-aware ones) |
+| `--restarts N`, `--pa-sample N` | k-means restarts and weighted fit-sample size for `pa` (defaults 1 and 200,000) |
+| `--river-mode ochs` | OCHS river buckets (default `ehs`) |
+| `--waugh-lookup` | read buckets through Waugh-indexed tables (same buckets, less memory, slower lookups) |
+
+New subcommand `bp absv2`:
+
+* `--mode check`: projects the abstraction into Waugh-indexed tables and
+  compares them with the old tables on every (hole, flop) and on `--samples`
+  random turn and river hands, then times both lookup paths.
+* `--mode h2h --a CK1 --b CK2 [--bx-<flag> V ...]`: duplicate head-to-head
+  where each side sees buckets from its own abstraction (flags prefixed `bx-`
+  apply to side B). With both sides on the same abstraction it reproduces
+  `bp h2h` exactly: `--a <ckpt> --b checkcall --hands 1000000 --seed 7` printed
+  +1,948.9 +/- 21.2 mbb/hand from both commands, and the same checkpoint
+  against its own snapshot printed +4.0 +/- 12.7 from both.
+* `--mode br --target CK --iters N`: `bp br` with an iteration budget instead
+  of minutes, so two targets get equally trained exploiters on a busy machine.
+
+`bp export` refuses OCHS abstractions because the TS loader computes river
+buckets from 1-D EHS bounds.
+
+### What each piece does and how it was checked
+
+Hand isomorphism (Waugh 2013). `hand_iso(street)` indexes (hole | unordered
+board) per street. Tests assert the index sizes 169 / 1,286,792 / 13,960,050 /
+123,156,254 and recount them independently by brute force (orbits of hole
+combos under each canonical board's suit stabilizer, using the old
+`BoardIso`); the preflop index induces exactly the 169 `preflop_class`
+classes; every one of the 25,989,600 raw (hole, flop) hands gets the same
+index as its suit-relabeled and reordered versions and every index is hit;
+unindex then index is the identity on every flop index and on 1M sampled turn
+and river indices; flop class sizes sum to 25,989,600.
+
+Waugh-indexed tables. `bp absv2 --mode check --samples 10000000` on the
+default 50/50/50 abstraction: 25,989,600 (hole, flop) hands, 10,000,000 turn
+hands and 10,000,000 river hands checked, 0 mismatches. Tables take 154 MB
+instead of 226 MB (1,286,792 + 13,960,050 two-byte entries and 123,156,254
+one-byte entries, versus 2,327,130 + 21,788,832 and 178,292,634). Lookups are
+slower, measured single-threaded on 2M random hands while other jobs loaded
+the machine: flop 57.8 ns versus 13.8 ns, turn 253.8 ns versus 73.2 ns, river
+286.5 ns versus 262.9 ns. So `--waugh-lookup` stays off by default; it is for
+memory-bound runs.
+
+Potential-aware flop (Ganzfried and Sandholm 2014). The turn is clustered as
+before; each of the 1,286,792 flop classes becomes a histogram over the turn
+buckets reached by its 47 turn cards; flop classes are clustered by k-means
+under GS14's greedy EMD (Algorithm 2, with the mean's mass decremented before
+the point's target is cleared), whose ground distance is the 1-D EMD between
+turn cluster centers. Centers are fit on a sample drawn in proportion to class
+size, with k-means++ seeding and restarts, then every class is assigned. Tests:
+an exact EMD solver (min-cost flow) matches the 1-D closed form on 200 random
+instances; greedy EMD is never below exact, equals it for single-spike points,
+and its mean relative excess over exact was 0.0212 on 300 random instances
+with planar ground distances (3 to 10 clusters, 47 units of mass); k-means
+recovers planted clusters; on a small 8/8/8 abstraction the turn and river
+tables are identical to the old ones and the flop buckets are suit-invariant.
+Build of `--flop 50 --turn 50 --river 50 --flop-mode pa --restarts 3
+--pa-sample 200000 --threads 4`: 600 s wall, 1,218 s CPU (fit 535.6 s,
+assigning all classes 36.6 s); flop bucket mass from 0.0029 to 0.0482 (the
+old flop: 0.0054 to 0.0481).
+
+OCHS river (Johanson et al. 2013). Each river hand's feature is its win
+probability (ties half) against each of 8 opponent clusters of preflop
+classes, then k-means under L2 (centers ordered by mean OCHS). The 8 opponent
+clusters are our own reproduction of J13's method (k-means under 1-D EMD on
+each class's river-equity histogram over 4,000 random boards, 50 restarts),
+not a copy of J13's Table 1; the build prints them. Tests: the sorted-sweep
+OCHS matches brute-force enumeration on 240 (board, hole) pairs to 1e-5; AA
+lands in the top cluster. Build at 50 river buckets: 54.6 s total on 4
+threads; the river table is cached next to the abstraction file
+(`cache/abs-<id>.bin.river`).
+
+### A/B at equal training iterations (small tree, 50/50/50 buckets)
+
+Each arm: `bp train --preset small --threads 4 --seed 1 --iters 40000000`,
+then `--resume --iters 100000000`, with `--discount-every 1000000
+--lcfr-until 10000000 --prune-after 5000000 --prune-threshold -30000000
+--regret-floor -31000000`, plus the arm's abstraction flags. Wall time per arm
+at 100M iterations: legacy 400 s, potential-aware flop 336 s, OCHS river 376
+s, legacy with `--seed 2` 284 s (machine shared with other jobs). Head-to-head: `bp absv2 --mode h2h`, 20M
+duplicate deals, seed 321. Exploiters: `bp absv2 --mode br --iters 30000000
+--hands 4000000 --seed 123`, each in its own blueprint's abstraction.
+
+| arm (vs legacy) | head-to-head, mbb/hand (95% CI) |
+| --- | ---: |
+| potential-aware flop, 40M iterations (4M deals, seed 123) | -3.8 +/- 6.6 |
+| potential-aware flop, 100M iterations | -0.2 +/- 2.8 |
+| OCHS river, 100M iterations | -16.4 +/- 2.9 |
+| legacy, training seed 1 vs a legacy run with `--seed 2` (training noise baseline) | -2.0 +/- 2.8 |
+| potential-aware flop vs the seed-2 legacy run | -2.7 +/- 2.8 |
+| OCHS river vs the seed-2 legacy run | -12.9 +/- 2.8 |
+
+| blueprint at 100M iterations | exploiter (current), mbb/hand | exploiter (greedy) |
+| --- | ---: | ---: |
+| legacy | +25.1 +/- 6.9 | +25.5 +/- 7.0 |
+| potential-aware flop | +14.0 +/- 6.8 | +23.6 +/- 6.8 |
+| OCHS river | +34.0 +/- 6.8 | +34.0 +/- 6.8 |
+
+At 40M iterations the exploiters won +50.9 / +65.3 against the legacy
+blueprint and +49.4 / +48.1 against the potential-aware one (2M deals, about
++/- 9.8 each).
+
+Reading. At 50 buckets on the small tree, the potential-aware flop is not
+distinguishable from the old flop head to head (-0.2 +/- 2.8 and -2.7 +/- 2.8
+mbb/hand against two legacy runs; two legacy runs that differ only in the
+training seed scored -2.0 +/- 2.8 against each other). Its
+exploiters are no stronger than the legacy ones, but the two exploitability
+numbers live in different abstractions, so they are not a like-for-like
+comparison. The OCHS river is significantly worse at this size (-16.4 +/-
+2.9 and -12.9 +/- 2.8 against the two legacy runs), plausibly because 50 clusters in 8 dimensions give less resolution
+along hand strength than 50 clusters on the EHS line; J13 used OCHS with
+9,000 river buckets. Neither change is turned on by default. Both should be
+retested at 200 or more buckets (GS14 reported +2.2 to +2.6 mbb/hand at
+5,000 flop buckets, a gain this setup could not resolve).
+
+Not done yet from M2: L1-on-CDF assignment for the old features,
+full-population flop clustering without sampling, potential-aware turn
+buckets, and an exact-EMD or faster k-means (the potential-aware build spends
+most of its time in the fit; Elkan-style bounds would cut it).
+
 ## Layout
 
 | File | What it does |
 | --- | --- |
 | `src/eval.{h,cpp}` | 5 to 7 card hand evaluator (incremental, table driven) |
 | `src/abstraction.{h,cpp}` | suit isomorphism, EHS features, k-means, bucket tables, cache files |
+| `src/hand_iso.{h,cpp}` | Waugh's optimal hand index per street (wraps `third_party/hand-isomorphism`) |
+| `src/abs_v2.{h,cpp}` | Waugh-indexed tables, potential-aware flop (EMD k-means), OCHS river |
 | `src/tree.{h,cpp}` | abstract betting tree for limit (Kuhn, Leduc) and no-limit rules |
 | `src/games.h` | deal samplers: Kuhn, Leduc, hold'em (cards projected to buckets) |
 | `src/mccfr.h` | the trainer (one template for every game) and the exact best response |
 | `src/export.{h,cpp}` | policy export format |
+| `src/serve.{h,cpp}` | `bp serve`: the blueprint as a JSON-lines policy service for the TS BlueprintAgent |
+| `src/lbr.h` | Local Best Response: full-game exploitability lower bound (`bp lbr`) |
+| `src/aivat.h` | AIVAT estimator (generic), Kuhn/Leduc card models, exact-moment enumerator |
+| `src/aivat_holdem.h` | hold'em card model for AIVAT, duplicate match loop, hand-log format |
 | `src/main.cpp` | the `bp` CLI |
 | `tests/test_main.cpp` | C++ tests (`make test`) |
+| `tests/test_serve.cpp` | `bp serve` tests (`make test`) |
+| `tests/test_lbr.cpp` | LBR tests against exact best responses (`make test-lbr`, also run by `make test`) |
+| `tests/test_aivat.cpp` | AIVAT tests (`make test-aivat`) |
+| `tests/test_abs_v2.cpp` | abstraction v2 tests (`make test-v2`) |
 | `../src/core/blueprint/loader.ts` | TS reader for exported policies |
 | `../tests/blueprint-loader.test.ts` | vitest suite for the loader, using real exports as fixtures |
 
@@ -93,6 +238,8 @@ than the one that built it.
 ./bin/bp h2h --a runs/hu-small-25min/ckpt.bin --b random    --hands 500000
 ./bin/bp br  --target runs/hu-small-25min/ckpt.bin --minutes 3 --threads 4
 ./bin/bp show --ckpt runs/hu-small-25min/ckpt.bin            # preflop open grid
+./bin/bp lbr --target runs/hu-small-25min/ckpt.bin --actions fcpa --rounds 1-4 \
+    --hands 100000 --minutes 8 --threads 4                    # local best response
 
 # 6. export for the TS engine
 ./bin/bp export --ckpt runs/hu-small-25min/ckpt.bin --out runs/hu-small-25min/blueprint.gpobp
@@ -257,6 +404,90 @@ Tokens: `f` fold, `k` check, `c` call, `b<frac>` bet, `r<frac>` raise,
 `a` all-in (limit games use bare `b` and `r`). Flop and turn buckets need the
 k-means tables from `cache/abs-*.bin`, which the loader does not read yet.
 
+## Serving the blueprint to the TS harness (`bp serve`)
+
+Added 2026-10-09 (BACKLOG NOW-3). The blueprint can now play real hands in the
+TS simulator and the play app, with no search yet.
+
+Pieces:
+
+* `bp serve` (`src/serve.{h,cpp}`): line-delimited JSON on stdin/stdout.
+  `{"cmd":"policy","history":"r0.5 c","hole":"AhKd","board":"2c7d9h"}`
+  returns the node, its actions with commitments, the card bucket and the
+  average-strategy probabilities. The bucket comes from the same
+  `Abstraction` object and the node from the same `BettingTree::find` the
+  trainer uses, so serving cannot drift from training. `info` and `node`
+  queries need no cards; `--tree-only` answers them without loading a
+  checkpoint. Setup logs go to stderr. Serve never builds an abstraction:
+  pass `--cache DIR` holding the run's `abs-*.bin`.
+* `src/core/blueprint/abstract-tree.ts`: a TS port of `legal_actions` and
+  the street flow in `tree.cpp`, built from the tree description that
+  `info` returns.
+* `src/core/blueprint/translate.ts`: randomized pseudo-harmonic action
+  translation (Ganzfried and Sandholm, IJCAI 2013): an off-tree size x
+  between abstract sizes A < B maps to A with probability
+  ((B - x)(1 + A)) / ((B - A)(1 + x)). Sizes are pot fractions measured the
+  way the tree defines them; a real all-in maps to the abstract all-in.
+* `src/core/blueprint/agent.ts`: BlueprintAgent. Replays the real hand from
+  `GameState.actionHistory`, walks the abstract tree in step (memoizing each
+  translation for the rest of the hand), asks a `PolicySource` for the
+  strategy, samples an abstract action and maps it back to a legal real bet
+  with the tree's sizing rule applied to the real pot. When an off-tree
+  raise was translated to the abstract all-in and called while real chips
+  remain, it plays check/call for the rest of the hand (counted as a
+  fallback).
+* `sim/blueprint-serve.ts` (Node `ServeClient` plus the SeatAgent wrapper),
+  `sim/seat-agents.ts` (spec `engine` or `blueprint:<ckpt>`),
+  `sim/match.ts --a-agent/--b-agent`, `sim/play/bots.ts` kind `blueprint`
+  (`npm run play -- --bot blueprint --policy CKPT`). Tree and abstraction
+  flags come from `GPO_BP_FLAGS` (default: the overnight run's, with
+  `--cache blueprint/cache`), the binary from `GPO_BP_BIN`.
+
+Exact-reference checks (all run 2026-10-09):
+
+| Check | Command | Result |
+| --- | --- | --- |
+| C++ serve unit tests | `make test` (`bin/bp_serve_tests`) | 417 checks, 0 failures |
+| TS tree port vs C++ tree, every node | `npx tsx sim/blueprint-parity.ts tree --flags "--preset P"` | tiny 2,758, small 31,938, medium 425,086 nodes, and a custom small tree (`--stack 20000 --bet-fracs 0.33,0.75,1.5 --raise-fracs 0.7,2 --max-raises 3`) 301,254 nodes: 0 mismatches |
+| serve vs trainer on 1,000 infosets drawn from the trainer's own deal sampler (250 per street) | `bp serve FLAGS --ckpt C --parity-dump 1000 --out F` then `npx tsx sim/blueprint-parity.ts policy --fixture F --ckpt C --flags FLAGS` | 0 mismatches in node, bucket or tokens; max probability difference 3.0e-8 (float32 storage), on two checkpoint copies (iterations 701,930,101 and 915,307,849). Corrupting 100 fixture buckets makes it report 100 mismatches |
+| translation formula, round trip, scripted off-tree hand, legality over 2,000 hands | `npx vitest run tests/blueprint-agent.test.ts` | 8 tests pass |
+| play app end to end | `npx tsx sim/play/e2e.ts --hands 24 --bot blueprint --policy C` | E2E OK |
+
+`FLAGS` for the overnight run: `--preset small --flop 200 --turn 200 --river
+200 --bins 50 --abs-seed 7 --cache DIR`. Serve answers a policy request in
+39 us median, 60 us p95 (2,000 requests through the TS client, load average
+76 at the time).
+
+Pilot match, 2026-10-09 04:24 to 04:33 PDT: BlueprintAgent on a copy of the
+overnight checkpoint (iteration 915,307,849) against the swarm/next
+DecisionEngine with default flags, heads-up duplicate, 100 BB, blinds 10/20,
+2,000 deals (4,000 hands), seed 1:
+
+```
+GPO_BP_FLAGS="$FLAGS" npx tsx sim/match.ts --a-agent blueprint:CKPT --deals 2000 --seed 1 --workers 8
+```
+
+(run here as `--shard k/8` one shard at a time and combined with
+`sim/match-combine.ts`; the runner seeds every deal, so this gives the same
+numbers). Result: +26.21 bb/100 for the blueprint, 95% CI +/- 26.31
+([-0.10, 52.52], not significant at 95%), sd per deal 12.01 bb. Over 8,257
+blueprint decisions: 0 illegal actions (strict validator), 13 fallbacks
+(0.16%, all of the committed all-in kind), 2,696 engine bets and raises
+translated, 2,549 of them off-tree. A +/- 10 bb/100 CI needs about
+(98 x 12.01 / 10)^2, about 13,850 deals.
+
+Held-out seed, same checkpoint and command with `--seed 101` (04:33 to 04:40
+PDT): +29.51 bb/100, 95% CI +/- 23.30 ([6.21, 52.80]), sd per deal 10.63 bb;
+8,216 decisions, 0 illegal, 7 fallbacks, 2,596 translations (2,458
+off-tree). Both seeds pooled (4,000 deals, 8,000 hands, deal-level samples):
++27.86 bb/100, 95% CI +/- 17.57, sd per deal 11.34 bb. These are
+head-to-head numbers against one opponent (the current rule-and-solver
+engine), not an exploitability measurement.
+
+Not done yet: real-time search on later streets, depths other than 100 BB
+(the agent plays them but the abstraction assumes 100 BB), and an export
+path for the browser (the agent needs `bp serve` for flop/turn buckets).
+
 ## Correctness gate (Kuhn and Leduc)
 
 Same `Trainer` code, Linear CFR discounting on for the first quarter of the
@@ -401,6 +632,100 @@ falls slightly as the strategy moves toward equilibrium, which does not
 try to maximize winnings against any particular opponent. The exploiter and
 self-play rows are the better measures of progress.
 
+## Local Best Response (`bp lbr`, `src/lbr.h`)
+
+LBR (Lisy and Bowling 2017, https://arxiv.org/abs/1612.07547) plays real
+hands against a frozen target. It sees its own cards and the board, never
+the target's buckets, and keeps the exact Bayesian posterior over the
+target's 1,326 combos: uniform over combos that miss its cards, zeroed when
+a board card collides, multiplied by the target's action probability after
+every target action. At its own decisions it scores a fixed menu with a
+one-step lookahead (fold; check/call valued as a check-down against the
+range; bet valued as the range-weighted immediate fold probability plus a
+call by the rest of the range) and plays the best. Postflop equity is exact
+(all 1,081 flop runouts, 46 turn rivers, per target combo with card
+removal); preflop equity averages over 1,000 sampled boards
+(`--pre-samples`).
+
+Settings: `--actions fc|fcpa|tree` and `--rounds 1-4|2-4|3-4|4-4` (before
+the first active round LBR checks or calls). LBR's bets are restricted to
+sizes that exist in the target's tree, so the target's response is read off
+its policy with no action translation: `fcpa` is fold, check/call, the
+1.0-pot bet or raise when the node has one, and all-in. Every deal is
+played twice with LBR in each seat; the sample unit is the seat-averaged
+result. The headline is realized chips. A second estimator scores each
+showdown by its expectation over LBR's range, which has the same mean
+(the range is the exact posterior over the target's hand given everything
+public) and is printed as a cross-check. Before playing, the range model's
+bucket for each real hand is checked against `HoldemSampler::fill` on 200
+deals (1,600/1,600 agree on the overnight abstraction).
+
+Because LBR is a legal full-game strategy, its expected winnings lower-bound
+the target's full-game exploitability. Unlike `bp br`, it is not limited to
+the target's card buckets; it is limited by its greedy one-step lookahead
+and its small bet menu.
+
+### Validation (`make test-lbr`, 9 tests, 0 failures)
+
+* Kuhn and Leduc, against always-fold, check/call, maniac, uniform random,
+  and MCCFR average strategies after 2k and 200k iterations: LBR's exact
+  expected value (every target action branch enumerated) never exceeds
+  `ExactEval`'s best response value, for both seats, fc and fcpa, and every
+  active-round setting. Against always-fold, fcpa LBR equals the best
+  response (+1 ante in both games). Example, Leduc after 200k MCCFR
+  iterations: BR -0.060765 / +0.110193 (seat 0 / seat 1), fcpa LBR
+  -0.072424 / +0.105359.
+* Sampled LBR play on Leduc (400,000 hands per seat) matches the exact value
+  within 4 standard errors with both estimators; the range-scored estimator
+  has the lower standard deviation (2.503 vs 3.098 for seat 0).
+* Hold'em equity equals a brute-force 7-card enumeration on river, turn and
+  flop boards; preflop Monte Carlo for AhAs vs KdKc (8,000 boards) gives
+  0.80944 against the exact 0.81255 over all boards.
+* Hold'em LBR vs always-fold: exactly 750 mbb/hand (+1,000 as small blind,
+  +500 as big blind) with zero variance, the always-fold row in the
+  literature. fc LBR vs check/call: exactly 0 (both seats of every deal
+  check down the same pot).
+* Range updates: facing a pot raise from a target that raises only aces,
+  LBR folds kings in the big blind; facing a target that raises every hand,
+  it continues.
+
+Command-line sanity runs (`bp lbr --target <bot> --preset small --hands
+1000 --threads 4 --seed 1`, 1,000 duplicate deals each): fc vs check/call
++0.0 (CI +/- 0.0); fc vs uniform random +7,046.8 +/- 1,857.7; fc vs maniac
++6,469.5 +/- 2,096.4 mbb/hand.
+
+### Result: the overnight checkpoint (2026-10-09)
+
+Target: a copy of `~/.gpo/overnight/ckpt.bin` taken at 04:18 PDT,
+iteration 701,930,101; small tree, 200/200/200 buckets, 100 BB stacks
+(10,000 chips). Command, with `<A> <R> <M>` per row:
+
+```bash
+./bin/bp lbr --target runs/lbr/overnight-ckpt.bin --preset small --flop 200 --turn 200 \
+  --river 200 --bins 50 --abs-seed 7 --actions <A> --rounds <R> --hands 200000 \
+  --minutes <M> --threads 4 --seed 1
+```
+
+| LBR setting | duplicate deals | LBR wins, mbb/hand (95% CI) | range-scored cross-check | LBR as SB / BB | wall time |
+| --- | ---: | ---: | ---: | --- | ---: |
+| fcpa, rounds 3-4 | 200,000 | +1,355.9 +/- 54.0 | +1,341.1 +/- 45.6 | +1,375.3 / +1,336.5 | 66 s |
+| fcpa, rounds 1-4 | 73,940 | +854.9 +/- 107.9 | +862.8 +/- 89.7 | +697.5 / +1,012.4 | 480 s (cap) |
+| fc, rounds 1-4 | 28,930 | +113.0 +/- 71.2 | +106.3 +/- 43.6 | -77.1 / +303.1 | 270 s (cap) |
+
+These are full-game lower bounds on the checkpoint's exploitability: the
+blueprint as it plays real cards loses at least about 1.3 BB per hand to a
+greedy player that only uses its own pot and all-in sizes and waits until
+the turn to start computing. For scale, the in-abstraction exploiter
+(`bp br`) found +20.5 +/- 9.0 against the 25-minute run (above); LBR is not
+limited to the target's buckets. Waiting until rounds 3-4 beat being
+active on all rounds here, which matches the LBR paper's observation that a
+greedy LBR gains more against always-call when restricted to later rounds.
+The 1-4 runs stopped at their time cap; a run that stops on time
+drops at most one in-flight deal per thread. The numbers are at 100 BB, so
+they do not line up with the 200 BB ACPC tables in the LBR paper. The load
+average on the machine was about 15 to 30 during these runs (other agents
+and the overnight training job), which affects wall time only.
+
 ## Scaling up: an extrapolation from these measurements
 
 Assumption, stated plainly: a larger abstraction reaches roughly the
@@ -437,16 +762,206 @@ picks up after an interruption. For memory, the first lever is storing
 average strategies only for preflop (as Pluribus did), which takes the cost
 per slot from 12 bytes to 4.
 
+## AIVAT: variance-reduced match scoring (PLAN.md M1)
+
+AIVAT (Burch, Schmid, Moravcik, Morrill, Bowling, AAAI 2018,
+https://arxiv.org/abs/1612.06915) scores each hand as the chips won plus
+zero-mean correction terms that remove luck the evaluator can explain:
+
+* a chance term at every chance event (both hole pairs, flop, turn, river,
+  and the run-out after an all-in): `E[V(after any card)] - V(after the dealt card)`;
+* an action term at every decision of a player whose strategy is known:
+  `sum_a sigma(a) V(after a) - V(after the action taken)`.
+
+Each term has expectation zero, so the estimate is unbiased for any value
+function V; V only decides how much variance goes away. Decisions of an
+opponent whose strategy is unknown get no term.
+
+### Commands
+
+```bash
+make test-aivat                          # exact-enumeration and brute-force checks
+./bin/bp aivat --game leduc --hands 1000000           # Leduc, A = 1M MCCFR iterations, B = 10k
+./bin/bp aivat --game leduc --b self --hands 1000000  # Leduc self-play
+./bin/bp h2h --aivat --a X.bin --b Y.bin --hands 500000 [tree/abs flags]
+./bin/bp h2h --aivat --aivat-known both ...           # also correct B's actions
+./bin/bp h2h --aivat ... --aivat-log-out hands.log    # write every hand as a log line
+./bin/bp aivat-log --a X.bin --log hands.log [tree/abs flags]   # score a logged match
+```
+
+`bp h2h --aivat` plays the usual duplicate match (each deal twice, seats
+swapped) and prints, per duplicate deal and per hand, the plain and AIVAT
+means with 95% CIs, the paired AIVAT-minus-plain difference (it must
+contain 0), the mean chance and action terms and the SD reduction.
+`--aivat-known a` (default) treats B as unknown: only A's actions and chance
+are corrected, and inside V the opponent is modeled by A's strategy or by
+`--aivat-model SPEC` (any agent spec). `--aivat-known both` also corrects
+B's actions.
+
+### The value function
+
+`V(h)` is the expected result over the rest of the current street with both
+players following the strategies the estimator knows (or models), cut off
+where the street ends. A cut-off node is valued `pot * equity - committed`,
+where equity is exact on the flop (all 990 turn and river runouts), turn and
+river, and comes from a 169 x 169 class-vs-class table preflop (Monte Carlo
+with a fixed seed, 2,000 samples per class pair by default; the table only
+shapes V, so its sampling error cannot bias the estimate). Fold nodes and
+river showdowns are exact. The expectation over the hole cards is exact (a
+sum over class pairs weighted by their combo counts out of 1,326 x 1,225
+ordered hole pairs). The expectation over the flop averages 32 flops drawn
+from a separate random stream (`--aivat-flops`), which keeps it unbiased;
+turn and river cards are enumerated.
+
+Observed-path lookahead (`--aivat-lookahead S`, default 2; 4 turns it off):
+in the walk along the observed path, which supplies the action corrections,
+nodes where the flop or turn ends are valued by every next card and the next
+street's betting instead of by equity. Chance terms keep the equity cut-off.
+Each correction stays zero-mean on its own; the root expectation and every
+chance term must use the same V, which the exact tests check (an earlier
+draft that mixed the two V's for one chance term was biased, and the Leduc
+enumeration test caught it). `--aivat-lookahead-full` uses the lookahead
+everywhere (a consistent V; on hold'em 109 s instead of 3 s for 20,000
+deals, see the ablations below).
+
+Not implemented: the paper's "imaginary observations" (averaging over every
+private hand A could hold, weighted by A's reach). It would need V walks for
+about 1,000 hands per hand played.
+
+### Validation against exact references
+
+`make test-aivat` (387 checks, 0 failures). Kuhn and Leduc are enumerated
+over every deal and every action path with its true probability:
+
+* For two hashed mixed strategies, a 100k-iteration MCCFR strategy against
+  uniform, and its self-play, the exact expectation of the AIVAT estimate
+  equals `ExactEval`'s game value within 1e-9 for every set of known players
+  (none, either, both), both positions, and all three value functions.
+* Both strategies known with the exact V (`exact_depth`): every path scores
+  the game value (spread under 1e-9).
+* Hold'em equity: river equity equals the showdown result; turn equity
+  equals the average over all 44 rivers; flop equity equals the average of
+  turn equities over all 45 turns; equities of the two players sum to 1. For
+  AhAd vs KcKs, exact enumeration over all 1,712,304 boards gives 0.81255;
+  the test's class table (300 samples per pair) gives 0.83833 for AA vs KK.
+* Sampled hold'em on the `tiny` tree with one postflop bucket and no card
+  abstraction, 20,000 hands: the paired AIVAT-minus-plain mean is inside 4
+  standard errors of 0 for A known and both known, with and without the
+  lookahead.
+* `bp aivat-log` replaying a 40,000-hand log written by `bp h2h --aivat`
+  reproduces the same plain and AIVAT means and SDs.
+
+Leduc, `./bin/bp aivat --game leduc --hands 1000000` (chips per duplicate
+deal, A = 1M MCCFR iterations, B = 10k; exact expectation of A per deal
+0.023884; plain +0.022594 +/- 0.002966, SD 1.51318):
+
+| setting | AIVAT mean (95% CI) | SD | SD removed |
+| --- | ---: | ---: | ---: |
+| both known, exact V | +0.023884 +/- 3.7e-19 | 1.9e-16 | 100.0000% |
+| both known, street V | +0.024142 +/- 0.000543 | 0.277169 | 81.68% |
+| both known, street V + lookahead | +0.023829 +/- 0.000171 | 0.087166 | 94.24% |
+| A known, street V | +0.023145 +/- 0.001703 | 0.868665 | 42.59% |
+| A known, street V + lookahead | +0.023020 +/- 0.001690 | 0.861997 | 43.03% |
+
+The PLAN.md M1 Leduc acceptance (both strategies known, at least 99% of the
+SD removed, mean equal to the plain mean within CI) is met by the exact V.
+The street V, which hold'em uses, removes 81.7% per deal here; for the
+tests' 100k-iteration-vs-uniform pair the exact per-hand figure is 83.35%.
+
+### Hold'em self-play, 1M hands
+
+A copy of the overnight checkpoint (`~/.gpo/overnight/ckpt.bin` copied at
+04:12 PDT, iteration 701,930,101; small tree, 200/200/200 buckets) against
+itself, 500,000 duplicate deals = 1,000,000 hands, 4 threads:
+
+```bash
+./bin/bp h2h --aivat --aivat-known both --a ckpt.bin --b ckpt.bin --preset small \
+  --flop 200 --turn 200 --river 200 --bins 50 --abs-seed 7 --threads 4 --hands 500000
+```
+
+mbb/hand; plain: per deal +4.9 +/- 17.0 (SD 6,144.5), per hand SD 13,044.4.
+
+| setting | AIVAT per deal (95% CI) | AIVAT - plain, paired | SD per deal | SD per hand | SD ratio per deal | time |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| both known, lookahead 2 (default) | -0.7 +/- 4.1 | -5.6 +/- 16.6 | 1,462.0 | 4,164.3 | 0.238 | 195 s |
+| both known, no lookahead (`--aivat-lookahead 4`) | -0.2 +/- 5.2 | -5.1 +/- 16.6 | 1,886.4 | 4,498.3 | 0.307 | 61 s |
+| A known, lookahead 2 (default) | +7.0 +/- 9.1 | +2.0 +/- 14.3 | 3,268.6 | 5,868.2 | 0.532 | 195 s |
+| A known, no lookahead (`--aivat-lookahead 4`) | +7.1 +/- 9.4 | +2.1 +/- 14.3 | 3,373.9 | 5,987.6 | 0.549 | 55 s |
+
+Times are wall-clock on a shared machine (load average between about 19
+and 49 during these runs), so they compare only roughly. Every AIVAT
+mean is within its CI of the plain mean and every paired difference contains
+0. With both strategies known, the same CI needs (1 / 0.238)^2 = 17.7x fewer
+deals; with only A known, 3.5x. For comparison, the AIVAT paper reports a
+per-hand SD of 25.962 chips plain and 8.095 chips with AIVAT for HUNL
+self-play at 100 BB (68.8% removed) with one strategy known; here the
+per-hand figures are 68.1% (both known) and 55.0% (A
+known).
+
+Ablations on 20,000 duplicate deals, both known: `--aivat-flops` 8 / 32 /
+128 gave per-deal SDs 2,000.0 / 1,889.2 / 1,853.1 (on 50,000 deals, before
+the lookahead); `--aivat-lookahead` 4 / 3 / 2 gave 1,839.3 / 1,572.0 /
+1,421.4 in 3 / 5 / 7 s; `--aivat-lookahead-full` from street 3 gave 1,294.9
+in 109 s.
+
+The opponent model matters when B is unknown. Against `checkcall`, 100,000
+deals: plain +1,700.9 +/- 63.4 per deal (SD 10,234.0). With A known and the
+opponent modeled by A's strategy, AIVAT gives +1,694.7 +/- 64.4 (SD 10,382.8,
+no reduction per deal, 8.1% per hand). With `--aivat-model checkcall` (or
+B known) it gives +1,706.7 +/- 32.2 (SD 5,192.7, 49.3% removed).
+
+### Using it for the BlueprintAgent vs engine match
+
+The TS `BlueprintAgent` (planned in `sim/play/bots.ts`) plays real bet sizes
+against the engine, so its match runs outside `bp`. To score it with AIVAT:
+
+1. For every hand, write one line in the `bp aivat-log` format:
+   `id seatA holeA holeB board tokens resultA`, for example
+   `10 0 9sTd KcJd 3s5dAdTh7h r0.5,c,k,b0.5,c,k,k,b1,c 1200`. `id` is a hand
+   counter (it seeds the flop sampling, so ids must be unique; never derive
+   them from the cards), `seatA` is the blueprint's position (0 = small blind
+   and button), the board is all five cards (the local harness deals them, so
+   they are known even when the hand ends early), `tokens` is the hand's path
+   through the blueprint tree as the agent itself translated it (`bp
+   aivat-log` refuses tokens that are not in the tree or a path that does not
+   end at a terminal node), and `resultA` is the blueprint's real chip result
+   (chips with 50/100 blinds, so off-tree bet sizes still count in real
+   chips).
+2. The estimate is unbiased only if the agent really sampled each abstract
+   action from the strategy `bp aivat-log` assumes, at the same bucket. If
+   the agent reads the exported `.gpobp` file, pass `--quantized` so the
+   strategy is the exported one (bytes summing to 255, unvisited infosets
+   uniform). Its flop and turn buckets must come from the same `cache/abs-*`
+   tables (the TS loader does not load them yet). A purified (argmax) agent
+   breaks this unless the log is scored against the purified strategy.
+3. Run `./bin/bp aivat-log --a <ckpt> --log hands.log <tree/abs flags>
+   [--quantized] [--out per-hand.csv]`. The engine's actions get no
+   correction. Its strategy is unknown, so V models it by the blueprint
+   unless `--aivat-model` names something closer; the checkcall result above
+   shows a poor model can remove almost nothing per deal, so measure the SD
+   on a pilot before fixing the hand count.
+
 ## Known limitations
 
-* Flop and turn features are equity-distribution histograms. Potential-aware
-  features (histograms over next-street clusters, earth mover's distance)
-  are the standard upgrade and would plug into `build_street()`.
+* Flop and turn features default to equity-distribution histograms.
+  Potential-aware flop buckets (`--flop-mode pa`) and OCHS river buckets
+  (`--river-mode ochs`) exist as options; at 50 buckets neither beat the
+  defaults (see "Abstraction v2"). The turn has no potential-aware option yet.
 * The TS loader looks up (history, bucket). It computes preflop and river
   buckets itself but does not yet load the flop/turn k-means tables, and it
   has no action translation for real bet sizes that fall between the
   abstract sizes.
-* The hold'em exploitability numbers are bounds measured inside the
-  abstraction; there is no full-game best response.
+* There is no full-game best response for hold'em. `bp br` is a bound
+  inside the abstraction; `bp lbr` is a full-game lower bound, but only
+  with bet sizes that exist in the target's tree (no off-tree sizes and no
+  action translation yet, so the LBR paper's "56 bets" setting is missing).
 * River tables support at most 255 river buckets; above that, river buckets
   are computed per deal.
+
+## Real-time search
+
+The subgame solver and the depth-limited search agent (PLAN.md M4 and M5:
+`src/subgame.*`, `src/search.*`, `bp search`, `bp search-h2h`,
+`bp subgame`, tests in `make test-rt`) are documented in
+[SEARCH.md](SEARCH.md), with every validation number and the command that
+produced it.
