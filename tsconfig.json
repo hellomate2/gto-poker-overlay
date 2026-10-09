@@ -25,6 +25,7 @@
     // (src/core/ranges/headsup-solved.ts) is plain data and IS included.
     "src/solver/preflop/run-solve.ts",
     "src/solver/preflop/build-equity.ts",
+    "src/solver/preflop/build-strength.ts",
     "src/solver/preflop/equity-matrix.ts",
     "src/solver/bench.ts"
   ]

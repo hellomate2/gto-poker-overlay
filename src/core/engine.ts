@@ -31,6 +31,11 @@ import { solveSubgame, subgameEligibility, pickSubgameAction } from './solver/su
 // (SUBGAME_SOLVER flag, heads-up turn/river), then the distilled net (heads-up)
 // or the range-aware heuristic (multiway). See engine-flags.ts for the toggles.
 
+/** Player-name key: case-insensitive, without a PokerNow " @ id" suffix. */
+function normName(x: string): string {
+  return x.toLowerCase().replace(/\s*@\s*\S+$/, '').trim();
+}
+
 /**
  * Per-decision notes from the path that produced the decision, read by the
  * soundness gate and the exploit step. Reset at the start of every decide().
@@ -785,7 +790,7 @@ export class DecisionEngine {
     if (facingBet && F.DEFENSE) return this.defenseFacingBet(state, heroCards);
 
     // --- Context for the continuing-range model ---
-    const activeVillains = this.liveVillains(state).length;
+    const activeVillains = this.equityVillains(state).length;
     const multiway = activeVillains > 1;
     const aggression = facingBet; // someone has bet/raised into us this street
 
@@ -1348,7 +1353,7 @@ export class DecisionEngine {
     // range (the same model decidePostflopRanged uses) before overriding, so the
     // safety net only fires when the hand is genuinely ahead — not just ahead of
     // a random holding. Preflop (no board) keeps the original vs-random behavior.
-    const activeVillains = this.liveVillains(state).length;
+    const activeVillains = this.equityVillains(state).length;
     // MULTIWAY_EQUITY: with N live villains the thresholds below (tuned heads-up)
     // compare against N-way equity: vs N random hands for the 0.80 / 0.65 hand
     // strength gates, and 0.72^N for the range confirmation.
@@ -1471,7 +1476,7 @@ export class DecisionEngine {
     if (fromRangePath) {
       eqVsRange = m.rangeEq as number;
     } else if (postflop) {
-      const activeVillains = this.liveVillains(state).length;
+      const activeVillains = this.equityVillains(state).length;
       if (F.RANGE_TRACKER || (F.MULTIWAY_EQUITY && activeVillains > 1)) {
         eqVsRange = this.equityVsLiveVillains(state, heroCards, boardIds, facingBet, 2000).equity;
       } else {
@@ -1536,6 +1541,11 @@ export class DecisionEngine {
     return out;
   }
 
+  /** Villains the equity code measures against: always the live list under MULTIWAY_EQUITY. */
+  private equityVillains(state: GameState): number[] {
+    return F.MULTIWAY_EQUITY ? liveVillainIndexes(state) : this.liveVillains(state);
+  }
+
   /** Index of the dealer seat (dealer flag first, then state.dealerIndex). */
   private dealerSeat(state: GameState): number {
     const d = state.players.findIndex(p => p.isDealer);
@@ -1586,7 +1596,10 @@ export class DecisionEngine {
   private equityVsLiveVillains(
     state: GameState, heroCards: [number, number], boardIds: number[], aggression: boolean, iterations: number,
   ): { equity: number; strength: number; combos: number; villains: number } {
-    const live = this.liveVillains(state);
+    // MULTIWAY_EQUITY needs the players actually in the hand, so it always uses
+    // the live list (a folded seat counted as a villain would cost hero a full
+    // share of equity).
+    const live = this.equityVillains(state);
     const n = Math.max(1, live.length);
     const multiway = n > 1;
     let ranges: WeightedRange[] = [];
@@ -1595,8 +1608,18 @@ export class DecisionEngine {
     }
     if (ranges.length === 0) {
       if (multiway && F.MULTIWAY_EQUITY) {
-        const one = uniformRange(villainContinuingRange(heroCards, boardIds, { aggression, multiway: false }));
-        ranges = Array(n).fill(one);
+        // Static ranges per villain: the betting (bluff-free) range only for a
+        // villain who bet or raised this street, the passive range for the rest.
+        // Giving every villain the betting range made hero fold almost
+        // everything multiway (sim: fold-to-flop-bet 91% vs 60% at base).
+        const aggressors = new Set(
+          (state.actionHistory[state.street] || [])
+            .filter(a => a.type === 'bet' || a.type === 'raise' || a.type === 'allin')
+            .map(a => normName(a.playerName)),
+        );
+        const agg = uniformRange(villainContinuingRange(heroCards, boardIds, { aggression: true, multiway: false }));
+        const pas = uniformRange(villainContinuingRange(heroCards, boardIds, { aggression: false, multiway: false }));
+        ranges = live.map(i => (aggression && aggressors.has(normName(state.players[i].name)) ? agg : pas));
       } else {
         const range = villainContinuingRange(heroCards, boardIds, { aggression, multiway });
         const eq = range.length > 0 ? equityVsRange(heroCards, boardIds, range, iterations).equity : 0.5;
@@ -1658,9 +1681,8 @@ export class DecisionEngine {
       for (const a of acts) {
         if ((a.type === 'bet' || a.type === 'raise' || a.type === 'allin') && a.playerName !== hero?.name) bettor = a.playerName;
       }
-      const norm = (x: string) => x.toLowerCase().replace(/\s*@\s*\S+$/, '').trim();
       const hit = bettor
-        ? tracked.find(v => norm(state.players[v.playerIndex]?.name || '') === norm(bettor as string))
+        ? tracked.find(v => normName(state.players[v.playerIndex]?.name || '') === normName(bettor as string))
         : undefined;
       const pick = hit ?? (tracked.length === 1 ? tracked[0] : undefined);
       if (pick && pick.range.combos.length >= 5) villainRange = pick.range;
