@@ -6,6 +6,7 @@ import { charts as headsupCharts } from './headsup-gto';
 import { charts as headsupSolvedCharts } from './headsup-solved';
 import { shoveRange, callRange } from './pushfold-nash';
 import { preflopChartAction, PreflopScenario as PFScenario } from './preflop-charts';
+import { isHeadsUpTable, liveVillainIndexes } from './range-tracker';
 
 // Effective-stack threshold (in big blinds) at or below which the short-stack
 // push/fold Nash recommendation is surfaced. Pure jam/fold is only correct very
@@ -48,34 +49,46 @@ function lookupChart(key: string, headsUp = false): Chart | undefined {
   return greenlineCharts[key] || pekarstasCharts[key];
 }
 
-/** Count players still in the hand (not folded out / sitting out). */
-function countActivePlayers(state: GameState): number {
-  const foldedNames = new Set(
-    (state.actionHistory.preflop || [])
-      .filter(a => a.type === 'fold')
-      .map(a => a.playerName)
-  );
-  return state.players.filter(
-    p => !p.isSittingOut && !foldedNames.has(p.name)
-  ).length;
+/** Chips a player has IN THIS HAND: remaining stack + chips committed this street. */
+function totalChips(p: { stack: number; currentBet: number }): number {
+  return p.stack + (p.currentBet || 0);
 }
 
 /**
- * Hero effective stack in big blinds = total chips each player has IN THIS HAND
- * (remaining stack + chips already committed this hand), capped by the largest
- * opponent. Counting committed chips is essential: when villain is all-in their
- * remaining stack is 0, and ignoring their committed bet would compute a 0bb
- * effective stack and skip the facing-a-jam logic entirely.
+ * Hero effective stack in big blinds against the deepest LIVE opponent (not
+ * folded, not sitting out), counting committed chips. Counting committed chips
+ * is essential: when villain is all-in their remaining stack is 0, and ignoring
+ * their committed bet would compute a 0bb effective stack and skip the
+ * facing-a-jam logic entirely. Folded players are excluded: a deep stack that
+ * already folded cannot win hero's chips (at a heads-up table nobody has folded
+ * when hero acts preflop, so heads-up this is unchanged).
  */
-function heroEffectiveStackBB(state: GameState): number {
+function heroEffectiveStackBB(state: GameState, live: number[]): number {
   const hero = state.players[state.heroIndex];
   const bb = state.bigBlind || 1;
-  const heroTotal = hero.stack + (hero.currentBet || 0);
-  const oppTotals = state.players
-    .filter((p, i) => i !== state.heroIndex && !p.isSittingOut)
-    .map(p => p.stack + (p.currentBet || 0));
+  const heroTotal = totalChips(hero);
+  const oppTotals = live.map(i => totalChips(state.players[i]));
   const maxOpp = oppTotals.length ? Math.max(...oppTotals) : heroTotal;
   return Math.min(heroTotal, maxOpp) / bb;
+}
+
+/**
+ * Effective stack in big blinds for a call-or-fold decision against a jam: the
+ * chips hero can lose to the player(s) who made the current bet (live villains
+ * whose committed bet is the table's current bet), capped by hero's stack. A
+ * 100bb hero facing a 2bb jam is a 2bb decision. Measuring against the deepest
+ * opponent at the table instead (a folded player or a blind still to act) made
+ * that spot use the 50bb+ premium-only range. Heads-up the only villain is the
+ * bettor, so this equals heroEffectiveStackBB there.
+ */
+function jamEffectiveStackBB(state: GameState, live: number[]): number {
+  const cb = state.currentBet || 0;
+  const bettors = live.filter(i => (state.players[i].currentBet || 0) >= cb && cb > 0);
+  if (bettors.length === 0) return heroEffectiveStackBB(state, live);
+  const hero = state.players[state.heroIndex];
+  const bb = state.bigBlind || 1;
+  const maxBettor = Math.max(...bettors.map(i => totalChips(state.players[i])));
+  return Math.min(totalChips(hero), maxBettor) / bb;
 }
 
 export interface GTOAdvice {
@@ -222,8 +235,13 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
   const c2 = cardToId(state.heroCards[1]);
   const handName = handGroupName(c1, c2);
 
-  const headsUp = countActivePlayers(state) === 2;
-  const effStackBB = heroEffectiveStackBB(state);
+  // Heads-up means a heads-up TABLE (two players dealt in). A 6-max pot that
+  // folds down to two players keeps the 6-max charts: the HU engine's SB open
+  // and BB defense ranges are far wider than the 6-max charts for spots such as
+  // BB vs a UTG open or SB first-in after four folds.
+  const headsUp = isHeadsUpTable(state);
+  const live = liveVillainIndexes(state);
+  const effStackBB = heroEffectiveStackBB(state, live);
 
   // --- Short-stack push/fold Nash override ---------------------------------
   // Two distinct short-stack cases:
@@ -244,20 +262,21 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
     // jam-call range — NOT the vs-3bet chart's "peel a small 3-bet" call.
     const bb = state.bigBlind || 1;
     const curBetBB = (state.currentBet || 0) / bb;
-    const nearJam = facingAllIn || (curBetBB >= 0.6 * effStackBB && curBetBB > 12);
+    const jamEffBB = jamEffectiveStackBB(state, live);
+    const nearJam = facingAllIn || (curBetBB >= 0.6 * jamEffBB && curBetBB > 12);
 
-    if (nearJam) {
+    if (nearJam && jamEffBB > 0) {
       // <=25bb: exact Nash call range (calling wide is correct short).
       // 25-50bb: wider 4-bet-jam stack-off range (T9s folds, but TT/AQ/KQs call).
       // >50bb: premium core only — a 100bb preflop jam is a value-heavy spot and
       // TT/99/AQ/KQs are crushed (the deep call-off punt).
-      const inCall = effStackBB <= 25
-        ? callRange(effStackBB).has(handName)
-        : effStackBB <= 50
+      const inCall = jamEffBB <= 25
+        ? callRange(jamEffBB).has(handName)
+        : jamEffBB <= 50
           ? DEEP_JAM_CALL.has(handName)
           : DEEP_JAM_CALL_50PLUS.has(handName);
       return {
-        scenario: `Facing all-in — call/fold (${effStackBB.toFixed(0)}bb eff)`,
+        scenario: `Facing all-in — call/fold (${jamEffBB.toFixed(0)}bb eff)`,
         hand: handName,
         actions: inCall
           ? [{ action: 'All-In', frequency: 100 }]
@@ -267,7 +286,11 @@ export function getGTOAdvice(state: GameState): GTOAdvice | null {
       };
     }
 
-    if (firstIn && effStackBB <= PUSHFOLD_MAX_BB && (hero.position === 'SB' || hero.position === 'BTN')) {
+    // The shove table is the heads-up SB-vs-BB equilibrium, so it only applies
+    // when exactly one opponent is left to act: the SB folded to at a ring
+    // table, or the SB/button at a heads-up table. A 6-max BTN open-jam with
+    // both blinds behind faces two callers and needs a much tighter range.
+    if (firstIn && live.length === 1 && effStackBB <= PUSHFOLD_MAX_BB && (hero.position === 'SB' || hero.position === 'BTN')) {
       const inShove = shoveRange(effStackBB).has(handName);
       return {
         scenario: `Push/Fold Nash — Open Jam (${effStackBB.toFixed(0)}bb eff)`,
