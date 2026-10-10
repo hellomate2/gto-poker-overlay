@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Stub IndexedDB-backed storage so decide() runs in node.
 vi.mock('../src/storage/db', async () => {
@@ -7,6 +7,13 @@ vi.mock('../src/storage/db', async () => {
 });
 
 import { DecisionEngine } from '../src/core/engine';
+import { setEngineFlags, resetEngineFlags } from '../src/core/engine-flags';
+
+// These tests check the engine's stake-aware sizing. BLUEPRINT (on by default) takes
+// heads-up spots first and samples a mixed strategy (it limps the SB some of the time),
+// which made the 2.5bb-open assertion flaky; pin it off here.
+beforeEach(() => { setEngineFlags({ BLUEPRINT: false }); });
+afterEach(() => { resetEngineFlags(); });
 import { GameState, Player, Position } from '../src/types/poker';
 import { card } from './helpers';
 import { clampRaiseAmount, amountMatches } from '../src/content-script/executor';
