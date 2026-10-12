@@ -8,7 +8,7 @@ game-theory toolkit.
 npm install
 npm run build      # production build -> dist/
 npm run dev        # webpack watch mode
-npm test           # vitest suite (200+ tests)
+npm test           # vitest suite (778 tests)
 ```
 Load the extension with `chrome://extensions` -> Developer mode -> Load unpacked -> `dist/`.
 

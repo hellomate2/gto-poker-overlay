@@ -1,121 +1,139 @@
 # GTO Poker Overlay
 
-An open-source poker game-theory toolkit for heads-up and 6-max No-Limit Hold'em. It has two halves:
+An open-source No-Limit Hold'em engine and study toolkit. It has three parts:
 
-1. A **solver/study core** (runs on its own, no extension needed): a real CFR engine that solves toy games (Kuhn/Leduc) to Nash and measures exploitability, deterministic heads-up preflop GTO range charts (plus exact short-stack push/fold Nash), a perfect-hash hand evaluator, a Monte-Carlo equity engine, and a neural-net postflop policy distilled from solver data.
-2. A **Chrome extension** for [PokerNow](https://www.pokernow.club) that reads the table and overlays the recommended GTO play (preflop ranges, the action mix, your equity, live opponent stats), and can optionally auto-play the seat it's sitting in.
+1. **A Pluribus-style training pipeline in C++** (`blueprint/`): Monte Carlo CFR self-play that trains a heads-up "blueprint" strategy, real-time search on top of it, and evaluation tools (duplicate head-to-head, Local Best Response, AIVAT).
+2. **A decision engine in TypeScript** (`src/core/`): solved preflop charts, the trained blueprint for heads-up pots, a real-time subgame solver, a distilled postflop net, and a hand evaluator with range-aware equity.
+3. **A Chrome extension for [PokerNow](https://www.pokernow.club)** that reads the table and overlays the recommended play (action mix, equity, opponent stats), and can optionally play the seat it sits in.
 
-It's built as a study tool and a training opponent. It is a strong **approximation**, not a perfect solver — see [Honest status](#honest-status). Read the [Disclaimer](#disclaimer) before using it anywhere real.
+It is a strong approximation, not a perfect solver. See [Honest status](#honest-status), and read the [Disclaimer](#disclaimer) before using it anywhere real.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![Tests](https://img.shields.io/badge/tests-531%20passing-2ecc71)](#verification)
+[![Tests](https://img.shields.io/badge/tests-778%20passing-2ecc71)](#verification)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+## Results
+
+Heads-up duplicate matches (every deal played twice with seats swapped), 100 big blinds, 95% confidence intervals. "Original bot" is the engine as of v0.1.52. Raw outputs and commands are in [`docs/results/2026-10-09.md`](docs/results/2026-10-09.md).
+
+| Matchup | Result |
+|---|---|
+| Trained blueprint vs original bot | **+21.5 +/- 11.6 bb/100** (8,000 deals, two seeds) |
+| Extension engine with the blueprint vs original bot | +26.7 +/- 20.2 and +25.8 +/- 19.3 bb/100 (3,000 deals per seed) |
+| Blueprint plus river search vs original bot | +22.0 +/- 13.6 bb/100 (6,000 deals) |
+| Final blueprint vs its own 954M-iteration snapshot | +15.7 +/- 6.0 mbb/hand (4M deals) |
+| Hand-tuned engine with range tracking vs original bot (pre-registered) | -8.55 +/- 5.56 bb/100 (22,000 deals), so range tracking is off |
 
 ## Install
 
-### Option A: download the built extension (fastest)
+### Download the built extension
 1. Download `gto-poker-overlay.zip` from the [latest release](https://github.com/hellomate2/gto-poker-overlay/releases).
 2. Unzip it (you get a folder with `manifest.json` inside).
-3. Open `chrome://extensions`, enable **Developer mode** (top-right).
-4. Click **Load unpacked** and select the unzipped folder.
-5. Open a table on `pokernow.club` / `pokernow.com`. The overlay appears automatically. The panel footer shows the running version.
+3. Open `chrome://extensions` and turn on **Developer mode** (top right).
+4. Click **Load unpacked** and pick the unzipped folder.
+5. Open a table on `pokernow.club` or `pokernow.com`. The overlay appears on its own.
 
-To update: download the new release zip, unzip to a fresh folder, **Remove** the old extension, then **Load unpacked** the new folder (a plain reload keeps the old code).
+To update, remove the old extension and load the new folder (a plain reload keeps the old code).
 
-### Option B: build from source
+### Build from source
 ```bash
 git clone https://github.com/hellomate2/gto-poker-overlay.git
 cd gto-poker-overlay
 npm install
-npm run build       # production build -> dist/   (npm run dev for watch mode)
+npm run build       # production build into dist/ (npm run dev for watch mode)
 ```
 Then **Load unpacked** the `dist/` folder.
 
 ## Use it
-- At a `pokernow` table, the overlay shows the GTO **action mix** for your hand and spot (e.g. `Raise 67% / Call 23% / Fold 10%`), whether your hand is in range, your **equity**, and a per-opponent HUD (VPIP / PFR / 3-bet / AF) once it has a few hands on them.
-- It plays the **seat the browser is logged into**. To play *against* it: run it on one device (it plays that seat) and join the other seat from another device.
-- **Auto-play** is on by default (it decides and clicks, pausing ~2s per action). Turn it off in the popup for advisory-only.
-- Press **Alt+G** to toggle the overlay. A live **bb/100** win-rate is shown in the session strip.
+- At a PokerNow table the overlay shows the action mix for your spot (for example `Raise 67% / Call 23% / Fold 10%`), your equity, and a per-opponent HUD (VPIP, PFR, 3-bet, AF) once it has a few hands on them.
+- In a heads-up pot the reasoning line starts with `blueprint` when the trained strategy made the decision. If it does not, the blueprint assets did not load and the normal engine is playing.
+- Auto-play is on by default (it decides and clicks, pausing about 2 seconds per action). Turn it off in the popup for advisory-only mode.
+- Press **Alt+G** to toggle the overlay.
+
+### Play against it locally (no poker site)
+```bash
+npm run play        # opens a heads-up table at http://localhost:8765
+```
+Pick the bot (engine, blueprint, or blueprint plus search), play hands, and the session panel shows your result with a confidence interval and an all-in-adjusted number. See [`sim/play/README.md`](sim/play/README.md).
 
 ## How it works
-- **Preflop, heads-up:** explicit, complete GTO range charts (`src/core/ranges/preflop-charts.ts`) covering every scenario (open / vs-open / vs-3-bet / vs-4-bet), built from standard solved heads-up ranges. Short stacks use exact push/fold Nash. (A CFR preflop solve lives in `src/solver/preflop/` for study, but the live charts are the deterministic ones — they're complete and converged where the raw solve wasn't.)
-- **Preflop, 6-max:** solved chart packs (Greenline / Pekarstas).
-- **Postflop:** a small neural-net policy distilled from the [PokerBench](https://huggingface.co/datasets/RZ412/PokerBench) dataset (~500k solver-labeled decisions), running a pure-TypeScript forward pass in the extension. A range-aware heuristic is the fallback for multiway and edge cases, with hard anti-blunder guards (e.g. never value-bet into a flush you can't beat). Bet sizes are stake-aware and rounded to natural increments.
-- **Equity:** a perfect-hash 7-card evaluator (ported from [phevaluator](https://github.com/HenryRLee/PokerHandEvaluator), Apache-2.0) feeding a Monte-Carlo equity calculator.
-- **Exploits:** per-opponent tracking and bounded exploitative adjustments (postflop).
+
+**Preflop.** Heads-up uses complete solved range charts (`src/core/ranges/preflop-charts.ts`), and short stacks use push/fold Nash. 6-max uses solved chart packs (Greenline, Pekarstas). Short-stack all-ins at 6-max are called on chip EV against the jammer's range with players behind modelled as overcallers (`src/core/ranges/gto-advisor.ts`).
+
+**Heads-up postflop: the blueprint.** The blueprint is trained by external-sampling Monte Carlo CFR in C++: the bot plays itself billions of times and shifts toward the actions it regrets not taking. Training uses the Pluribus tricks (Linear CFR early, negative-regret pruning, integer regrets). The game is abstracted: 169 preflop hand classes, 200 buckets per postflop street (k-means on equity histograms), and a small set of bet sizes. Opponent bets that are not in the tree map to the nearest sizes by pseudo-harmonic translation (Ganzfried and Sandholm 2013). The shipped checkpoint ran 12.7 billion iterations at 100 big blinds. It runs in the browser from compact assets (`src/core/blueprint/`, about 7 MB) and matches the C++ policy on 41,000 sampled decisions.
+
+**Real-time search.** `bp search` (`blueprint/src/search.cpp`) re-solves the current spot with range-vs-range DCFR, using both players' blueprint ranges along the actual line. On the flop it stops at a depth limit where each player chooses among four continuation strategies (blueprint, and fold-, call- and raise-biased versions), as in Pluribus. River solves take about 1.5 seconds; the turn is not fast enough yet, so the agent searches the river only. Search runs in the simulator and play app, not in the extension.
+
+**Everything else.** Multiway pots and spots the blueprint cannot map use the TypeScript engine: a real-time subgame solver for heads-up turns and rivers (`src/core/solver/subgame.ts`), a postflop net distilled from [PokerBench](https://huggingface.co/datasets/RZ412/PokerBench) solver labels, and range-aware rules with anti-blunder checks. Equity comes from a perfect-hash 7-card evaluator (ported from [phevaluator](https://github.com/HenryRLee/PokerHandEvaluator), Apache-2.0).
 
 ## Engine flags
-Optional engine features sit behind flags in `src/core/engine-flags.ts`. The defaults live in `DEFAULT_ENGINE_FLAGS` there, each with the measurement behind it. In Node (sims, benches, tests) the variable `GPO_ENGINE_FLAGS` overrides them, for example `GPO_ENGINE_FLAGS=+BLUEPRINT` (turn one on, keep the rest) or `GPO_ENGINE_FLAGS=none`. The browser build has no environment, so the extension always runs the compiled-in defaults.
+Engine features sit behind flags in `src/core/engine-flags.ts`, each default documented with the measurement behind it. In Node, `GPO_ENGINE_FLAGS` overrides them (for example `GPO_ENGINE_FLAGS=+BLUEPRINT` or `none`). The browser build always uses the compiled-in defaults.
 
 | Flag | Default | What it does |
 | --- | --- | --- |
+| `BLUEPRINT` | on | heads-up decisions from the trained blueprint, run in the browser |
+| `SUBGAME_SOLVER` | on | real-time range-vs-range solve on heads-up turns and rivers |
 | `FIX_LIVE_VILLAINS` | on | counts only villains still in the hand |
-| `RANGE_TRACKER` | off | villain ranges narrowed by each action |
-| `MULTIWAY_EQUITY` | off | multiway equity against all live villains at once |
-| `DEFENSE` | off | pot-odds and minimum-defense fold/call/raise when facing a bet |
-| `SUBGAME_SOLVER` | on | real-time range-vs-range solve on heads-up turn and river |
-| `BLUEPRINT` | off | heads-up decisions from the trained C++ blueprint, run in the browser |
+| `RANGE_TRACKER` | off | villain ranges built from the preflop line and narrowed by each action (lost the pre-registered test) |
+| `MULTIWAY_EQUITY` | off | equity against every live villain at once (over-folds multiway until retuned) |
+| `DEFENSE` | off | minimum-defense fold/call/raise when facing a bet (beats exploit probes, loses heads-up) |
 
-### Turning on the blueprint bot (`BLUEPRINT`)
-1. In `src/core/engine-flags.ts`, set `BLUEPRINT: true` in `DEFAULT_ENGINE_FLAGS`.
-2. Run `npm run build` and load `dist/` unpacked. The build copies the blueprint assets from `blueprint/web/` to `dist/blueprint/` (7.35 MB of gzipped files; about 31 MB once loaded).
-3. At a heads-up table the engine plays the blueprint's average strategy and the decision's reasoning starts with `blueprint`. Multiway tables, effective stacks outside 50 to 200 big blinds, missing assets and any betting line the abstract tree cannot follow go to the normal engine path instead.
+To ship a newer checkpoint: `blueprint/bin/bp export`, then `npx tsx blueprint/scripts/export-web.ts --policy <file.gpobp> --abs <cache>/abs-<id>.bin` rewrites `blueprint/web/`.
 
-What the shipped blueprint is: the overnight checkpoint (12,749,175,749 MCCFR iterations, small betting tree, 200 flop, turn and river buckets, trained at 100 big blinds). Flop and turn buckets come from the trainer's own tables and river buckets are computed per decision with the trainer's exact arithmetic. Checks, all from 2026-10-09 (raw output in `sim/results/2026-10-09/bp-web/`):
+## Training and evaluation
 
-- Parity with the C++ trainer: on 1,000 infosets from `bp serve --parity-dump` (the committed fixture) and on a further 40,000, every node, bucket and action list matched exactly and the largest probability difference was 0.0029, inside the export's 1/255 rounding. `npx tsx sim/blueprint-parity.ts web --fixture tests/fixtures/blueprint-web-parity.jsonl`
-- Speed in Node: assets load in about 40 ms (zlib); decisions take 0.01 ms at the median and 0.14 ms at the 95th percentile (river decisions 0.13 ms and 0.21 ms, since they compute hand strength against all 990 opposing hands). `GPO_ENGINE_FLAGS=+BLUEPRINT npx tsx sim/latency.ts 1000 1 --seats 2 --field tag`
-- Against the original bot (`swarm/base`), heads-up duplicate, 3,000 deals per seed, seeds fixed in advance: +26.74 bb/100 (95% CI +/- 20.20) on seed 7 and +25.79 bb/100 (+/- 19.29) on seed 101, with 0 illegal actions in 24,786 decisions. `npx tsx sim/match.ts --a . --flags-a +BLUEPRINT --b <original checkout> --mode hu --deals 3000 --seed 7 --workers 4`
-
-To ship a newer checkpoint, export it with `blueprint/bin/bp export` and then run `npx tsx blueprint/scripts/export-web.ts --policy <file.gpobp> --abs <cache>/abs-<id>.bin`, which rewrites `blueprint/web/`.
-
-## Verification
-Correctness is checked by a test suite (531 tests, all passing), including:
-- The hand evaluator enumerated over **all 2,598,960 five-card hands**, asserting the category counts match the textbook distribution exactly and that there are 7,462 distinct hand-strength classes.
-- The CFR engine reaching the known Kuhn-poker game value of **-1/18** and driving exploitability toward zero.
-- The distilled postflop net reproducing its **~84% held-out agreement** with the solver (above the published 8B-LLM benchmark).
-- Preflop coverage: every hand × every heads-up scenario returns a defined, in-range action (no gaps).
+Build the C++ tools with `make -C blueprint`; [`blueprint/README.md`](blueprint/README.md) documents every command. The main ones:
 
 ```bash
-npm test                # full suite (531 tests)
-npm run solve:equity    # rebuild the 169×169 preflop all-in equity matrix
-npm run ml:train        # retrain the distilled postflop policy net
-npm run sim:selftest    # validate the simulation engine (chip conservation, blinds, symmetry)
-npm run sim -- 10000 42 # play the real bot vs opponent archetypes, 10k hands each
+blueprint/bin/bp gate --game kuhn --iters 4000000   # correctness check: converges to the -1/18 game value
+blueprint/bin/bp train ...                          # MCCFR blueprint training, checkpoint and resume
+blueprint/bin/bp h2h --a A.bin --b B.bin ...        # duplicate head-to-head (add --aivat for variance reduction)
+blueprint/bin/bp lbr --target A.bin ...             # Local Best Response, a full-game exploitability lower bound
+blueprint/bin/bp search ...                         # real-time search on one spot
+npx tsx sim/match.ts --a <dir> --b <dir> --mode hu  # duplicate match between two engines or agents
 ```
 
-### Simulation (empirical strategy check)
-A heads-up NLHE harness (`sim/`) plays the **real** `DecisionEngine` against scripted
-opponent archetypes and measures its actual win-rate and frequencies. Over 10,000
-hands per opponent (100bb deep), the bot beats every archetype it was tested against
-(nit / TAG / LAG / calling-station / maniac), and its measured preflop frequencies
-match the charts — a wide button-opening range and wide BB defense — confirming the
-ranges are realized in actual play, not just in the chart tables. The
-engine self-test asserts chip conservation every hand and positional symmetry, so the
-numbers are trustworthy.
+`blueprint/cloud/` holds scripts to run a larger training job on a rented machine (setup, bench, resumable training, fetch, cost estimate). The research behind the design and the build plan are in [`docs/research/`](docs/research/).
+
+## Verification
+The suite has 778 tests (`npm test`), plus about 2,400 C++ checks (`make -C blueprint test`). They include:
+- the evaluator enumerated over all 2,598,960 five-card hands (category counts and 7,462 strength classes match exactly)
+- CFR reaching the Kuhn game value of -1/18, and Leduc exploitability falling toward zero
+- train/serve parity for the postflop net and for the in-browser blueprint
+- preflop coverage of every hand in every heads-up scenario
+- regression tests for each bug fixed in v0.2.x
+
+Engine changes are judged with duplicate matches against real engines on at least two seeds. Scripted opponent results are used only as leak diagnostics, because those opponents reward counter-exploits. The rules are in [`sim/EVAL_PROTOCOL.md`](sim/EVAL_PROTOCOL.md).
 
 ## Honest status
-- **Push/fold (short stacks) is exact** Nash — unexploitable.
-- **Deep heads-up preflop** uses explicit standard GTO range charts — a **strong approximation** of full postflop-aware GTO, not a street-by-street solve. It won't be bit-for-bit identical to a commercial solver.
-- **Postflop** is the distilled net (~84% solver-agreement) plus a sound lead/c-bet policy, texture-aware bet sizing, and a soundness gate that vetoes punts — strong, not perfect.
-- Tested mainly on play-money PokerNow tables; DOM selectors can break if PokerNow changes their markup.
+- Local Best Response beats the pure blueprint by about 1.33 big blinds per hand. That is typical for a blueprint without search; search has not been measured against LBR yet.
+- Search covers the river only, and the extension does not run search.
+- The blueprint is heads-up only and assumes about 100 big blinds; other spots use the hand-tuned engine.
+- The live engine replays the scraped action log, whose order has not been verified against every PokerNow layout. Replays that do not match the table fall back to the normal engine.
+- No external benchmark (Slumbot, GTO Wizard) has been run yet.
+- DOM selectors can break if PokerNow changes its markup.
 
 ## Project layout
 ```
+blueprint/           C++ trainer, real-time search, LBR, AIVAT, cloud scripts, web export
+  web/               compact blueprint assets shipped in the extension
 src/
-  solver/            CFR engine; Kuhn/Leduc; preflop/ = heads-up preflop solver
   core/
-    equity/          perfect-hash 7-card evaluator + Monte-Carlo equity
-    ranges/          heads-up GTO charts, push/fold Nash, 6-max packs + advisor
-    ml/              distilled postflop policy net (features, model, inference)
-    exploit/         opponent tracker, profiler, exploit adjuster
-    engine.ts        decision engine (preflop ranges + postflop net + sizing)
-  content-script/    PokerNow scraper + action executor
-  ui/                overlay HUD + popup
-  trainer/           standalone GTO trainer
-sim/                 heads-up NLHE bot-vs-archetype simulation harness
-tests/               531 tests
+    blueprint/       in-browser blueprint, agent and action translation
+    solver/          real-time subgame solver
+    ranges/          preflop charts, push/fold, 6-max advisor, range tracker
+    equity/          hand evaluator, range and multiway equity
+    ml/              distilled postflop net
+    exploit/         opponent tracker and adjuster
+    engine.ts        the decision engine
+    engine-flags.ts  feature flags and the evidence for each default
+  content-script/    PokerNow scraper and action executor
+  ui/                overlay and popup
+  solver/            CFR on toy games, preflop solver
+sim/                 duplicate match harness, 2 to 6 seat engine, local play app
+docs/                research notes, build plan, results
+tests/               778 tests
 ```
 
 ## Disclaimer

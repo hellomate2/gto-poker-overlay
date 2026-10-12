@@ -1,51 +1,27 @@
 # Roadmap
 
-This is where the project is headed. It is honest about what is solid today and
-what is still rough. Items are roughly ordered by priority, not by difficulty.
+Ordered by priority. Each item is done when its measurement says so, on at least two seeds or with a pre-registered sample size (see `sim/EVAL_PROTOCOL.md`). The full plan is in `docs/research/PLAN.md`.
 
-## Postflop c-bet aggression
+## Measure search against Local Best Response
+LBR beats the pure blueprint by about 1.33 big blinds per hand. Search is the expected fix, but it has only been measured head-to-head. Run LBR against the blueprint-plus-search agent on the same settings.
 
-The live postflop path leans on a range-aware heuristic and a distilled policy
-net, with hard guards against the obvious blunders. The continuation-bet logic is
-the weakest spot: sizing and frequency are reasonable but not tuned against a
-real opponent model across all board textures. The plan is to calibrate c-bet
-frequency and sizing per texture and per position, and to mix small and large
-sizings the way a solver does instead of picking a single size.
+## Faster turn search
+River solves take about 1.5 seconds; turn solves do not fit a 2.5 second budget. Options: float storage, suit isomorphism over the 48 river cards, and smaller combo caps. Then measure turn-plus-river search head-to-head.
 
-## CFR+ convergence validation
+## A larger blueprint
+The first cloud run (medium tree, 64 cores) stopped early because of a run-length setting, and its checkpoint does not load locally yet. Fix both, then train the larger abstraction in `PLAN.md` and compare it to the overnight blueprint with LBR.
 
-The heads-up preflop solver reports exploitability, but the convergence story
-deserves more rigor. The realization-factor leaves make the abstraction slightly
-non-zero-sum, which makes NashConv drift once you push past the convergence
-point. We want a cleaner convergence metric, a documented stopping rule, and
-regression tests that catch a chart that has quietly gotten worse.
+## External benchmarks
+Slumbot and the GTO Wizard benchmark, with sample sizes set in advance and AIVAT where the protocol allows it.
 
-## More sites via a pluggable scraper
+## Search in the extension
+The extension runs the blueprint without search. River search in the browser (or a local helper process) would bring the extension in line with the strongest agent.
 
-Today the scraper is specific to pokernow.club, and its DOM selectors are the
-most fragile part of the codebase. The goal is to pull the site-specific reading
-behind a small interface so a new site is a new adapter rather than a rewrite of
-the engine. That also makes the brittle selectors easier to test and update in
-one place.
+## Retune or retire the hand-tuned modules
+Range tracking lost the pre-registered heads-up test, multiway equity over-folds, and the defense module loses heads-up. Each stays off until a retuned version passes on two seeds.
 
-## Range heatmap in the overlay
+## Verify the live action-log order
+The engine replays PokerNow's action log. Confirm its order against real logs on every layout, with a regression fixture.
 
-The HUD shows the recommended action and the mixed strategy, but not the full
-range. A 13x13 heatmap of the solved range for the current spot, shaded by action
-frequency, would make the overlay far more useful for study. It reads from data
-the engine already has.
-
-## Hand-history review mode
-
-Right now the tool only reacts to the live table. A review mode would let you
-load a finished hand and walk it street by street, comparing what you did to what
-the solver and the net recommend, with the equity and range context for each
-decision. This turns the project from a live aid into a study tool.
-
-## Continuous integration
-
-The test suite is deterministic and ready for CI, and there is a workflow under
-`.github/`. The next step is to make CI the source of truth: run lint, the full
-test suite, and the production build on every push, and gate merges on green. A
-follow-up is to verify the committed artifacts can still be regenerated, so the
-pipeline does not silently rot.
+## Six-max blueprint
+Extend the trainer to 3 to 6 players following the Pluribus recipe, starting with 3-handed.

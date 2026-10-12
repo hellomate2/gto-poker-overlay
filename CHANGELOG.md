@@ -2,6 +2,25 @@
 
 All notable changes. Versions match the on-table overlay badge and GitHub releases.
 
+## v0.2.2 (2026-10-09)
+- 6-max preflop: a pot that folds down to two players keeps the 6-max charts; short-stack all-ins are detected even when logged as a raise and are called on chip EV against the jammer's range with overcallers modelled; the button no longer uses the heads-up shove table with both blinds to act.
+- Simulator: per-seat starting stacks (`--stacks`) so short-stack spots get tested.
+
+## v0.2.1 (2026-10-09)
+- The trained heads-up blueprint plays inside the extension (`BLUEPRINT`, on): compact assets, in-browser bucketing that matches the C++ trainer, about 0.14 ms per decision. Against the v0.1.52 engine: +26.7 and +25.8 bb/100 on two pre-registered seeds.
+- `blueprint+search` agent for the simulator and play app: real-time river search on top of the blueprint.
+
+## v0.2.0 (2026-10-09)
+- Real-time subgame solver on by default for heads-up turns and rivers; its combo cap no longer drops the bluff part of a narrowed range.
+- Folded players no longer count as live, so heads-up pots at a 6-max table use the heads-up postflop path.
+- Exploit mode keeps the sampled action instead of the argmax, and the 10% bluff raise is sampled instead of always firing.
+- Postflop net inputs now match the training encoding.
+- New modules behind flags, off until measured: preflop-conditioned range tracking, multiway equity, minimum-defense logic.
+- C++ blueprint pipeline: MCCFR trainer, `bp serve`, real-time search, LBR, AIVAT, abstraction tools, cloud scripts. Duplicate match harness for 2 to 6 seats and a local play app.
+
+## v0.1.19 to v0.1.52
+- See the [GitHub releases](https://github.com/hellomate2/gto-poker-overlay/releases) for these versions.
+
 ## v0.1.18
 - Widened heads-up preflop to real GTO width: button opens ~81% (was ~66%), BB defends ~74%. J9o/53s/suited connectors now open; premiums still 3-bet/4-bet to a size (no jams); raise-or-fold deep.
 
