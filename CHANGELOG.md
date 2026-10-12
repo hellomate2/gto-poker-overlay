@@ -2,6 +2,10 @@
 
 All notable changes. Versions match the on-table overlay badge and GitHub releases.
 
+## v0.2.3 (2026-10-12)
+- The overlay and the extension manifest now show the real version: both come from package.json at build time (the overlay was hard-coded to v0.1.52 through every v0.2.x release).
+- Docs refreshed: README, ROADMAP, CONTRIBUTING.
+
 ## v0.2.2 (2026-10-09)
 - 6-max preflop: a pot that folds down to two players keeps the 6-max charts; short-stack all-ins are detected even when logged as a raise and are called on chip EV against the jammer's range with overcallers modelled; the button no longer uses the heads-up shove table with both blinds to act.
 - Simulator: per-seat starting stacks (`--stacks`) so short-stack spots get tested.

@@ -1,5 +1,7 @@
 const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
+const { DefinePlugin } = require('webpack');
+const pkg = require('./package.json');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
@@ -32,9 +34,15 @@ module.exports = {
     extensions: ['.ts', '.js'],
   },
   plugins: [
+    new DefinePlugin({ __APP_VERSION__: JSON.stringify(`v${pkg.version}`) }),
     new CopyPlugin({
       patterns: [
-        { from: 'manifest.json', to: 'manifest.json' },
+        // The extension version comes from package.json (single source of truth).
+        {
+          from: 'manifest.json',
+          to: 'manifest.json',
+          transform: (content) => JSON.stringify({ ...JSON.parse(content.toString()), version: pkg.version }, null, 2),
+        },
         { from: 'src/ui/overlay.css', to: 'overlay.css' },
         // In-browser blueprint (BLUEPRINT engine flag): gzipped policy and bucket
         // tables, fetched by src/core/blueprint/web-assets.ts.

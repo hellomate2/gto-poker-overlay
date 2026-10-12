@@ -6,7 +6,9 @@ const OVERLAY_ID = 'gto-bot-overlay';
 const PANEL_ID = 'gto-bot-panel';
 const TOGGLE_ID = 'gto-bot-toggle';
 // Bump on every release so the running build is identifiable on the table.
-const VERSION = 'v0.1.52';
+// Injected by webpack from package.json; 'dev' when run outside the build (tests).
+declare const __APP_VERSION__: string;
+const VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
 
 interface SessionStats {
   hands: number;
@@ -194,7 +196,7 @@ export class HUDOverlay {
     const execHtml = this.execStatus
       ? `<div style="font-size:10px; color:#8aa; padding:2px 8px; font-family:monospace;">exec: ${this.execStatus}</div>`
       : '';
-    const versionHtml = `<div style="font-size:9px; color:#556; text-align:right; padding:3px 8px 4px; letter-spacing:0.5px;">${VERSION} · approximation, not perfect GTO</div>`;
+    const versionHtml = `<div style="font-size:9px; color:#556; text-align:right; padding:3px 8px 4px; letter-spacing:0.5px;">${VERSION} · self-play blueprint + search · approximation</div>`;
 
     this.panel.innerHTML = `${gtoHtml}${actionHtml}${sessionHtml}${execHtml}${versionHtml}`;
   }
