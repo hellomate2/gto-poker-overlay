@@ -2,6 +2,10 @@
 
 All notable changes. Versions match the on-table overlay badge and GitHub releases.
 
+## v0.2.4 (2026-10-12)
+- Overlay: when the blueprint makes the decision, the top section shows the blueprint's own mix ("BLUEPRINT MIX") instead of the preflop chart advice, which could disagree with the action the bot took.
+- The blueprint now plays only at 80 to 125 big blinds effective (was 50 to 200). It was trained at 100 BB, and at 50 BB an all-in was read as the much larger 100 BB abstract shove. Other depths use the regular engine.
+
 ## v0.2.3 (2026-10-12)
 - The overlay and the extension manifest now show the real version: both come from package.json at build time (the overlay was hard-coded to v0.1.52 through every v0.2.x release).
 - Docs refreshed: README, ROADMAP, CONTRIBUTING.

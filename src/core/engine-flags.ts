@@ -93,7 +93,7 @@ export const ENGINE_FLAG_NAMES: readonly EngineFlagName[] = [
 //     +22.61 +/- 18.49 bb/100 for base on seed 1 and +16.59 +/- 18.45 on seed 101.
 //   MULTIWAY_EQUITY OFF: over-folds multiway (+268.73 +/- 204.22 bb/100 for base).
 //   BLUEPRINT ON (added 2026-10-09; turned on 11:20 PDT at Dev's request, "put the
-//     blueprint bot in the extension too"). Heads-up only, 50 to 200 BB; anything
+//     blueprint bot in the extension too"). Heads-up only, 80 to 125 BB (narrowed 2026-10-12 from 50 to 200: it was trained at 100 BB); anything
 //     else, and any failure, falls back to the normal engine path. Pre-registered
 //     heads-up tests vs the original bot (swarm/base, sim/match.ts --mode hu, 3000
 //     deals per seed): +26.74 +/- 20.20 bb/100 (seed 7) and +25.79 +/- 19.29 (seed

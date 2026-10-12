@@ -23,8 +23,8 @@ import { BotDecision, GameState, StrategyDistribution } from '../../types/poker'
 import { BlueprintAgent, BlueprintDecision, replayRealHand } from './agent';
 import { getWebBlueprint } from './web-assets';
 
-export const MIN_STACK_BB = 50;
-export const MAX_STACK_BB = 200;
+export const MIN_STACK_BB = 80;  // trained at 100 BB; at 50 BB an all-in mapped to the 100 BB abstract shove (2026-10-12)
+export const MAX_STACK_BB = 125;
 
 export interface BridgeStats {
   decisions: number;

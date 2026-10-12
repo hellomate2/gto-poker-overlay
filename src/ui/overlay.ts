@@ -188,7 +188,13 @@ export class HUDOverlay {
   private render(): void {
     if (!this.panel || !this.visible) return;
 
-    const gtoHtml = this.lastAdvice ? this.renderGTOSection(this.lastAdvice) : '';
+    // When the trained blueprint made the decision, show ITS mix, not the preflop
+    // chart advice: the chart and the blueprint can disagree, and the panel must
+    // show what the bot actually plays.
+    const fromBlueprint = !!this.lastDecision?.reasoning?.startsWith('blueprint');
+    const gtoHtml = fromBlueprint && this.lastDecision
+      ? this.renderDecisionMix(this.lastDecision)
+      : this.lastAdvice ? this.renderGTOSection(this.lastAdvice) : '';
     const actionHtml = this.lastDecision
       ? this.renderActionSection(this.lastDecision, this.lastEquity)
       : `<div class="waiting" style="padding:10px 14px;"><div class="pulse"></div>Waiting for your turn...</div>`;
@@ -199,6 +205,31 @@ export class HUDOverlay {
     const versionHtml = `<div style="font-size:9px; color:#556; text-align:right; padding:3px 8px 4px; letter-spacing:0.5px;">${VERSION} · self-play blueprint + search · approximation</div>`;
 
     this.panel.innerHTML = `${gtoHtml}${actionHtml}${sessionHtml}${execHtml}${versionHtml}`;
+  }
+
+  /** Bars for the decision's own mixed strategy (used for blueprint decisions). */
+  private renderDecisionMix(decision: BotDecision): string {
+    const m = decision.mixedStrategy;
+    if (!m) return '';
+    const rows: { label: string; p: number; color: string }[] = [];
+    if (m.fold > 0) rows.push({ label: 'Fold', p: m.fold, color: '#e74c3c' });
+    if (m.check > 0) rows.push({ label: 'Check', p: m.check, color: '#95a5a6' });
+    if (m.call > 0) rows.push({ label: 'Call', p: m.call, color: '#3498db' });
+    for (const b of m.bets ?? []) if (b.probability > 0) rows.push({ label: `Bet ${b.amount}`, p: b.probability, color: '#2ecc71' });
+    rows.sort((a, b) => b.p - a.p);
+    const bars = rows.map(r => `
+        <div style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+          <div style="width:64px; font-size:12px; font-weight:600; color:${r.color}; text-align:right;">${r.label}</div>
+          <div style="flex:1; height:20px; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden;">
+            <div style="height:100%; width:${Math.round(r.p * 100)}%; background:${r.color}; border-radius:4px;"></div>
+          </div>
+          <div style="width:38px; font-size:13px; font-weight:700; color:${r.color}; text-align:right;">${Math.round(r.p * 100)}%</div>
+        </div>`).join('');
+    return `
+      <div style="padding:10px 14px 8px; border-bottom:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:11px; color:#8aa; margin-bottom:4px;">BLUEPRINT MIX (what the bot plays here)</div>
+        ${bars}
+      </div>`;
   }
 
   private renderGTOSection(advice: GTOAdvice): string {

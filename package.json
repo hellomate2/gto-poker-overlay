@@ -1,6 +1,6 @@
 {
   "name": "gto-poker-overlay",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Open-source poker game-theory toolkit: heads-up preflop CFR solver, distilled postflop policy net, equity engine, and a PokerNow study overlay.",
   "scripts": {
     "build": "webpack --mode production",
